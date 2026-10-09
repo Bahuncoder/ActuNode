@@ -4,16 +4,14 @@ import FailurePanel from './FailurePanel'
 import { useLiveFeed } from './live'
 import MessageStream from './MessageStream'
 import MissionSender from './MissionSender'
+import RecorderPanel from './RecorderPanel'
 import RobotTable from './RobotTable'
 import WarehouseMap from './WarehouseMap'
 
 const POLL_MS = 3000
 
 // Remaining modules from the first-week build plan.
-const COMING = [
-  { title: 'Record', text: 'Capture every message to a JSONL session file.', day: 'Day 6' },
-  { title: 'Replay', text: 'Replay a session to reproduce an incident.', day: 'Day 7' },
-]
+const COMING = [{ title: 'Replay', text: 'Replay a session to reproduce an incident.', day: 'Day 7' }]
 
 function StatusPill({ label, ok }: { label: string; ok: boolean | null }) {
   const state = ok === null ? '' : ok ? 'ok' : 'down'
@@ -98,6 +96,8 @@ export default function App() {
           <MissionSender robots={robots.map((robot) => robot.robotId)} locations={locations} />
           <FailurePanel robots={robots} failures={feed.failures} />
         </div>
+
+        <RecorderPanel recording={feed.recording} />
 
         <section className="panel panel-wide">
           <h2>Message stream</h2>

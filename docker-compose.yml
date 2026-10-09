@@ -24,8 +24,11 @@ services:
     environment:
       ACTUNODE_MQTT_HOST: mosquitto
       ACTUNODE_MQTT_PORT: 1883
+      ACTUNODE_SESSIONS_DIR: /app/sessions
     ports:
       - "8000:8000"
+    volumes:
+      - ./sessions:/app/sessions
     depends_on:
       mosquitto:
         condition: service_healthy

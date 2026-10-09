@@ -51,8 +51,23 @@ export type FailureEntry = {
   robotStatus: string
 }
 
+export type RecordingStatus = {
+  sessionId: string
+  name: string | null
+  startedAt: string
+  messageCount: number
+  duration: number
+}
+
 type LiveEvent =
-  | { type: 'snapshot'; robots: Robot[]; messages: MqttMessage[]; failures: FailureEntry[] }
+  | {
+      type: 'snapshot'
+      robots: Robot[]
+      messages: MqttMessage[]
+      failures: FailureEntry[]
+      recording: RecordingStatus | null
+    }
+  | { type: 'recording'; recording: RecordingStatus | null }
   | { type: 'message'; message: MqttMessage; robot: Robot | null }
   | { type: 'failure'; failure: FailureEntry }
 
@@ -61,6 +76,7 @@ type Feed = {
   robots: Record<string, Robot>
   messages: MqttMessage[]
   failures: FailureEntry[]
+  recording: RecordingStatus | null
 }
 
 type Action = { type: 'connected' | 'disconnected' } | { type: 'event'; event: LiveEvent }
@@ -83,7 +99,11 @@ function applyEvent(feed: Feed, event: LiveEvent): Feed {
       robots: Object.fromEntries(event.robots.map((robot) => [robot.robotId, robot])),
       messages: event.messages,
       failures: event.failures,
+      recording: event.recording,
     }
+  }
+  if (event.type === 'recording') {
+    return { ...feed, recording: event.recording }
   }
   if (event.type === 'failure') {
     if (feed.failures.some((entry) => entry.injectionId === event.failure.injectionId)) return feed
@@ -99,7 +119,13 @@ function applyEvent(feed: Feed, event: LiveEvent): Feed {
 
 /** Live robots and MQTT messages from the backend WebSocket, reconnecting on drop. */
 export function useLiveFeed(): Feed {
-  const [feed, dispatch] = useReducer(reducer, { connected: false, robots: {}, messages: [], failures: [] })
+  const [feed, dispatch] = useReducer(reducer, {
+    connected: false,
+    robots: {},
+    messages: [],
+    failures: [],
+    recording: null,
+  })
 
   useEffect(() => {
     let socket: WebSocket | null = null

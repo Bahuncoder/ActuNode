@@ -3,7 +3,7 @@ from contextlib import asynccontextmanager
 
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect
 
-from app import failures, missions
+from app import failures, missions, sessions
 from app.live import hub
 from app.mqtt_state import mqtt_bridge
 
@@ -15,6 +15,8 @@ async def lifespan(app: FastAPI):
     hub.attach_loop(asyncio.get_running_loop())
     mqtt_bridge.start()
     yield
+    if sessions.recorder.status():
+        sessions.recorder.stop()  # close the file cleanly with an end record
     mqtt_bridge.stop()
     hub.attach_loop(None)
 
@@ -27,6 +29,7 @@ app = FastAPI(
 )
 app.include_router(missions.router)
 app.include_router(failures.router)
+app.include_router(sessions.router)
 
 
 @app.get("/api/health")
@@ -58,7 +61,7 @@ async def live_feed(websocket: WebSocket):
     await websocket.accept()
     queue = hub.subscribe()  # before the snapshot, so nothing falls in between
     try:
-        await websocket.send_json({"type": "snapshot", **hub.snapshot()})
+        await websocket.send_json({"type": "snapshot", **hub.snapshot(), "recording": sessions.recorder.status()})
         while True:
             await websocket.send_json(await queue.get())
     except (WebSocketDisconnect, RuntimeError):

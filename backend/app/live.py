@@ -9,6 +9,7 @@ import json
 import logging
 import threading
 from collections import deque
+from collections.abc import Callable
 from datetime import datetime, timezone
 
 from app import vda5050
@@ -33,10 +34,15 @@ class LiveHub:
         self._failures: deque[dict] = deque(maxlen=FAILURE_BUFFER)
         self._next_id = 1
         self._clients: set[asyncio.Queue] = set()
+        self._listeners: list[Callable[[dict], None]] = []
         self._loop: asyncio.AbstractEventLoop | None = None
 
     def attach_loop(self, loop: asyncio.AbstractEventLoop | None) -> None:
         self._loop = loop
+
+    def add_listener(self, listener: Callable[[dict], None]) -> None:
+        """Call `listener(message)` for every MQTT message (on the MQTT thread)."""
+        self._listeners.append(listener)
 
     # --- MQTT side (network thread) ----------------------------------------
 
@@ -61,7 +67,12 @@ class LiveHub:
             self._messages.append(message)
             robot = self._update_robot(topic, body, message["receivedAt"]) if valid_json else None
 
-        self._broadcast({"type": "message", "message": message, "robot": robot})
+        for listener in self._listeners:
+            try:
+                listener(message)
+            except Exception:
+                log.exception("Message listener failed")
+        self.broadcast({"type": "message", "message": message, "robot": robot})
 
     def _update_robot(self, topic: str, body, received_at: str) -> dict | None:
         parsed = vda5050.parse_topic(topic)
@@ -83,7 +94,7 @@ class LiveHub:
     def add_failure(self, entry: dict) -> None:
         with self._lock:
             self._failures.append(entry)
-        self._broadcast({"type": "failure", "failure": entry})
+        self.broadcast({"type": "failure", "failure": entry})
 
     # --- Reads ---------------------------------------------------------------
 
@@ -110,7 +121,8 @@ class LiveHub:
     def unsubscribe(self, queue: asyncio.Queue) -> None:
         self._clients.discard(queue)
 
-    def _broadcast(self, event: dict) -> None:
+    def broadcast(self, event: dict) -> None:
+        """Push an event to all live clients; safe to call from any thread."""
         if self._loop is None or self._loop.is_closed():
             return
         try:

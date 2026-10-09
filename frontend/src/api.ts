@@ -60,6 +60,49 @@ export async function injectFailure(robotId: string, action: 'inject' | 'clear')
   }
 }
 
+export type SessionSummary = {
+  sessionId: string
+  name: string | null
+  startedAt: string | null
+  endedAt?: string | null
+  messageCount: number
+  recording: boolean
+  complete?: boolean
+  sizeBytes: number
+}
+
+export async function fetchSessions(): Promise<SessionSummary[]> {
+  const response = await fetch('/api/sessions')
+  if (!response.ok) throw new Error(`Could not list sessions: ${response.status}`)
+  return response.json()
+}
+
+export async function fetchRecordingCount(): Promise<number | null> {
+  const response = await fetch('/api/recording')
+  if (!response.ok) return null
+  const body = await response.json()
+  return body.recording?.messageCount ?? null
+}
+
+export async function startRecording(name: string): Promise<void> {
+  await postJson('/api/recording/start', { name: name.trim() || null })
+}
+
+export async function stopRecording(): Promise<void> {
+  await postJson('/api/recording/stop', {})
+}
+
+async function postJson(url: string, body: unknown): Promise<unknown> {
+  const response = await fetch(url, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body),
+  })
+  const result = await response.json().catch(() => ({}))
+  if (!response.ok) throw new Error(errorDetail(result) ?? `Request failed: ${response.status}`)
+  return result
+}
+
 // FastAPI returns `detail` as a string, or a list of validation errors.
 function errorDetail(body: { detail?: unknown }): string | undefined {
   if (typeof body.detail === 'string') return body.detail

@@ -118,6 +118,34 @@ curl -X POST localhost:8000/api/failures -H 'content-type: application/json' -d 
 curl -X POST localhost:8000/api/failures -H 'content-type: application/json' -d '{"robot_id":"robot_01","action":"clear"}'
 curl localhost:8000/api/failures   # failure log
 ```
+
+### Recording sessions
+
+Recording captures every MQTT message the backend sees (orders, states, connections, failure
+injections) to `sessions/<timestamp>_<name>.jsonl`, one JSON object per line:
+
+```jsonl
+{"type":"session","formatVersion":1,"sessionId":"20261009-215557_P-1042-blocked-aisle","name":"P-1042-blocked-aisle","startedAt":"..."}
+{"type":"snapshot","robots":[...]}
+{"type":"message","t":14.04,"receivedAt":"...","topic":"actunode/v1/sim/robot_01/inject","retained":false,"payload":{...}}
+{"type":"end","endedAt":"...","messageCount":186}
+```
+
+`t` is seconds since the recording started. A message that was not valid JSON is kept verbatim in
+`payloadRaw`. If the backend dies mid-recording the `end` line is missing and the session is listed
+as incomplete.
+
+```bash
+curl -X POST localhost:8000/api/recording/start -H 'content-type: application/json' -d '{"name":"p1042"}'
+curl -X POST localhost:8000/api/recording/stop
+curl localhost:8000/api/sessions
+curl -OJ localhost:8000/api/sessions/<sessionId>/download
+
+# Timeline of one robot from a session file
+jq -c 'select(.type=="message" and (.topic|endswith("robot_01/state"))) | [.t, .payload.actunode.missionStatus]' sessions/*.jsonl
+```
+
+Or use the Record panel in the UI.
 Offline playground without MQTT: `python3 main.py`.
 
 Watch them live: `mosquitto_sub -h localhost -t 'uagv/#' -v`

@@ -9,7 +9,7 @@ Source: *Company Vision & Full Execution Plan* (docs/company, not in git).
 - [x] **Day 3**: Mission sender endpoint + state machine `IDLE → ACCEPTED → MOVING → COMPLETED`
 - [x] **Day 4**: Robots on a web page + raw MQTT message stream
 - [x] **Day 5**: One failure: `BLOCKED_PATH`, shown in the UI and logged
-- [ ] **Day 6**: Record messages to a JSONL session file
+- [x] **Day 6**: Record messages to a JSONL session file
 - [ ] **Day 7**: Replay the JSONL file + short demo video
 
 **Definition of done:** a friend can clone the repo, run one command, open a local URL,
