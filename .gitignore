@@ -1,0 +1,21 @@
+# Python
+__pycache__/
+*.pyc
+.venv/
+.pytest_cache/
+
+# Node
+node_modules/
+dist/
+
+# Recorded sessions (Day 6+)
+sessions/*.jsonl
+
+# Private company material: pitch deck, plan, brand kit sources.
+# The repo is meant to go open-source; keep these out of it.
+docs/company/
+
+# Editors / OS
+.vscode/
+.idea/
+.DS_Store

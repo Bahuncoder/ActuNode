@@ -1,0 +1,141 @@
+/* ActuNode brand colors (see docs/company/ActuNode_Brand_Kit.pdf) */
+:root {
+  --node-navy: #0b1b2b;
+  --signal-blue: #00aeef;
+  --machine-mint: #7cffcb;
+  --fog-white: #eaf2f7;
+  --industrial-gray: #607d8b;
+  --panel: #10263a;
+  --border: #1d3a52;
+  --danger: #ff6b6b;
+
+  color-scheme: dark;
+  font-family: 'Inter', system-ui, -apple-system, 'Segoe UI', sans-serif;
+  color: var(--fog-white);
+  background: var(--node-navy);
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  min-height: 100vh;
+  background: var(--node-navy);
+}
+
+code,
+.mono {
+  font-family: 'JetBrains Mono', ui-monospace, 'SFMono-Regular', Menlo, monospace;
+}
+
+.app {
+  max-width: 1200px;
+  margin: 0 auto;
+  padding: 24px 16px 48px;
+}
+
+.header {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding-bottom: 20px;
+  border-bottom: 1px solid var(--border);
+}
+
+.header img {
+  width: 44px;
+  height: 44px;
+}
+
+.header h1 {
+  margin: 0;
+  font-size: 22px;
+  letter-spacing: 0.02em;
+}
+
+.header p {
+  margin: 2px 0 0;
+  color: var(--industrial-gray);
+  font-size: 14px;
+}
+
+.status-bar {
+  margin-left: auto;
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 12px;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  font-size: 13px;
+  background: var(--panel);
+}
+
+.dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--industrial-gray);
+}
+
+.dot.ok {
+  background: var(--machine-mint);
+  box-shadow: 0 0 8px var(--machine-mint);
+}
+
+.dot.down {
+  background: var(--danger);
+}
+
+.grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+  gap: 16px;
+  margin-top: 24px;
+}
+
+.panel {
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 16px;
+  min-height: 140px;
+}
+
+.panel h2 {
+  margin: 0 0 6px;
+  font-size: 15px;
+  color: var(--signal-blue);
+}
+
+.panel p {
+  margin: 0;
+  color: var(--industrial-gray);
+  font-size: 14px;
+  line-height: 1.5;
+}
+
+.panel .tag {
+  display: inline-block;
+  margin-top: 12px;
+  font-size: 12px;
+  color: var(--machine-mint);
+}
+
+@media (max-width: 640px) {
+  .header {
+    flex-wrap: wrap;
+  }
+
+  .status-bar {
+    margin-left: 0;
+  }
+}
