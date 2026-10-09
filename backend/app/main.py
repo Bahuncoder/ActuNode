@@ -1,4 +1,5 @@
 import asyncio
+import logging
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect
@@ -9,12 +10,17 @@ from app.mqtt_state import mqtt_bridge
 
 VERSION = "0.1.0"
 
+# uvicorn only configures its own loggers; this makes ActuNode's (failures, replay, ...) visible too.
+logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s")
+
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     hub.attach_loop(asyncio.get_running_loop())
     mqtt_bridge.start()
     yield
+    if sessions.replayer.running:
+        sessions.replayer.stop()
     if sessions.recorder.status():
         sessions.recorder.stop()  # close the file cleanly with an end record
     mqtt_bridge.stop()
@@ -61,7 +67,12 @@ async def live_feed(websocket: WebSocket):
     await websocket.accept()
     queue = hub.subscribe()  # before the snapshot, so nothing falls in between
     try:
-        await websocket.send_json({"type": "snapshot", **hub.snapshot(), "recording": sessions.recorder.status()})
+        await websocket.send_json({
+            "type": "snapshot",
+            **hub.snapshot(),
+            "recording": sessions.recorder.status(),
+            "replay": sessions.replayer.status(),
+        })
         while True:
             await websocket.send_json(await queue.get())
     except (WebSocketDisconnect, RuntimeError):

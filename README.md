@@ -13,7 +13,8 @@ ActuNode Lab is a local integration lab for autonomous mobile robots (AMRs) that
 simulate robots, send missions, inspect messages, inject failures, and record/replay incidents
 without needing a physical fleet.
 
-> Status: **early development** (week 1). See [docs/PLAN.md](docs/PLAN.md).
+> Status: **week 1 complete**: simulate robots, send missions, inject failures, record and replay.
+> See [docs/PLAN.md](docs/PLAN.md) for the roadmap and [docs/DEMO.md](docs/DEMO.md) for a 3-minute demo.
 
 ## Quick start (Docker)
 
@@ -145,7 +146,26 @@ curl -OJ localhost:8000/api/sessions/<sessionId>/download
 jq -c 'select(.type=="message" and (.topic|endswith("robot_01/state"))) | [.t, .payload.actunode.missionStatus]' sessions/*.jsonl
 ```
 
-Or use the Record panel in the UI.
+Or use the Sessions panel in the UI.
+
+### Replaying a session
+
+Replay republishes a session's messages to MQTT with the original timing (optionally faster), so
+the UI, or any system under test listening on the broker, sees the incident happen again.
+
+- Each robot's state at the start of the recording is published first, so robots start where they were.
+- **Robot-side traffic only by default** (state, connection). Orders, instant actions and failure
+  injections are skipped unless `include_commands` is set, because any robot listening would execute them.
+- Replay is **refused while robots with the same ids are publishing live state**: stop the
+  simulator first (`docker compose stop simulator`) so live and replayed messages never mix.
+- Replayed messages are never retained, so a replay cannot overwrite the broker's stored state.
+
+```bash
+curl -X POST localhost:8000/api/sessions/<sessionId>/replay -H 'content-type: application/json' \
+  -d '{"speed": 5, "include_commands": false}'
+curl localhost:8000/api/replay          # progress
+curl -X POST localhost:8000/api/replay/stop
+```
 Offline playground without MQTT: `python3 main.py`.
 
 Watch them live: `mosquitto_sub -h localhost -t 'uagv/#' -v`

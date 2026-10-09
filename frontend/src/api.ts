@@ -92,6 +92,14 @@ export async function stopRecording(): Promise<void> {
   await postJson('/api/recording/stop', {})
 }
 
+export async function startReplay(sessionId: string, speed: number, includeCommands: boolean): Promise<void> {
+  await postJson(`/api/sessions/${encodeURIComponent(sessionId)}/replay`, { speed, include_commands: includeCommands })
+}
+
+export async function stopReplay(): Promise<void> {
+  await postJson('/api/replay/stop', {})
+}
+
 async function postJson(url: string, body: unknown): Promise<unknown> {
   const response = await fetch(url, {
     method: 'POST',

@@ -80,10 +80,12 @@ class LiveHub:
             return None
         serial_number, name = parsed
         robot = self._robots.setdefault(
-            serial_number, {"robotId": serial_number, "connection": None, "state": None, "lastSeen": None}
+            serial_number,
+            {"robotId": serial_number, "connection": None, "state": None, "lastSeen": None, "lastStateAt": None},
         )
         if name == "state":
             robot["state"] = body
+            robot["lastStateAt"] = received_at
         elif name == "connection":
             robot["connection"] = body.get("connectionState")
         else:

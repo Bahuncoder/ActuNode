@@ -1,4 +1,5 @@
 import re
+from datetime import datetime, timedelta, timezone
 
 from fastapi import APIRouter, HTTPException
 from fastapi.responses import FileResponse
@@ -6,12 +7,29 @@ from pydantic import BaseModel, Field
 
 from app.config import settings
 from app.live import hub
+from app.mqtt_state import mqtt_bridge
 from app.recorder import RecorderError, SessionRecorder
+from app.replay import Replayer, ReplayError, load_session, robot_ids
 
 router = APIRouter(prefix="/api")
 
 recorder = SessionRecorder(settings.sessions_dir)
 hub.add_listener(recorder.record)
+
+replayer = Replayer(
+    publish=lambda topic, payload: mqtt_bridge.publish(topic, payload, qos=0),
+    on_status=lambda status: hub.broadcast({"type": "replay", "replay": status}),
+)
+
+# A robot whose state arrived this recently is treated as live (the simulator publishes every second).
+LIVE_WINDOW = timedelta(seconds=3)
+# Messages published by a replay can still be arriving just after it ends.
+REPLAY_ECHO = timedelta(seconds=0.5)
+
+
+class ReplayRequest(BaseModel):
+    speed: float = Field(default=1.0, ge=0.1, le=20)
+    include_commands: bool = False
 
 
 class StartRequest(BaseModel):
@@ -63,3 +81,60 @@ def download_session(session_id: str) -> FileResponse:
     if path is None:
         raise HTTPException(404, f"Unknown session: {session_id}")
     return FileResponse(path, media_type="application/x-ndjson", filename=path.name)
+
+
+@router.get("/replay")
+def replay_status() -> dict:
+    return {"replay": replayer.status()}
+
+
+@router.post("/sessions/{session_id}/replay", status_code=202)
+async def start_replay(session_id: str, request: ReplayRequest | None = None) -> dict:
+    request = request or ReplayRequest()
+    path = recorder.path_for(session_id)
+    if path is None:
+        raise HTTPException(404, f"Unknown session: {session_id}")
+    current = recorder.status()
+    if current and current["sessionId"] == session_id:
+        raise HTTPException(409, "Cannot replay a session that is still being recorded")
+    if not mqtt_bridge.connected:
+        raise HTTPException(503, "MQTT broker is not connected")
+
+    try:
+        session = load_session(path)
+    except ReplayError as error:
+        raise HTTPException(422, str(error))
+
+    live = sorted(robot_id for robot_id in robot_ids(session) if _is_live(robot_id))
+    if live:
+        raise HTTPException(
+            409,
+            f"{', '.join(live)} {'is' if len(live) == 1 else 'are'} publishing live state; "
+            "stop the simulator before replaying so live and replayed messages do not mix",
+        )
+
+    try:
+        return replayer.start(session_id, session, request.speed, request.include_commands)
+    except ReplayError as error:
+        raise HTTPException(409, str(error))
+
+
+@router.post("/replay/stop")
+def stop_replay() -> dict:
+    try:
+        replayer.stop()
+    except ReplayError as error:
+        raise HTTPException(409, str(error))
+    return {"stopping": True}
+
+
+def _is_live(robot_id: str) -> bool:
+    # Only state messages count: connection messages are retained by the broker
+    # and re-delivered on every reconnect, long after a robot has gone.
+    robot = hub.robot(robot_id)
+    if not robot or not robot.get("lastStateAt"):
+        return False
+    last_seen = datetime.fromisoformat(robot["lastStateAt"])
+    if replayer.ended_at and last_seen <= replayer.ended_at + REPLAY_ECHO:
+        return False  # the last thing we heard came from a replay
+    return datetime.now(timezone.utc) - last_seen < LIVE_WINDOW

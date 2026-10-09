@@ -59,6 +59,17 @@ export type RecordingStatus = {
   duration: number
 }
 
+export type ReplayStatus = {
+  sessionId: string
+  state: 'running' | 'finished' | 'stopped' | 'failed'
+  speed: number
+  includeCommands: boolean
+  sent: number
+  total: number
+  position: number
+  duration: number
+}
+
 type LiveEvent =
   | {
       type: 'snapshot'
@@ -66,8 +77,10 @@ type LiveEvent =
       messages: MqttMessage[]
       failures: FailureEntry[]
       recording: RecordingStatus | null
+      replay: ReplayStatus | null
     }
   | { type: 'recording'; recording: RecordingStatus | null }
+  | { type: 'replay'; replay: ReplayStatus | null }
   | { type: 'message'; message: MqttMessage; robot: Robot | null }
   | { type: 'failure'; failure: FailureEntry }
 
@@ -77,6 +90,7 @@ type Feed = {
   messages: MqttMessage[]
   failures: FailureEntry[]
   recording: RecordingStatus | null
+  replay: ReplayStatus | null
 }
 
 type Action = { type: 'connected' | 'disconnected' } | { type: 'event'; event: LiveEvent }
@@ -100,10 +114,14 @@ function applyEvent(feed: Feed, event: LiveEvent): Feed {
       messages: event.messages,
       failures: event.failures,
       recording: event.recording,
+      replay: event.replay,
     }
   }
   if (event.type === 'recording') {
     return { ...feed, recording: event.recording }
+  }
+  if (event.type === 'replay') {
+    return { ...feed, replay: event.replay }
   }
   if (event.type === 'failure') {
     if (feed.failures.some((entry) => entry.injectionId === event.failure.injectionId)) return feed
@@ -125,6 +143,7 @@ export function useLiveFeed(): Feed {
     messages: [],
     failures: [],
     recording: null,
+    replay: null,
   })
 
   useEffect(() => {

@@ -5,13 +5,11 @@ import { useLiveFeed } from './live'
 import MessageStream from './MessageStream'
 import MissionSender from './MissionSender'
 import RecorderPanel from './RecorderPanel'
+import ReplayBanner from './ReplayBanner'
 import RobotTable from './RobotTable'
 import WarehouseMap from './WarehouseMap'
 
 const POLL_MS = 3000
-
-// Remaining modules from the first-week build plan.
-const COMING = [{ title: 'Replay', text: 'Replay a session to reproduce an incident.', day: 'Day 7' }]
 
 function StatusPill({ label, ok }: { label: string; ok: boolean | null }) {
   const state = ok === null ? '' : ok ? 'ok' : 'down'
@@ -81,6 +79,8 @@ export default function App() {
         </div>
       </header>
 
+      <ReplayBanner replay={feed.replay} />
+
       <main className="grid">
         <section className="panel panel-wide">
           <h2>Warehouse</h2>
@@ -97,20 +97,13 @@ export default function App() {
           <FailurePanel robots={robots} failures={feed.failures} />
         </div>
 
-        <RecorderPanel recording={feed.recording} />
+        <RecorderPanel recording={feed.recording} replay={feed.replay} />
 
         <section className="panel panel-wide">
           <h2>Message stream</h2>
           <MessageStream messages={feed.messages} />
         </section>
 
-        {COMING.map((module) => (
-          <section className="panel" key={module.title}>
-            <h2>{module.title}</h2>
-            <p>{module.text}</p>
-            <span className="tag mono">{module.day}</span>
-          </section>
-        ))}
       </main>
     </div>
   )

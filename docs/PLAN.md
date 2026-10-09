@@ -10,7 +10,7 @@ Source: *Company Vision & Full Execution Plan* (docs/company, not in git).
 - [x] **Day 4**: Robots on a web page + raw MQTT message stream
 - [x] **Day 5**: One failure: `BLOCKED_PATH`, shown in the UI and logged
 - [x] **Day 6**: Record messages to a JSONL session file
-- [ ] **Day 7**: Replay the JSONL file + short demo video
+- [x] **Day 7**: Replay the JSONL file + short demo video (replay done; video script in [DEMO.md](DEMO.md), recording still to do)
 
 **Definition of done:** a friend can clone the repo, run one command, open a local URL,
 create three robots, send one mission, inject one failure, and replay the session.
