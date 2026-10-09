@@ -17,6 +17,9 @@ PARKING_X = 2.0
 PARKING_Y = 2.0
 PARKING_SPACING = 1.5
 
+# Physics step. State is published every --interval and on every mission status change.
+TICK_S = 0.1
+
 
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(prog="simulator", description="ActuNode AMR simulator")
@@ -50,11 +53,23 @@ def main() -> None:
         connection.start()
     logging.info("Simulating %d robots against %s:%s", len(robots), args.host, args.port)
 
+    ticks_per_publish = max(1, round(args.interval / TICK_S))
+    tick = 0
     next_tick = time.monotonic()
     while running:
+        periodic = tick % ticks_per_publish == 0
         for connection in connections:
-            connection.publish_state()
-        next_tick += args.interval
+            # Update before applying orders, so a fresh ACCEPTED is published
+            # and held for one tick before the robot starts MOVING.
+            before = connection.robot.mission_status
+            connection.robot.update(TICK_S)
+            changed = connection.robot.mission_status != before
+            if connection.apply_pending_orders():
+                changed = True
+            if periodic or changed:
+                connection.publish_state()
+        tick += 1
+        next_tick += TICK_S
         time.sleep(max(0.0, next_tick - time.monotonic()))
 
     logging.info("Shutting down")

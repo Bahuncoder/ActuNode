@@ -2,12 +2,10 @@ from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
 
-from app.config import settings
-from app.mqtt import MqttBridge
+from app import missions
+from app.mqtt_state import mqtt_bridge
 
 VERSION = "0.1.0"
-
-mqtt_bridge = MqttBridge(settings.mqtt_host, settings.mqtt_port, settings.mqtt_client_id)
 
 
 @asynccontextmanager
@@ -23,6 +21,7 @@ app = FastAPI(
     version=VERSION,
     lifespan=lifespan,
 )
+app.include_router(missions.router)
 
 
 @app.get("/api/health")

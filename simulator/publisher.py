@@ -1,5 +1,6 @@
 import json
 import logging
+import queue
 
 import paho.mqtt.client as mqtt
 
@@ -13,6 +14,8 @@ class RobotConnection:
     """One MQTT client per robot, so each robot has its own last will.
 
     If the process dies, the broker publishes CONNECTIONBROKEN for that robot.
+    Incoming orders are queued here and applied by the simulation loop, so the
+    robot is only ever touched from one thread.
     """
 
     def __init__(self, robot: Robot, host: str, port: int):
@@ -21,6 +24,8 @@ class RobotConnection:
         self.port = port
         self.state_topic = topic(MANUFACTURER, robot.robot_id, "state")
         self.connection_topic = topic(MANUFACTURER, robot.robot_id, "connection")
+        self.order_topic = topic(MANUFACTURER, robot.robot_id, "order")
+        self.orders: queue.Queue[bytes] = queue.Queue()
 
         self._client = mqtt.Client(
             callback_api_version=mqtt.CallbackAPIVersion.VERSION2,
@@ -33,6 +38,7 @@ class RobotConnection:
             retain=True,
         )
         self._client.on_connect = self._on_connect
+        self._client.on_message = self._on_message
         self._client.reconnect_delay_set(min_delay=1, max_delay=10)
 
     def start(self) -> None:
@@ -44,6 +50,20 @@ class RobotConnection:
         info.wait_for_publish(timeout=2)
         self._client.disconnect()
         self._client.loop_stop()
+
+    def apply_pending_orders(self) -> bool:
+        """Apply queued orders. Returns True if any were processed (accepted or rejected)."""
+        processed = False
+        while True:
+            try:
+                payload = self.orders.get_nowait()
+            except queue.Empty:
+                return processed
+            processed = True
+            if self.robot.handle_order_payload(payload):
+                log.info("%s: accepted order %s", self.robot.robot_id, self.robot.order_id)
+            else:
+                log.warning("%s: rejected order: %s", self.robot.robot_id, self.robot.errors[0]["errorDescription"])
 
     def publish_state(self) -> None:
         if self._client.is_connected():
@@ -57,4 +77,12 @@ class RobotConnection:
             log.warning("%s: MQTT connect failed: %s", self.robot.robot_id, reason_code)
             return
         log.info("%s: connected to %s:%s", self.robot.robot_id, self.host, self.port)
+        client.subscribe(self.order_topic, qos=1)
         self._publish(self.connection_topic, self.robot.connection_message("ONLINE"), qos=1, retain=True)
+
+    def _on_message(self, client, userdata, message):
+        # Only act on our own order topic, whatever the broker delivers.
+        if message.topic != self.order_topic:
+            log.warning("%s: ignoring message on %s", self.robot.robot_id, message.topic)
+            return
+        self.orders.put(message.payload)

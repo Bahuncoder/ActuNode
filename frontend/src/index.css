@@ -130,7 +130,77 @@ code,
   color: var(--machine-mint);
 }
 
+.panel-wide {
+  grid-column: 1 / -1;
+}
+
+.mission-form {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  gap: 12px;
+  margin-top: 14px;
+}
+
+.mission-form label {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  font-size: 12px;
+  color: var(--industrial-gray);
+}
+
+.mission-form select,
+.mission-form input {
+  min-width: 160px;
+  height: 36px;
+  padding: 7px 9px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--node-navy);
+  color: var(--fog-white);
+  font: inherit;
+  font-size: 14px;
+}
+
+.mission-form button {
+  height: 36px;
+  padding: 0 16px;
+  border: 0;
+  border-radius: 6px;
+  background: var(--signal-blue);
+  color: var(--node-navy);
+  font: inherit;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.mission-form button:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
+.panel .result {
+  margin-top: 12px;
+  font-size: 13px;
+}
+
+.panel .result.ok {
+  color: var(--machine-mint);
+}
+
+.panel .result.error {
+  color: var(--danger);
+}
+
 @media (max-width: 640px) {
+  .mission-form label,
+  .mission-form select,
+  .mission-form input,
+  .mission-form button {
+    width: 100%;
+  }
+
   .header {
     flex-wrap: wrap;
   }

@@ -1,11 +1,19 @@
+import json
+import math
 from datetime import datetime, timezone
 
 MANUFACTURER = "ActuNode"
 VDA5050_VERSION = "2.1.0"
 MAP_ID = "warehouse"
 
-# Battery drained per move() call. Real drain per meter comes with motion (Day 3).
-BATTERY_PER_MOVE = 1.0
+SPEED_M_PER_S = 1.0
+BATTERY_PER_METER = 0.2
+
+# Mission state machine: IDLE -> ACCEPTED -> MOVING -> COMPLETED
+IDLE = "IDLE"
+ACCEPTED = "ACCEPTED"
+MOVING = "MOVING"
+COMPLETED = "COMPLETED"
 
 
 def utc_timestamp() -> str:
@@ -23,31 +31,168 @@ class Robot:
         self.battery = 100.0
         self.charging = False
 
-        # Mission state machine (Day 3): IDLE -> ACCEPTED -> MOVING -> COMPLETED
-        self.mission_status = "IDLE"
+        self.mission_status = IDLE
         self.order_id = ""
+        self.order_update_id = 0
+        self.last_node_id = ""
+        self.last_node_sequence_id = 0
+
+        # VDA 5050 keeps the *remaining* nodes/edges of the order in the state.
+        self.node_states: list[dict] = []
+        self.edge_states: list[dict] = []
+        self.action_states: list[dict] = []
+        self._node_positions: dict[str, tuple[float, float]] = {}
+        self._actions_by_node: dict[str, list[str]] = {}
 
         self.errors: list[dict] = []
         self._header_id = 0
 
-    def move(self, target_x: float, target_y: float) -> None:
-        self.mission_status = "MOVING"
+    @property
+    def busy(self) -> bool:
+        return self.mission_status in (ACCEPTED, MOVING)
 
-        self.x = target_x
-        self.y = target_y
+    # --- Orders -----------------------------------------------------------
 
-        self.battery = max(0.0, self.battery - BATTERY_PER_MOVE)
+    def handle_order_payload(self, payload: bytes) -> bool:
+        """Accept or reject a raw order message. Rejections are reported in `errors`."""
+        try:
+            order = json.loads(payload)
+        except (json.JSONDecodeError, UnicodeDecodeError) as exc:
+            self._reject("", f"order is not valid JSON: {exc}")
+            return False
+        if not isinstance(order, dict):
+            self._reject("", "order must be a JSON object")
+            return False
+        return self.accept_order(order)
+
+    def accept_order(self, order: dict) -> bool:
+        order_id = str(order.get("orderId", ""))
+        problem = self._check_order(order)
+        if problem:
+            self._reject(order_id, problem)
+            return False
+
+        nodes = sorted(order["nodes"], key=lambda node: node["sequenceId"])
+        edges = sorted(order.get("edges", []), key=lambda edge: edge["sequenceId"])
+
+        self.order_id = order_id
+        self.order_update_id = order.get("orderUpdateId", 0)
+        self.node_states = [
+            {"nodeId": node["nodeId"], "sequenceId": node["sequenceId"], "released": True}
+            for node in nodes
+        ]
+        self.edge_states = [
+            {"edgeId": edge["edgeId"], "sequenceId": edge["sequenceId"], "released": True}
+            for edge in edges
+        ]
+        self._node_positions = {
+            node["nodeId"]: (node["nodePosition"]["x"], node["nodePosition"]["y"]) for node in nodes
+        }
+        self._actions_by_node = {
+            node["nodeId"]: [action["actionId"] for action in node.get("actions", [])] for node in nodes
+        }
+        self.action_states = [
+            {"actionId": action["actionId"], "actionType": action["actionType"], "actionStatus": "WAITING"}
+            for node in nodes
+            for action in node.get("actions", [])
+        ]
+        self.errors = []
+        self.mission_status = ACCEPTED
+        return True
+
+    def _check_order(self, order: dict) -> str | None:
+        if self.busy:
+            return f"robot is busy with order {self.order_id}"
+        if order.get("serialNumber") != self.robot_id:
+            return f"order is addressed to {order.get('serialNumber')!r}, not {self.robot_id!r}"
+        if not order.get("orderId"):
+            return "order has no orderId"
+        nodes = order.get("nodes")
+        if not isinstance(nodes, list) or not nodes:
+            return "order has no nodes"
+        for node in nodes:
+            if not isinstance(node, dict) or "nodeId" not in node or "sequenceId" not in node:
+                return "every node needs nodeId and sequenceId"
+            position = node.get("nodePosition")
+            if not isinstance(position, dict) or "x" not in position or "y" not in position:
+                return f"node {node['nodeId']} has no nodePosition"
+        return None
+
+    def _reject(self, order_id: str, description: str) -> None:
+        self.errors = [{
+            "errorType": "orderError",
+            "errorLevel": "WARNING",
+            "errorDescription": description,
+            "errorReferences": [{"referenceKey": "orderId", "referenceValue": order_id}] if order_id else [],
+        }]
 
     def stop(self) -> None:
-        self.mission_status = "IDLE"
+        """Abandon the current mission and stand still."""
+        self.mission_status = IDLE
+        self.node_states = []
+        self.edge_states = []
+
+    # --- Simulation -------------------------------------------------------
+
+    def update(self, dt: float) -> None:
+        """Advance the simulation by `dt` seconds."""
+        if self.mission_status == ACCEPTED:
+            self.mission_status = MOVING
+            return
+        if self.mission_status != MOVING:
+            return
+
+        budget = SPEED_M_PER_S * dt
+        while self.node_states and self.battery > 0:
+            node_id = self.node_states[0]["nodeId"]
+            target_x, target_y = self._node_positions[node_id]
+            dx, dy = target_x - self.x, target_y - self.y
+            distance = math.hypot(dx, dy)
+
+            if distance > budget:
+                self.theta = math.atan2(dy, dx)
+                self.x += dx / distance * budget
+                self.y += dy / distance * budget
+                self._drain(budget)
+                return
+
+            if distance > 0:
+                self.theta = math.atan2(dy, dx)
+            self.x, self.y = target_x, target_y
+            self._drain(distance)
+            budget -= distance
+            self._arrive(node_id)
+
+        if not self.node_states:
+            self.mission_status = COMPLETED
+            # Rejections of orders sent while busy no longer apply.
+            self.errors = [error for error in self.errors if error["errorType"] != "orderError"]
+
+    def _arrive(self, node_id: str) -> None:
+        node = self.node_states.pop(0)
+        self.last_node_id = node_id
+        self.last_node_sequence_id = node["sequenceId"]
+        if self.edge_states and self.edge_states[0]["sequenceId"] < node["sequenceId"]:
+            self.edge_states.pop(0)
+
+        # Pick/drop happen instantly in the simulator.
+        finished = set(self._actions_by_node.get(node_id, []))
+        for action in self.action_states:
+            if action["actionId"] in finished:
+                action["actionStatus"] = "FINISHED"
+
+    def _drain(self, meters: float) -> None:
+        self.battery = max(0.0, self.battery - meters * BATTERY_PER_METER)
 
     def status(self) -> None:
         print(
             f"{self.robot_id} | "
             f"{self.mission_status} | "
-            f"x={self.x} y={self.y} | "
-            f"battery={self.battery:g}%"
+            f"x={self.x:.1f} y={self.y:.1f} | "
+            f"battery={self.battery:.1f}%"
         )
+
+    # --- Messages ---------------------------------------------------------
 
     def next_header_id(self) -> int:
         self._header_id += 1
@@ -68,26 +213,27 @@ class Robot:
         return {
             **self.header(),
             "orderId": self.order_id,
-            "orderUpdateId": 0,
-            "lastNodeId": "",
-            "lastNodeSequenceId": 0,
-            "nodeStates": [],
-            "edgeStates": [],
-            "driving": self.mission_status == "MOVING",
+            "orderUpdateId": self.order_update_id,
+            "lastNodeId": self.last_node_id,
+            "lastNodeSequenceId": self.last_node_sequence_id,
+            "nodeStates": [dict(node) for node in self.node_states],
+            "edgeStates": [dict(edge) for edge in self.edge_states],
+            "driving": self.mission_status == MOVING,
             "operatingMode": "AUTOMATIC",
             "agvPosition": {
-                "x": self.x,
-                "y": self.y,
-                "theta": self.theta,
+                "x": round(self.x, 3),
+                "y": round(self.y, 3),
+                "theta": round(self.theta, 3),
                 "mapId": MAP_ID,
                 "positionInitialized": True,
             },
+            "velocity": {"vx": SPEED_M_PER_S if self.mission_status == MOVING else 0.0, "vy": 0.0, "omega": 0.0},
             "batteryState": {
                 "batteryCharge": round(self.battery, 1),
                 "charging": self.charging,
             },
-            "actionStates": [],
-            "errors": self.errors,
+            "actionStates": [dict(action) for action in self.action_states],
+            "errors": [dict(error) for error in self.errors],
             "safetyState": {"eStop": "NONE", "fieldViolation": False},
             "actunode": {"missionStatus": self.mission_status},
         }

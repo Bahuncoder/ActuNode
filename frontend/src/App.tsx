@@ -1,13 +1,12 @@
 import { useEffect, useState } from 'react'
 import { fetchHealth, type Health } from './api'
+import MissionSender from './MissionSender'
 
 const POLL_MS = 3000
 
 // Modules from the first-week build plan; each panel is filled in on its day.
 const MODULES = [
-  { title: 'Robots', text: 'Simulated AMRs with pose, battery and mission state.', day: 'Day 2' },
-  { title: 'Mission sender', text: 'Send transport orders: IDLE → ACCEPTED → MOVING → COMPLETED.', day: 'Day 3' },
-  { title: 'Map + message stream', text: 'Warehouse map and raw MQTT messages as they arrive.', day: 'Day 4' },
+  { title: 'Robots + message stream', text: 'Robots on a warehouse map and raw MQTT messages as they arrive.', day: 'Day 4' },
   { title: 'Failure injection', text: 'Force BLOCKED_PATH and watch the system react.', day: 'Day 5' },
   { title: 'Record', text: 'Capture every message to a JSONL session file.', day: 'Day 6' },
   { title: 'Replay', text: 'Replay a session to reproduce an incident.', day: 'Day 7' },
@@ -72,6 +71,7 @@ export default function App() {
       </header>
 
       <main className="grid">
+        <MissionSender />
         {MODULES.map((module) => (
           <section className="panel" key={module.title}>
             <h2>{module.title}</h2>

@@ -78,6 +78,21 @@ Robots follow the VDA 5050 topic layout
 |---|---|---|
 | `uagv/v2/ActuNode/robot_01/state` | simulator, every 1 s | pose, battery, mission status, errors |
 | `uagv/v2/ActuNode/robot_01/connection` | simulator (retained, last will) | `ONLINE` / `OFFLINE` / `CONNECTIONBROKEN` |
+| `uagv/v2/ActuNode/robot_01/order` | backend (`POST /api/missions`) | VDA 5050 order: nodes, edges, pick/drop actions |
+
+Each robot runs a mission state machine `IDLE → ACCEPTED → MOVING → COMPLETED`, drives at 1 m/s
+and drains 0.2 % battery per meter. Orders sent while a robot is busy are rejected with an
+`orderError` in its state.
+
+### Send a mission
+
+```bash
+curl -X POST localhost:8000/api/missions -H 'content-type: application/json' \
+  -d '{"robot_id":"robot_01","source":"RECEIVING_DOOR_2","destination":"STORAGE_A17","load_id":"P-1042"}'
+```
+
+Or use the mission form in the UI. Named locations: `GET /api/locations`.
+Offline playground without MQTT: `python3 main.py`.
 
 Watch them live: `mosquitto_sub -h localhost -t 'uagv/#' -v`
 
