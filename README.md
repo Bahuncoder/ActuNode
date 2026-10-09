@@ -44,8 +44,14 @@ cd frontend
 npm install
 npm run dev        # http://localhost:5173
 
+# Simulator (third terminal, from repo root)
+python3 -m venv simulator/.venv
+simulator/.venv/bin/pip install -r simulator/requirements-dev.txt
+simulator/.venv/bin/python -m simulator --robots 3
+
 # Tests
 cd backend && .venv/bin/pytest
+simulator/.venv/bin/pytest simulator   # from repo root
 ```
 
 ## Architecture
@@ -62,6 +68,18 @@ map + message stream   missions, replay        VDA 5050 topics              Pyth
 | `simulator/` | Python AMR simulator |
 | `mosquitto/` | Local broker config |
 | `docs/` | Plan tracker and brand assets |
+
+## MQTT topics
+
+Robots follow the VDA 5050 topic layout
+`interfaceName/majorVersion/manufacturer/serialNumber/topic`:
+
+| Topic | Publisher | Content |
+|---|---|---|
+| `uagv/v2/ActuNode/robot_01/state` | simulator, every 1 s | pose, battery, mission status, errors |
+| `uagv/v2/ActuNode/robot_01/connection` | simulator (retained, last will) | `ONLINE` / `OFFLINE` / `CONNECTIONBROKEN` |
+
+Watch them live: `mosquitto_sub -h localhost -t 'uagv/#' -v`
 
 ## Product modules
 

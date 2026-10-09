@@ -30,6 +30,19 @@ services:
       mosquitto:
         condition: service_healthy
 
+  simulator:
+    build:
+      context: .
+      dockerfile: simulator/Dockerfile
+    container_name: actunode-simulator
+    environment:
+      ACTUNODE_MQTT_HOST: mosquitto
+      ACTUNODE_MQTT_PORT: 1883
+      ACTUNODE_SIM_ROBOTS: 3
+    depends_on:
+      mosquitto:
+        condition: service_healthy
+
   frontend:
     build: ./frontend
     container_name: actunode-frontend
