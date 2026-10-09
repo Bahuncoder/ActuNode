@@ -3,7 +3,7 @@ from contextlib import asynccontextmanager
 
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect
 
-from app import missions
+from app import failures, missions
 from app.live import hub
 from app.mqtt_state import mqtt_bridge
 
@@ -26,6 +26,7 @@ app = FastAPI(
     lifespan=lifespan,
 )
 app.include_router(missions.router)
+app.include_router(failures.router)
 
 
 @app.get("/api/health")

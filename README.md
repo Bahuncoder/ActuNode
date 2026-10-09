@@ -79,8 +79,10 @@ Robots follow the VDA 5050 topic layout
 | `uagv/v2/ActuNode/robot_01/state` | simulator, every 1 s | pose, battery, mission status, errors |
 | `uagv/v2/ActuNode/robot_01/connection` | simulator (retained, last will) | `ONLINE` / `OFFLINE` / `CONNECTIONBROKEN` |
 | `uagv/v2/ActuNode/robot_01/order` | backend (`POST /api/missions`) | VDA 5050 order: nodes, edges, pick/drop actions |
+| `actunode/v1/sim/robot_01/inject` | backend (`POST /api/failures`) | ActuNode failure-injection command (not VDA 5050) |
 
-Each robot runs a mission state machine `IDLE → ACCEPTED → MOVING → COMPLETED`, drives at 1 m/s
+Each robot runs a mission state machine `IDLE → ACCEPTED → MOVING → COMPLETED` (plus `BLOCKED`
+under failure injection), drives at 1 m/s
 and drains 0.2 % battery per meter. Orders sent while a robot is busy are rejected with an
 `orderError` in its state.
 
@@ -104,6 +106,18 @@ a robot table, and a raw message stream (filter, pause, click a row for the full
 | `GET /api/robots` | Latest connection + state per robot |
 | `GET /api/messages` | Recent MQTT messages |
 | `WS /api/ws` | Snapshot on connect, then every message live |
+
+### Failure injection
+
+`BLOCKED_PATH` stops a robot that is on a route: it goes `MOVING → BLOCKED`, stands still and
+reports a VDA 5050 `pathBlocked` error referencing the edge (or next node) it was on. Clearing
+the failure resumes the mission. Every injection is logged by the backend and shown in the UI.
+
+```bash
+curl -X POST localhost:8000/api/failures -H 'content-type: application/json' -d '{"robot_id":"robot_01"}'
+curl -X POST localhost:8000/api/failures -H 'content-type: application/json' -d '{"robot_id":"robot_01","action":"clear"}'
+curl localhost:8000/api/failures   # failure log
+```
 Offline playground without MQTT: `python3 main.py`.
 
 Watch them live: `mosquitto_sub -h localhost -t 'uagv/#' -v`

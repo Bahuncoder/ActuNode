@@ -16,6 +16,7 @@ from app import vda5050
 log = logging.getLogger(__name__)
 
 MESSAGE_BUFFER = 500
+FAILURE_BUFFER = 200
 SNAPSHOT_MESSAGES = 200
 CLIENT_QUEUE = 1000
 
@@ -29,6 +30,7 @@ class LiveHub:
         self._lock = threading.Lock()
         self._robots: dict[str, dict] = {}
         self._messages: deque[dict] = deque(maxlen=MESSAGE_BUFFER)
+        self._failures: deque[dict] = deque(maxlen=FAILURE_BUFFER)
         self._next_id = 1
         self._clients: set[asyncio.Queue] = set()
         self._loop: asyncio.AbstractEventLoop | None = None
@@ -78,6 +80,11 @@ class LiveHub:
         robot["lastSeen"] = received_at
         return dict(robot)
 
+    def add_failure(self, entry: dict) -> None:
+        with self._lock:
+            self._failures.append(entry)
+        self._broadcast({"type": "failure", "failure": entry})
+
     # --- Reads ---------------------------------------------------------------
 
     def robot(self, robot_id: str) -> dict | None:
@@ -90,6 +97,7 @@ class LiveHub:
             return {
                 "robots": sorted((dict(r) for r in self._robots.values()), key=lambda r: r["robotId"]),
                 "messages": list(self._messages)[-SNAPSHOT_MESSAGES:],
+                "failures": list(self._failures),
             }
 
     # --- WebSocket side (asyncio loop) ---------------------------------------
@@ -101,10 +109,6 @@ class LiveHub:
 
     def unsubscribe(self, queue: asyncio.Queue) -> None:
         self._clients.discard(queue)
-
-    def publish_event(self, event: dict) -> None:
-        """Push an event to all clients; safe to call from any thread."""
-        self._broadcast(event)
 
     def _broadcast(self, event: dict) -> None:
         if self._loop is None or self._loop.is_closed():

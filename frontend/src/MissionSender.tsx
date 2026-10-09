@@ -43,7 +43,7 @@ export default function MissionSender({
   const names = Object.keys(locations)
 
   return (
-    <section className="panel panel-wide">
+    <section className="panel">
       <h2>Mission sender</h2>
       <p>Send a VDA 5050 order. The robot goes IDLE → ACCEPTED → MOVING → COMPLETED.</p>
 

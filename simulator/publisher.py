@@ -5,7 +5,7 @@ import queue
 import paho.mqtt.client as mqtt
 
 from simulator.robot import MANUFACTURER, Robot
-from simulator.topics import topic
+from simulator.topics import control_topic, topic
 
 log = logging.getLogger(__name__)
 
@@ -14,8 +14,8 @@ class RobotConnection:
     """One MQTT client per robot, so each robot has its own last will.
 
     If the process dies, the broker publishes CONNECTIONBROKEN for that robot.
-    Incoming orders are queued here and applied by the simulation loop, so the
-    robot is only ever touched from one thread.
+    Incoming orders and failure-injection commands are queued here and applied
+    by the simulation loop, so the robot is only ever touched from one thread.
     """
 
     def __init__(self, robot: Robot, host: str, port: int):
@@ -25,7 +25,8 @@ class RobotConnection:
         self.state_topic = topic(MANUFACTURER, robot.robot_id, "state")
         self.connection_topic = topic(MANUFACTURER, robot.robot_id, "connection")
         self.order_topic = topic(MANUFACTURER, robot.robot_id, "order")
-        self.orders: queue.Queue[bytes] = queue.Queue()
+        self.inject_topic = control_topic(robot.robot_id, "inject")
+        self.inbox: queue.Queue[tuple[str, bytes]] = queue.Queue()
 
         self._client = mqtt.Client(
             callback_api_version=mqtt.CallbackAPIVersion.VERSION2,
@@ -51,19 +52,21 @@ class RobotConnection:
         self._client.disconnect()
         self._client.loop_stop()
 
-    def apply_pending_orders(self) -> bool:
-        """Apply queued orders. Returns True if any were processed (accepted or rejected)."""
+    def apply_pending_messages(self) -> bool:
+        """Apply queued orders and commands. Returns True if any were processed."""
         processed = False
         while True:
             try:
-                payload = self.orders.get_nowait()
+                topic_name, payload = self.inbox.get_nowait()
             except queue.Empty:
                 return processed
             processed = True
-            if self.robot.handle_order_payload(payload):
+            if topic_name == self.inject_topic:
+                log.warning("%s: failure injection: %s", self.robot.robot_id, self.robot.handle_command_payload(payload))
+            elif self.robot.handle_order_payload(payload):
                 log.info("%s: accepted order %s", self.robot.robot_id, self.robot.order_id)
             else:
-                log.warning("%s: rejected order: %s", self.robot.robot_id, self.robot.errors[0]["errorDescription"])
+                log.warning("%s: rejected order: %s", self.robot.robot_id, self.robot.errors[-1]["errorDescription"])
 
     def publish_state(self) -> None:
         if self._client.is_connected():
@@ -77,12 +80,12 @@ class RobotConnection:
             log.warning("%s: MQTT connect failed: %s", self.robot.robot_id, reason_code)
             return
         log.info("%s: connected to %s:%s", self.robot.robot_id, self.host, self.port)
-        client.subscribe(self.order_topic, qos=1)
+        client.subscribe([(self.order_topic, 1), (self.inject_topic, 1)])
         self._publish(self.connection_topic, self.robot.connection_message("ONLINE"), qos=1, retain=True)
 
     def _on_message(self, client, userdata, message):
-        # Only act on our own order topic, whatever the broker delivers.
-        if message.topic != self.order_topic:
+        # Only act on our own topics, whatever the broker delivers.
+        if message.topic not in (self.order_topic, self.inject_topic):
             log.warning("%s: ignoring message on %s", self.robot.robot_id, message.topic)
             return
-        self.orders.put(message.payload)
+        self.inbox.put((message.topic, message.payload))

@@ -2,8 +2,8 @@ import json
 
 import pytest
 
-from simulator.robot import ACCEPTED, COMPLETED, IDLE, MOVING, Robot
-from simulator.topics import topic
+from simulator.robot import ACCEPTED, BLOCKED, COMPLETED, IDLE, MOVING, Robot
+from simulator.topics import control_topic, topic
 
 REQUIRED_STATE_FIELDS = {
     "headerId", "timestamp", "version", "manufacturer", "serialNumber",
@@ -202,3 +202,84 @@ def test_battery_never_goes_negative():
 
 def test_topic_follows_vda5050_layout():
     assert topic("ActuNode", "robot_01", "state") == "uagv/v2/ActuNode/robot_01/state"
+
+
+def command(failure="BLOCKED_PATH", action="inject"):
+    return json.dumps({"failure": failure, "action": action}).encode()
+
+
+def moving_robot(points=((3, 0), (3, 4))):
+    robot = Robot("robot_01")
+    robot.accept_order(make_order(points=points))
+    robot.update(0.1)  # ACCEPTED -> MOVING
+    return robot
+
+
+def test_blocked_path_stops_robot_and_reports_error():
+    robot = moving_robot(points=((10, 0),))
+    for _ in range(10):
+        robot.update(0.1)
+
+    assert robot.handle_command_payload(command()) == "path blocked"
+    x_when_blocked = robot.x
+    for _ in range(20):
+        robot.update(0.1)
+
+    assert robot.mission_status == BLOCKED
+    assert robot.x == x_when_blocked
+    state = robot.state_message()
+    assert state["driving"] is False
+    [error] = state["errors"]
+    assert error["errorType"] == "pathBlocked"
+    assert error["errorReferences"][0] == {"referenceKey": "nodeId", "referenceValue": "N0"}
+
+
+def test_blocked_path_on_edge_references_the_edge():
+    robot = moving_robot()
+    while robot.last_node_id != "N0":
+        robot.update(0.1)
+
+    robot.block_path()
+
+    assert robot.errors[0]["errorReferences"][0] == {"referenceKey": "edgeId", "referenceValue": "N0->N1"}
+    assert "N0->N1" in robot.errors[0]["errorDescription"]
+
+
+def test_clearing_blocked_path_resumes_and_completes_mission():
+    robot = moving_robot()
+    robot.block_path()
+
+    assert robot.handle_command_payload(command(action="clear")) == "path cleared"
+    assert robot.mission_status == MOVING
+    assert robot.errors == []
+
+    run_until_done(robot)
+    assert robot.mission_status == COMPLETED
+    assert (robot.x, robot.y) == (3, 4)
+
+
+def test_blocked_robot_rejects_new_orders():
+    robot = moving_robot()
+    robot.block_path()
+
+    assert not robot.accept_order(make_order(order_id="order-2"))
+    assert robot.mission_status == BLOCKED
+    assert {e["errorType"] for e in robot.errors} == {"pathBlocked", "orderError"}
+
+
+@pytest.mark.parametrize("payload, expected", [
+    (command(), "ignored BLOCKED_PATH while IDLE"),
+    (command(action="clear"), "ignored clear: not blocked"),
+    (command(failure="LASER_SHARKS"), "ignored unknown failure 'LASER_SHARKS'"),
+    (b"nope", "ignored malformed command"),
+])
+def test_commands_that_do_not_apply_are_ignored(payload, expected):
+    robot = Robot("robot_01")
+
+    assert robot.handle_command_payload(payload) == expected
+    assert robot.mission_status == IDLE
+    assert robot.errors == []
+
+
+def test_control_topic_is_separate_from_vda5050():
+    assert control_topic("robot_01", "inject") == "actunode/v1/sim/robot_01/inject"

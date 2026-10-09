@@ -134,6 +134,47 @@ code,
   grid-column: 1 / -1;
 }
 
+.split {
+  grid-column: 1 / -1;
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
+  gap: 16px;
+}
+
+.danger-button {
+  background: var(--danger) !important;
+}
+
+.secondary-button {
+  background: transparent !important;
+  color: var(--fog-white) !important;
+  border: 1px solid var(--border) !important;
+}
+
+.failure-log {
+  list-style: none;
+  margin: 14px 0 0;
+  padding: 0;
+  max-height: 160px;
+  overflow-y: auto;
+  font-size: 12px;
+}
+
+.failure-log li {
+  display: flex;
+  gap: 10px;
+  padding: 5px 0;
+  border-top: 1px solid var(--border);
+}
+
+.failure-log .inject {
+  color: var(--danger);
+}
+
+.failure-log .clear {
+  color: var(--machine-mint);
+}
+
 .mission-form {
   display: flex;
   flex-wrap: wrap;
@@ -465,6 +506,10 @@ code,
 
 .kind-connection {
   color: var(--machine-mint);
+}
+
+.kind-inject {
+  color: var(--danger);
 }
 
 .kind-other {

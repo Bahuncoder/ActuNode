@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
 import { fetchHealth, fetchLocations, type Health, type Location } from './api'
+import FailurePanel from './FailurePanel'
 import { useLiveFeed } from './live'
 import MessageStream from './MessageStream'
 import MissionSender from './MissionSender'
@@ -93,7 +94,10 @@ export default function App() {
           <RobotTable robots={robots} />
         </section>
 
-        <MissionSender robots={robots.map((robot) => robot.robotId)} locations={locations} />
+        <div className="split">
+          <MissionSender robots={robots.map((robot) => robot.robotId)} locations={locations} />
+          <FailurePanel robots={robots} failures={feed.failures} />
+        </div>
 
         <section className="panel panel-wide">
           <h2>Message stream</h2>

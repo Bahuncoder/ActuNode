@@ -8,7 +8,7 @@ Source: *Company Vision & Full Execution Plan* (docs/company, not in git).
 - [x] **Day 2**: Robot simulator process: `robot_id`, `x`, `y`, `battery`, `mission_status`, MQTT status publishing
 - [x] **Day 3**: Mission sender endpoint + state machine `IDLE → ACCEPTED → MOVING → COMPLETED`
 - [x] **Day 4**: Robots on a web page + raw MQTT message stream
-- [ ] **Day 5**: One failure: `BLOCKED_PATH`, shown in the UI and logged
+- [x] **Day 5**: One failure: `BLOCKED_PATH`, shown in the UI and logged
 - [ ] **Day 6**: Record messages to a JSONL session file
 - [ ] **Day 7**: Replay the JSONL file + short demo video
 

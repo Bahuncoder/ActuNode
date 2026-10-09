@@ -3,11 +3,11 @@ import type { MqttMessage } from './live'
 
 const SHOWN = 200
 
-type Kind = 'state' | 'connection' | 'order' | 'other'
+type Kind = 'state' | 'connection' | 'order' | 'inject' | 'other'
 
 function kindOf(topic: string): Kind {
   const last = topic.split('/').at(-1)
-  return last === 'state' || last === 'connection' || last === 'order' ? last : 'other'
+  return last === 'state' || last === 'connection' || last === 'order' || last === 'inject' ? last : 'other'
 }
 
 function robotOf(topic: string): string {
@@ -30,7 +30,7 @@ function summary(message: MqttMessage): string {
         p.actunode?.missionStatus,
         pos ? `(${pos.x.toFixed(1)}, ${pos.y.toFixed(1)})` : '',
         p.batteryState ? `${p.batteryState.batteryCharge}%` : '',
-        p.errors?.length ? `⚠ ${p.errors.map((e: any) => e.errorType).join(', ')}` : '',
+        p.errors?.length ? `⚠ ${p.errors.map((e: any) => e.errorDescription ?? e.errorType).join('; ')}` : '',
       ]
       return parts.filter(Boolean).join('  ')
     }
@@ -38,6 +38,8 @@ function summary(message: MqttMessage): string {
       return p.connectionState
     case 'order':
       return `${p.orderId} → ${(p.nodes ?? []).map((n: any) => n.nodeId).join(' → ')}`
+    case 'inject':
+      return `${p.failure} ${p.action} (${p.injectionId})`
     default:
       return JSON.stringify(p).slice(0, 100)
   }

@@ -13,9 +13,9 @@ from simulator.publisher import RobotConnection
 from simulator.robot import Robot
 
 # Robots park side by side in the charging area until missions arrive.
-PARKING_X = 2.0
+PARKING_X = 1.5
 PARKING_Y = 2.0
-PARKING_SPACING = 1.5
+PARKING_SPACING = 2.5
 
 # Physics step. State is published every --interval and on every mission status change.
 TICK_S = 0.1
@@ -64,7 +64,7 @@ def main() -> None:
             before = connection.robot.mission_status
             connection.robot.update(TICK_S)
             changed = connection.robot.mission_status != before
-            if connection.apply_pending_orders():
+            if connection.apply_pending_messages():
                 changed = True
             if periodic or changed:
                 connection.publish_state()

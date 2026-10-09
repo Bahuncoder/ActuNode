@@ -10,10 +10,14 @@ SPEED_M_PER_S = 1.0
 BATTERY_PER_METER = 0.2
 
 # Mission state machine: IDLE -> ACCEPTED -> MOVING -> COMPLETED
+# Failure injection can put a robot on a route into BLOCKED until cleared.
 IDLE = "IDLE"
 ACCEPTED = "ACCEPTED"
 MOVING = "MOVING"
 COMPLETED = "COMPLETED"
+BLOCKED = "BLOCKED"
+
+BLOCKED_PATH = "BLOCKED_PATH"
 
 
 def utc_timestamp() -> str:
@@ -49,7 +53,7 @@ class Robot:
 
     @property
     def busy(self) -> bool:
-        return self.mission_status in (ACCEPTED, MOVING)
+        return self.mission_status in (ACCEPTED, MOVING, BLOCKED)
 
     # --- Orders -----------------------------------------------------------
 
@@ -124,18 +128,73 @@ class Robot:
         return None
 
     def _reject(self, order_id: str, description: str) -> None:
-        self.errors = [{
+        # Replace an earlier rejection, but keep other errors (e.g. pathBlocked).
+        self._drop_errors("orderError")
+        self.errors.append({
             "errorType": "orderError",
             "errorLevel": "WARNING",
             "errorDescription": description,
             "errorReferences": [{"referenceKey": "orderId", "referenceValue": order_id}] if order_id else [],
-        }]
+        })
 
     def stop(self) -> None:
         """Abandon the current mission and stand still."""
         self.mission_status = IDLE
         self.node_states = []
         self.edge_states = []
+        self._drop_errors("pathBlocked")
+
+    # --- Failure injection ------------------------------------------------
+
+    def handle_command_payload(self, payload: bytes) -> str:
+        """Apply an ActuNode failure-injection command. Returns what happened, for the log."""
+        try:
+            command = json.loads(payload)
+            failure = command["failure"]
+            action = command.get("action", "inject")
+        except (json.JSONDecodeError, UnicodeDecodeError, TypeError, KeyError):
+            return "ignored malformed command"
+
+        if failure != BLOCKED_PATH:
+            return f"ignored unknown failure {failure!r}"
+        if action == "inject":
+            return "path blocked" if self.block_path() else f"ignored BLOCKED_PATH while {self.mission_status}"
+        if action == "clear":
+            return "path cleared" if self.clear_blocked_path() else "ignored clear: not blocked"
+        return f"ignored unknown action {action!r}"
+
+    def block_path(self) -> bool:
+        """Something blocks the route: stop in place and report pathBlocked."""
+        if self.mission_status not in (ACCEPTED, MOVING):
+            return False
+
+        on_edge = self.edge_states and self.node_states and self.edge_states[0]["sequenceId"] < self.node_states[0]["sequenceId"]
+        if on_edge:
+            reference = {"referenceKey": "edgeId", "referenceValue": self.edge_states[0]["edgeId"]}
+            description = f"Path blocked on edge {self.edge_states[0]['edgeId']}"
+        else:
+            reference = {"referenceKey": "nodeId", "referenceValue": self.node_states[0]["nodeId"]}
+            description = f"Path blocked on the way to {self.node_states[0]['nodeId']}"
+
+        self._drop_errors("pathBlocked")
+        self.errors.append({
+            "errorType": "pathBlocked",
+            "errorLevel": "WARNING",
+            "errorDescription": description,
+            "errorReferences": [reference, {"referenceKey": "orderId", "referenceValue": self.order_id}],
+        })
+        self.mission_status = BLOCKED
+        return True
+
+    def clear_blocked_path(self) -> bool:
+        if self.mission_status != BLOCKED:
+            return False
+        self._drop_errors("pathBlocked")
+        self.mission_status = MOVING
+        return True
+
+    def _drop_errors(self, error_type: str) -> None:
+        self.errors = [error for error in self.errors if error["errorType"] != error_type]
 
     # --- Simulation -------------------------------------------------------
 
@@ -171,7 +230,7 @@ class Robot:
         if not self.node_states:
             self.mission_status = COMPLETED
             # Rejections of orders sent while busy no longer apply.
-            self.errors = [error for error in self.errors if error["errorType"] != "orderError"]
+            self._drop_errors("orderError")
 
     def _arrive(self, node_id: str) -> None:
         node = self.node_states.pop(0)

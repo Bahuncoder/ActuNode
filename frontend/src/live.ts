@@ -42,14 +42,25 @@ export type MqttMessage = {
   payload: unknown
 }
 
+export type FailureEntry = {
+  injectionId: string
+  timestamp: string
+  robotId: string
+  failure: string
+  action: 'inject' | 'clear'
+  robotStatus: string
+}
+
 type LiveEvent =
-  | { type: 'snapshot'; robots: Robot[]; messages: MqttMessage[] }
+  | { type: 'snapshot'; robots: Robot[]; messages: MqttMessage[]; failures: FailureEntry[] }
   | { type: 'message'; message: MqttMessage; robot: Robot | null }
+  | { type: 'failure'; failure: FailureEntry }
 
 type Feed = {
   connected: boolean
   robots: Record<string, Robot>
   messages: MqttMessage[]
+  failures: FailureEntry[]
 }
 
 type Action = { type: 'connected' | 'disconnected' } | { type: 'event'; event: LiveEvent }
@@ -71,7 +82,12 @@ function applyEvent(feed: Feed, event: LiveEvent): Feed {
       ...feed,
       robots: Object.fromEntries(event.robots.map((robot) => [robot.robotId, robot])),
       messages: event.messages,
+      failures: event.failures,
     }
+  }
+  if (event.type === 'failure') {
+    if (feed.failures.some((entry) => entry.injectionId === event.failure.injectionId)) return feed
+    return { ...feed, failures: [...feed.failures, event.failure] }
   }
   // The server subscribes us before sending the snapshot, so a message can arrive twice.
   const lastId = feed.messages.at(-1)?.id ?? 0
@@ -83,7 +99,7 @@ function applyEvent(feed: Feed, event: LiveEvent): Feed {
 
 /** Live robots and MQTT messages from the backend WebSocket, reconnecting on drop. */
 export function useLiveFeed(): Feed {
-  const [feed, dispatch] = useReducer(reducer, { connected: false, robots: {}, messages: [] })
+  const [feed, dispatch] = useReducer(reducer, { connected: false, robots: {}, messages: [], failures: [] })
 
   useEffect(() => {
     let socket: WebSocket | null = null

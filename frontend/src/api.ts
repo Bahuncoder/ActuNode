@@ -48,6 +48,18 @@ export async function sendMission(mission: MissionRequest): Promise<MissionRespo
   return body
 }
 
+export async function injectFailure(robotId: string, action: 'inject' | 'clear'): Promise<void> {
+  const response = await fetch('/api/failures', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ robot_id: robotId, failure: 'BLOCKED_PATH', action }),
+  })
+  if (!response.ok) {
+    const body = await response.json().catch(() => ({}))
+    throw new Error(errorDetail(body) ?? `Request failed: ${response.status}`)
+  }
+}
+
 // FastAPI returns `detail` as a string, or a list of validation errors.
 function errorDetail(body: { detail?: unknown }): string | undefined {
   if (typeof body.detail === 'string') return body.detail
