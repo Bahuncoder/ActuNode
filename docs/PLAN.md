@@ -7,7 +7,7 @@ Source: *Company Vision & Full Execution Plan* (docs/company, not in git).
 - [x] **Day 1**: Git repo, Docker Compose with Mosquitto, FastAPI skeleton, React app
 - [x] **Day 2**: Robot simulator process: `robot_id`, `x`, `y`, `battery`, `mission_status`, MQTT status publishing
 - [x] **Day 3**: Mission sender endpoint + state machine `IDLE → ACCEPTED → MOVING → COMPLETED`
-- [ ] **Day 4**: Robots on a web page + raw MQTT message stream
+- [x] **Day 4**: Robots on a web page + raw MQTT message stream
 - [ ] **Day 5**: One failure: `BLOCKED_PATH`, shown in the UI and logged
 - [ ] **Day 6**: Record messages to a JSONL session file
 - [ ] **Day 7**: Replay the JSONL file + short demo video

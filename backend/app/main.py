@@ -1,8 +1,10 @@
+import asyncio
 from contextlib import asynccontextmanager
 
-from fastapi import FastAPI
+from fastapi import FastAPI, WebSocket, WebSocketDisconnect
 
 from app import missions
+from app.live import hub
 from app.mqtt_state import mqtt_bridge
 
 VERSION = "0.1.0"
@@ -10,9 +12,11 @@ VERSION = "0.1.0"
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
+    hub.attach_loop(asyncio.get_running_loop())
     mqtt_bridge.start()
     yield
     mqtt_bridge.stop()
+    hub.attach_loop(None)
 
 
 app = FastAPI(
@@ -35,3 +39,28 @@ def health() -> dict:
             "connected": mqtt_bridge.connected,
         },
     }
+
+
+@app.get("/api/robots")
+def list_robots() -> list[dict]:
+    return hub.snapshot()["robots"]
+
+
+@app.get("/api/messages")
+def recent_messages() -> list[dict]:
+    return hub.snapshot()["messages"]
+
+
+@app.websocket("/api/ws")
+async def live_feed(websocket: WebSocket):
+    """Snapshot on connect, then every MQTT message as it arrives."""
+    await websocket.accept()
+    queue = hub.subscribe()  # before the snapshot, so nothing falls in between
+    try:
+        await websocket.send_json({"type": "snapshot", **hub.snapshot()})
+        while True:
+            await websocket.send_json(await queue.get())
+    except (WebSocketDisconnect, RuntimeError):
+        pass
+    finally:
+        hub.unsubscribe(queue)

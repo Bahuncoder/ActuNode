@@ -118,6 +118,8 @@ def test_mid_route_state_lists_remaining_nodes():
     state = robot.state_message()
 
     assert [n["nodeId"] for n in state["nodeStates"]] == ["N1"]
+    assert state["nodeStates"][0]["nodePosition"]["x"] == 3
+    assert state["nodeStates"][0]["nodePosition"]["y"] == 4
     assert [e["edgeId"] for e in state["edgeStates"]] == ["N0->N1"]
     assert state["actionStates"][0]["actionStatus"] == "FINISHED"
     assert state["actionStates"][1]["actionStatus"] == "WAITING"

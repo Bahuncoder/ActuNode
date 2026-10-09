@@ -19,6 +19,14 @@ def topic(serial_number: str, name: str) -> str:
     return f"{INTERFACE_NAME}/{MAJOR_VERSION}/{MANUFACTURER}/{serial_number}/{name}"
 
 
+def parse_topic(topic_name: str) -> tuple[str, str] | None:
+    """Return (serialNumber, topic) for a VDA 5050 topic, or None if it is not one."""
+    parts = topic_name.split("/")
+    if len(parts) != 5 or parts[0] != INTERFACE_NAME or parts[1] != MAJOR_VERSION:
+        return None
+    return parts[3], parts[4]
+
+
 def utc_timestamp() -> str:
     return datetime.now(timezone.utc).isoformat(timespec="milliseconds").replace("+00:00", "Z")
 

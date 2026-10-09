@@ -92,6 +92,18 @@ curl -X POST localhost:8000/api/missions -H 'content-type: application/json' \
 ```
 
 Or use the mission form in the UI. Named locations: `GET /api/locations`.
+
+### Live view
+
+The backend subscribes to `uagv/#` and `actunode/#` and keeps the latest state per robot plus
+the last 500 messages. The UI gets them over a WebSocket and shows robots on the warehouse map,
+a robot table, and a raw message stream (filter, pause, click a row for the full JSON).
+
+| Endpoint | What |
+|---|---|
+| `GET /api/robots` | Latest connection + state per robot |
+| `GET /api/messages` | Recent MQTT messages |
+| `WS /api/ws` | Snapshot on connect, then every message live |
 Offline playground without MQTT: `python3 main.py`.
 
 Watch them live: `mosquitto_sub -h localhost -t 'uagv/#' -v`

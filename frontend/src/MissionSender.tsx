@@ -1,25 +1,26 @@
-import { useEffect, useState, type FormEvent } from 'react'
-import { fetchLocations, sendMission, type Location } from './api'
+import { useState, type FormEvent } from 'react'
+import { sendMission, type Location } from './api'
 
-const ROBOTS = ['robot_01', 'robot_02', 'robot_03']
+// Used until the live feed has seen any robots.
+const DEFAULT_ROBOTS = ['robot_01', 'robot_02', 'robot_03']
 
 type Result = { ok: true; text: string } | { ok: false; text: string }
 
 // Defaults are the demo scenario: pallet P-1042, Receiving Door 2 -> Storage A17.
-export default function MissionSender() {
-  const [locations, setLocations] = useState<Record<string, Location>>({})
-  const [robotId, setRobotId] = useState(ROBOTS[0])
+export default function MissionSender({
+  robots,
+  locations,
+}: {
+  robots: string[]
+  locations: Record<string, Location>
+}) {
+  const robotChoices = robots.length > 0 ? robots : DEFAULT_ROBOTS
+  const [robotId, setRobotId] = useState(DEFAULT_ROBOTS[0])
   const [source, setSource] = useState('RECEIVING_DOOR_2')
   const [destination, setDestination] = useState('STORAGE_A17')
   const [loadId, setLoadId] = useState('P-1042')
   const [sending, setSending] = useState(false)
   const [result, setResult] = useState<Result | null>(null)
-
-  useEffect(() => {
-    fetchLocations()
-      .then(setLocations)
-      .catch((error: Error) => setResult({ ok: false, text: error.message }))
-  }, [])
 
   async function submit(event: FormEvent) {
     event.preventDefault()
@@ -50,7 +51,7 @@ export default function MissionSender() {
         <label>
           Robot
           <select value={robotId} onChange={(e) => setRobotId(e.target.value)}>
-            {ROBOTS.map((robot) => (
+            {robotChoices.map((robot) => (
               <option key={robot}>{robot}</option>
             ))}
           </select>

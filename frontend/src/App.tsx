@@ -1,13 +1,15 @@
 import { useEffect, useState } from 'react'
-import { fetchHealth, type Health } from './api'
+import { fetchHealth, fetchLocations, type Health, type Location } from './api'
+import { useLiveFeed } from './live'
+import MessageStream from './MessageStream'
 import MissionSender from './MissionSender'
+import RobotTable from './RobotTable'
+import WarehouseMap from './WarehouseMap'
 
 const POLL_MS = 3000
 
-// Modules from the first-week build plan; each panel is filled in on its day.
-const MODULES = [
-  { title: 'Robots + message stream', text: 'Robots on a warehouse map and raw MQTT messages as they arrive.', day: 'Day 4' },
-  { title: 'Failure injection', text: 'Force BLOCKED_PATH and watch the system react.', day: 'Day 5' },
+// Remaining modules from the first-week build plan.
+const COMING = [
   { title: 'Record', text: 'Capture every message to a JSONL session file.', day: 'Day 6' },
   { title: 'Replay', text: 'Replay a session to reproduce an incident.', day: 'Day 7' },
 ]
@@ -26,6 +28,8 @@ function StatusPill({ label, ok }: { label: string; ok: boolean | null }) {
 export default function App() {
   const [health, setHealth] = useState<Health | null>(null)
   const [apiUp, setApiUp] = useState<boolean | null>(null)
+  const [locations, setLocations] = useState<Record<string, Location>>({})
+  const feed = useLiveFeed()
 
   useEffect(() => {
     let cancelled = false
@@ -53,7 +57,14 @@ export default function App() {
     }
   }, [])
 
+  useEffect(() => {
+    // Retry until the API is up; the map and mission form both need locations.
+    if (Object.keys(locations).length > 0 || !apiUp) return
+    fetchLocations().then(setLocations).catch(() => {})
+  }, [apiUp, locations])
+
   const mqttUp = apiUp === null ? null : (health?.mqtt.connected ?? false)
+  const robots = Object.values(feed.robots).sort((a, b) => a.robotId.localeCompare(b.robotId))
 
   return (
     <div className="app">
@@ -66,13 +77,30 @@ export default function App() {
         <div className="status-bar">
           <StatusPill label="API" ok={apiUp} />
           <StatusPill label="MQTT" ok={mqttUp} />
+          <StatusPill label="Live" ok={apiUp === null ? null : feed.connected} />
           {health && <span className="pill mono">v{health.version}</span>}
         </div>
       </header>
 
       <main className="grid">
-        <MissionSender />
-        {MODULES.map((module) => (
+        <section className="panel panel-wide">
+          <h2>Warehouse</h2>
+          <WarehouseMap robots={robots} locations={locations} />
+        </section>
+
+        <section className="panel panel-wide">
+          <h2>Robots</h2>
+          <RobotTable robots={robots} />
+        </section>
+
+        <MissionSender robots={robots.map((robot) => robot.robotId)} locations={locations} />
+
+        <section className="panel panel-wide">
+          <h2>Message stream</h2>
+          <MessageStream messages={feed.messages} />
+        </section>
+
+        {COMING.map((module) => (
           <section className="panel" key={module.title}>
             <h2>{module.title}</h2>
             <p>{module.text}</p>

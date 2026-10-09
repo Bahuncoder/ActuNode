@@ -78,7 +78,12 @@ class Robot:
         self.order_id = order_id
         self.order_update_id = order.get("orderUpdateId", 0)
         self.node_states = [
-            {"nodeId": node["nodeId"], "sequenceId": node["sequenceId"], "released": True}
+            {
+                "nodeId": node["nodeId"],
+                "sequenceId": node["sequenceId"],
+                "released": True,
+                "nodePosition": {"x": node["nodePosition"]["x"], "y": node["nodePosition"]["y"], "mapId": MAP_ID},
+            }
             for node in nodes
         ]
         self.edge_states = [
@@ -216,7 +221,7 @@ class Robot:
             "orderUpdateId": self.order_update_id,
             "lastNodeId": self.last_node_id,
             "lastNodeSequenceId": self.last_node_sequence_id,
-            "nodeStates": [dict(node) for node in self.node_states],
+            "nodeStates": [{**node, "nodePosition": dict(node["nodePosition"])} for node in self.node_states],
             "edgeStates": [dict(edge) for edge in self.edge_states],
             "driving": self.mission_status == MOVING,
             "operatingMode": "AUTOMATIC",
