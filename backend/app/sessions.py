@@ -9,7 +9,7 @@ from app.config import settings
 from app.live import hub
 from app.mqtt_state import mqtt_bridge
 from app.recorder import RecorderError, SessionRecorder
-from app.replay import Replayer, ReplayError, load_session, robot_ids
+from app.replay import Replayer, ReplayError, scan_session
 
 router = APIRouter(prefix="/api")
 
@@ -111,11 +111,11 @@ async def start_replay(session_id: str, request: ReplayRequest | None = None) ->
         raise HTTPException(503, "MQTT broker is not connected")
 
     try:
-        session = load_session(path)
+        scan = scan_session(path)
     except ReplayError as error:
         raise HTTPException(422, str(error)) from error
 
-    live = sorted(robot_id for robot_id in robot_ids(session) if _is_live(robot_id))
+    live = sorted(robot_id for robot_id in scan["robotIds"] if _is_live(robot_id))
     if live:
         raise HTTPException(
             409,
@@ -124,7 +124,7 @@ async def start_replay(session_id: str, request: ReplayRequest | None = None) ->
         )
 
     try:
-        return replayer.start(session_id, session, request.speed, request.include_commands)
+        return replayer.start(session_id, path, scan, request.speed, request.include_commands)
     except ReplayError as error:
         raise HTTPException(409, str(error)) from error
 

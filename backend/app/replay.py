@@ -1,5 +1,8 @@
 """Replay a recorded JSONL session by republishing its messages to MQTT.
 
+The file is streamed: a first pass (scan_session) checks it and counts messages, then the
+replay reads it again line by line, so memory does not grow with the size of the session.
+
 By default only robot-side traffic is replayed (state, connection, ...), so the
 system under test sees the incident again without any robot being commanded.
 Commands (orders, instant actions, ActuNode failure injections) are opt-in.
@@ -9,7 +12,7 @@ import asyncio
 import json
 import logging
 import time
-from collections.abc import Callable
+from collections.abc import Callable, Iterator
 from datetime import UTC, datetime
 from pathlib import Path
 
@@ -27,75 +30,87 @@ def is_command(topic: str) -> bool:
     return topic.startswith("actunode/") or topic.endswith(COMMAND_SUFFIXES)
 
 
-def load_session(path: Path) -> dict:
-    """Parse a session file. Half-written or unknown lines are skipped."""
-    header = None
-    robots: list[dict] = []
-    messages: list[dict] = []
-    skipped = 0
+def _records(path: Path):
+    """(record or None) per line; None for a line that is not a JSON object (half-written, foreign)."""
     with path.open(encoding="utf-8") as file:
         for line in file:
             try:
                 record = json.loads(line)
             except json.JSONDecodeError:
-                skipped += 1
+                yield None
                 continue
-            kind = record.get("type")
-            if kind == "session":
-                header = record
-            elif kind == "snapshot":
-                robots = record.get("robots", [])
-            elif kind == "message" and "topic" in record and "t" in record:
-                messages.append(record)
+            yield record if isinstance(record, dict) else None
+
+
+def _is_message(record: dict | None) -> bool:
+    return bool(record) and record.get("type") == "message" and "topic" in record and "t" in record
+
+
+def scan_session(path: Path) -> dict:
+    """One pass over a session file without keeping its messages: header, starting robot states,
+    robot ids, and message count / last time with and without commands (keys False / True)."""
+    header = None
+    robots: list[dict] = []
+    robot_ids: set[str] = set()
+    count = {False: 0, True: 0}
+    last_t = {False: 0.0, True: 0.0}
+    skipped = 0
+    for record in _records(path):
+        if record is None:
+            skipped += 1
+        elif record.get("type") == "session":
+            header = record
+        elif record.get("type") == "snapshot":
+            robots = record.get("robots", [])
+        elif _is_message(record):
+            topic = record["topic"]
+            parts = topic.split("/")
+            if len(parts) == 5 and parts[0] != "actunode":
+                robot_ids.add(parts[3])
+            for include_commands in (False, True):
+                if include_commands or not is_command(topic):
+                    count[include_commands] += 1
+                    last_t[include_commands] = float(record["t"])
     if header is None:
         raise ReplayError(f"{path.name} is not an ActuNode session (no session header)")
     if header.get("formatVersion") != 1:
         raise ReplayError(f"Unsupported session format version: {header.get('formatVersion')}")
-    return {"header": header, "robots": robots, "messages": messages, "skipped": skipped}
+    robot_ids.update(robot["robotId"] for robot in robots)
+    return {
+        "header": header,
+        "robots": robots,
+        "robotIds": robot_ids,
+        "count": count,
+        "lastT": last_t,
+        "skipped": skipped,
+    }
 
 
-def robot_ids(session: dict) -> set[str]:
-    ids = {robot["robotId"] for robot in session["robots"]}
-    for message in session["messages"]:
-        parts = message["topic"].split("/")
-        if len(parts) == 5 and parts[0] != "actunode":
-            ids.add(parts[3])
-    return ids
-
-
-def build_plan(session: dict, include_commands: bool) -> list[tuple[float, str, str]]:
-    """(t, topic, payload) to publish: starting robot states first, then the messages."""
+def snapshot_plan(robots: list[dict]) -> list[tuple[float, str, str]]:
+    """Messages that put each robot back where it was when recording started."""
     plan = []
-    for robot in session["robots"]:
+    for robot in robots:
         state = robot.get("state")
         if not state:
             continue
         prefix = f"uagv/v2/{state.get('manufacturer', 'ActuNode')}/{robot['robotId']}"
         if robot.get("connection"):
-            plan.append(
-                (
-                    0.0,
-                    f"{prefix}/connection",
-                    json.dumps(
-                        {
-                            **{
-                                k: state[k]
-                                for k in ("headerId", "timestamp", "version", "manufacturer", "serialNumber")
-                                if k in state
-                            },
-                            "connectionState": robot["connection"],
-                        }
-                    ),
-                )
-            )
+            header = {
+                k: state[k] for k in ("headerId", "timestamp", "version", "manufacturer", "serialNumber") if k in state
+            }
+            plan.append((0.0, f"{prefix}/connection", json.dumps({**header, "connectionState": robot["connection"]})))
         plan.append((0.0, f"{prefix}/state", json.dumps(state)))
-
-    for message in session["messages"]:
-        if not include_commands and is_command(message["topic"]):
-            continue
-        payload = message["payloadRaw"] if "payloadRaw" in message else json.dumps(message.get("payload"))
-        plan.append((float(message["t"]), message["topic"], payload))
     return plan
+
+
+def iter_plan(path: Path, robots: list[dict], include_commands: bool) -> Iterator[tuple[float, str, str]]:
+    """(t, topic, payload) to publish: starting robot states, then the file's messages, streamed."""
+    yield from snapshot_plan(robots)
+    for record in _records(path):
+        if not _is_message(record) or (not include_commands and is_command(record["topic"])):
+            continue
+        payload = record["payloadRaw"] if "payloadRaw" in record else json.dumps(record.get("payload"))
+        yield float(record["t"]), record["topic"], payload
 
 
 class Replayer:
@@ -113,26 +128,27 @@ class Replayer:
     def status(self) -> dict | None:
         return dict(self._status) if self._status else None
 
-    def start(self, session_id: str, session: dict, speed: float, include_commands: bool) -> dict:
-        """Start replaying; must be called on the event loop."""
+    def start(self, session_id: str, path: Path, scan: dict, speed: float, include_commands: bool) -> dict:
+        """Start replaying `path` (already checked by scan_session); must be called on the event loop."""
         if self.running:
             raise ReplayError(f"Already replaying {self._status['sessionId']}")
 
-        plan = build_plan(session, include_commands)
+        total = len(snapshot_plan(scan["robots"])) + scan["count"][include_commands]
         self._status = {
             "sessionId": session_id,
             "state": "running",
             "speed": speed,
             "includeCommands": include_commands,
             "sent": 0,
-            "total": len(plan),
+            "total": total,
             "position": 0.0,
-            "duration": plan[-1][0] if plan else 0.0,
-            "skippedLines": session["skipped"],
+            "duration": scan["lastT"][include_commands],
+            "skippedLines": scan["skipped"],
         }
         self.ended_at = None
+        plan = iter_plan(path, scan["robots"], include_commands)
         self._task = asyncio.create_task(self._run(plan, speed))
-        log.info("Replaying %s at %sx (%d messages)", session_id, speed, len(plan))
+        log.info("Replaying %s at %sx (%d messages)", session_id, speed, total)
         return self.status()
 
     def stop(self) -> None:
@@ -140,7 +156,7 @@ class Replayer:
             raise ReplayError("Not replaying")
         self._task.cancel()
 
-    async def _run(self, plan: list[tuple[float, str, str]], speed: float) -> None:
+    async def _run(self, plan: Iterator[tuple[float, str, str]], speed: float) -> None:
         loop = asyncio.get_running_loop()
         started = loop.time()
         last_report = 0.0

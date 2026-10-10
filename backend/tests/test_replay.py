@@ -1,6 +1,7 @@
 import asyncio
 import json
 import time
+import tracemalloc
 
 import pytest
 from fastapi.testclient import TestClient
@@ -9,7 +10,7 @@ from app import sessions
 from app.live import hub
 from app.main import app
 from app.mqtt_state import mqtt_bridge
-from app.replay import Replayer, ReplayError, build_plan, is_command, load_session, robot_ids
+from app.replay import Replayer, ReplayError, is_command, iter_plan, scan_session
 
 STATE = {"headerId": 5, "manufacturer": "ActuNode", "serialNumber": "rp_01", "actunode": {"missionStatus": "IDLE"}}
 
@@ -42,6 +43,11 @@ MESSAGES = [
 ]
 
 
+def plan_for(path, include_commands=False):
+    scan = scan_session(path)
+    return list(iter_plan(path, scan["robots"], include_commands))
+
+
 def test_commands_are_recognised():
     assert is_command("uagv/v2/ActuNode/r/order")
     assert is_command("uagv/v2/ActuNode/r/instantActions")
@@ -51,9 +57,7 @@ def test_commands_are_recognised():
 
 
 def test_plan_starts_with_snapshot_and_skips_commands_by_default(tmp_path):
-    session = load_session(write_session(tmp_path / "20261009-120000.jsonl", MESSAGES))
-
-    plan = build_plan(session, include_commands=False)
+    plan = plan_for(write_session(tmp_path / "20261009-120000.jsonl", MESSAGES), include_commands=False)
 
     topics = [topic for _, topic, _ in plan]
     assert topics == [
@@ -67,19 +71,48 @@ def test_plan_starts_with_snapshot_and_skips_commands_by_default(tmp_path):
 
 
 def test_plan_with_commands_keeps_everything_in_order(tmp_path):
-    session = load_session(write_session(tmp_path / "20261009-120000.jsonl", MESSAGES))
+    path = write_session(tmp_path / "20261009-120000.jsonl", MESSAGES)
 
-    plan = build_plan(session, include_commands=True)
+    plan = plan_for(path, include_commands=True)
 
     assert [t for t, _, _ in plan] == [0.0, 0.0, 0.0, 0.02, 0.04, 0.06]
-    assert robot_ids(session) == {"rp_01"}
+    scan = scan_session(path)
+    assert scan["robotIds"] == {"rp_01"}
+    assert scan["count"] == {False: 2, True: 4}
+    assert scan["lastT"] == {False: 0.06, True: 0.06}
 
 
 def test_file_without_header_is_rejected(tmp_path):
     path = write_session(tmp_path / "20261009-120000.jsonl", MESSAGES, header=False)
 
     with pytest.raises(ReplayError):
-        load_session(path)
+        scan_session(path)
+
+
+def test_replay_memory_does_not_grow_with_file_size(tmp_path):
+    """A ~25 MB session is scanned and streamed with a few MB of memory, not loaded whole."""
+    path = tmp_path / "20261009-120000_big.jsonl"
+    with path.open("w") as file:
+        file.write(json.dumps({"type": "session", "formatVersion": 1, "sessionId": path.stem, "startedAt": "x"}) + "\n")
+        file.write(json.dumps({"type": "snapshot", "robots": []}) + "\n")
+        for i in range(60_000):
+            message = {
+                "type": "message",
+                "t": i * 0.01,
+                "topic": "uagv/v2/ActuNode/rp_01/state",
+                "payload": {"i": i, "pad": "x" * 300},
+            }
+            file.write(json.dumps(message) + "\n")
+    assert path.stat().st_size > 20_000_000
+
+    tracemalloc.start()
+    scan = scan_session(path)
+    streamed = sum(1 for _ in iter_plan(path, scan["robots"], include_commands=False))
+    _, peak = tracemalloc.get_traced_memory()
+    tracemalloc.stop()
+
+    assert streamed == scan["count"][False] == 60_000
+    assert peak < 5_000_000, f"peak memory {peak / 1e6:.1f} MB for a {path.stat().st_size / 1e6:.0f} MB file"
 
 
 def run(coro):
@@ -87,22 +120,20 @@ def run(coro):
 
 
 def test_replayer_keeps_timing_scaled_by_speed(tmp_path):
-    session = load_session(
-        write_session(
-            tmp_path / "20261009-120000.jsonl",
-            [
-                {"t": 0.0, "topic": "uagv/v2/ActuNode/rp_01/state", "payload": {}},
-                {"t": 0.4, "topic": "uagv/v2/ActuNode/rp_01/state", "payload": {}},
-            ],
-            robots=[],
-        )
+    path = write_session(
+        tmp_path / "20261009-120000.jsonl",
+        [
+            {"t": 0.0, "topic": "uagv/v2/ActuNode/rp_01/state", "payload": {}},
+            {"t": 0.4, "topic": "uagv/v2/ActuNode/rp_01/state", "payload": {}},
+        ],
+        robots=[],
     )
     sent = []
     statuses = []
 
     async def main():
         replayer = Replayer(lambda topic, payload: sent.append(time.monotonic()), statuses.append)
-        replayer.start("s", session, speed=2.0, include_commands=False)
+        replayer.start("s", path, scan_session(path), speed=2.0, include_commands=False)
         await replayer._task
         return replayer.status()
 
@@ -115,23 +146,21 @@ def test_replayer_keeps_timing_scaled_by_speed(tmp_path):
 
 
 def test_replayer_can_be_stopped(tmp_path):
-    session = load_session(
-        write_session(
-            tmp_path / "20261009-120000.jsonl",
-            [
-                {"t": 0.0, "topic": "uagv/v2/ActuNode/rp_01/state", "payload": {}},
-                {"t": 30.0, "topic": "uagv/v2/ActuNode/rp_01/state", "payload": {}},
-            ],
-            robots=[],
-        )
+    path = write_session(
+        tmp_path / "20261009-120000.jsonl",
+        [
+            {"t": 0.0, "topic": "uagv/v2/ActuNode/rp_01/state", "payload": {}},
+            {"t": 30.0, "topic": "uagv/v2/ActuNode/rp_01/state", "payload": {}},
+        ],
+        robots=[],
     )
     sent = []
 
     async def main():
         replayer = Replayer(lambda topic, payload: sent.append(topic), lambda status: None)
-        replayer.start("s", session, speed=1.0, include_commands=False)
+        replayer.start("s", path, scan_session(path), speed=1.0, include_commands=False)
         with pytest.raises(ReplayError):
-            replayer.start("s", session, speed=1.0, include_commands=False)
+            replayer.start("s", path, scan_session(path), speed=1.0, include_commands=False)
         await asyncio.sleep(0.05)
         replayer.stop()
         await asyncio.gather(replayer._task, return_exceptions=True)
