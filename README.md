@@ -13,10 +13,10 @@ ActuNode Lab is a local integration lab for autonomous mobile robots (AMRs) that
 simulate robots, send missions, inspect messages, inject failures, and record/replay incidents
 without needing a physical fleet.
 
-> Status: **weeks 1-5 of the 8-week plan done**: simulate robots, send missions, inject failures,
-> validate every message, record and replay.
+> Status: **early development, week 1 of 8.** Simulate robots, send missions, inject a failure,
+> validate every message, record and replay. Not yet verified end to end with Docker.
 >
-> See [docs/PLAN.md](docs/PLAN.md) for the roadmap and [docs/DEMO.md](docs/DEMO.md) for a 3-minute demo.
+> **Where the project is:** [docs/PROGRESS.md](docs/PROGRESS.md).
 
 ## Quick start (Docker)
 
@@ -192,3 +192,15 @@ Watch them live: `mosquitto_sub -h localhost -t 'uagv/#' -v`
 - **ActuNode Sim**: robot/fleet simulator
 - **ActuNode Test**: integration scenarios and CI checks
 - **ActuNode Replay**: record and replay robot communication sessions
+
+## Documentation
+
+| Document | What it covers |
+|---|---|
+| [docs/PROGRESS.md](docs/PROGRESS.md) | Where the project is: schedule, verification status, open issues, session log |
+| [docs/PLAN.md](docs/PLAN.md) | The build plan and calendar |
+| [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) | Components, topics, API, data formats |
+| [docs/DECISIONS.md](docs/DECISIONS.md) | Why things are built the way they are |
+| [docs/VDA5050_NOTES.md](docs/VDA5050_NOTES.md) | Protocol notes and validator rules |
+| [docs/DEMO.md](docs/DEMO.md) | 3-minute demo script |
+| [CHANGELOG.md](CHANGELOG.md) | Changes per commit |
