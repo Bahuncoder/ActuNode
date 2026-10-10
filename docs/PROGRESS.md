@@ -132,6 +132,7 @@ Numbered so they can be referenced from commits. Remove an item only when it is 
 | 12 | No authentication: Mosquitto allows anonymous clients, the API has no login, no TLS | Since D-18 the lab is reachable only from the same computer by default; with `ACTUNODE_BIND_ADDRESS=0.0.0.0` anyone on the network can command robots | Broker credentials + API auth + TLS before any shared deployment |
 | 15 | From the dev machine, `127.0.0.1:8000` (backend published port) accepts connections but never answers, while the LAN address `192.168.1.151:8000`, port 8080 on loopback, and container-to-container calls all work. Seen from the assistant's sandboxed shell; not yet checked from a normal terminal | API docs at localhost:8000/docs may be unreachable; the UI is unaffected (it uses 8080) | Seen again on 10 Oct for MQTT ports 1883/11883 from the same shell while the LAN address worked, so most likely the assistant's sandbox; on GitHub's CI machine the same e2e tests reach the stack via plain `localhost`. E2E tests take `ACTUNODE_E2E_HOST` for this. Still: run `curl -m 5 localhost:8000/api/health` in a normal terminal; if it hangs there too, investigate Docker's port forwarding |
 | 17 | Official VDA 5050 3.0.0 schemas are not valid JSON: trailing commas in `factsheet.schema` (4), `order.schema` (1, line 315), `visualization.schema` (2) | Any tool loading them as-is fails | Vendored with only those 7 commas removed (verified by diff); report upstream (needs your GitHub account) |
+| 19 | The live robot list is keyed by serial number only: robots with the same serial under different manufacturers or versions share one entry in the UI | Confusing display in mixed fleets with colliding serials (missions are safe since the ambiguity check) | Key robots by (version, manufacturer, serial) in hub and UI |
 
 ## Session log
 
@@ -139,6 +140,14 @@ Newest first. One entry per work session: what was done, what was learned, what 
 
 ### Sat 10 Oct 2026: working through open issues one by one
 
+- **Security review of the #8 commit (2 findings).** (1) Orders were routed by the version/manufacturer a
+  serial was *last seen* with, so any MQTT client publishing as `uagv/v3/X/robot_01/state` could silently
+  redirect robot_01's orders. Impact limited (broker local-only since D-18; a publisher could command
+  robots directly anyway), but silent misrouting is a real correctness bug. Fixed: all identities per
+  serial are recorded; with more than one the mission is refused (409) unless the request names
+  `manufacturer` and `vda_version` (pattern-validated). Tests first. (2) `headerId` counters keyed by
+  topic strings: acknowledged, no change — they are created only for orders ActuNode sends (validated
+  robot id, one unambiguous identity), so publishers cannot grow them. New issue #19 (UI keyed by serial).
 - **#8 closed (parts C–D).** Orders now go to each robot's own topic version **and manufacturer** (found
   while reading: orders always went to `ActuNode` + `v2`, so a robot of another vendor would never have
   received them); 3.0 orders omit start/end node ids and pass the official 3.0 order schema. Replay

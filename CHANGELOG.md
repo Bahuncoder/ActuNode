@@ -32,6 +32,9 @@ What changed, per commit, newest first. Status and plans are in [docs/PROGRESS.m
 - CI: the `compose` build job is replaced by the `e2e` job, which builds and runs the stack.
 
 ### Fixed
+- Security review: orders were routed by the identity a robot was last seen with, so any MQTT client
+  could redirect them. A robot seen under several identities now needs an explicit `manufacturer` and
+  `vda_version` in the mission request (409 otherwise).
 - A write error (e.g. disk full) during recording logged a traceback for every message and silently
   dropped messages; recording now stops once with the reason.
 - Replay loaded the whole session into memory twice (90 MB peak for a 25 MB file); it now streams

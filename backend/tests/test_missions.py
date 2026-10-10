@@ -146,3 +146,36 @@ def test_order_to_a_robot_never_seen_uses_the_configured_default(client, publish
     [(topic, order)] = published
     assert topic == "uagv/v2/ActuNode/robot_unseen/order"
     assert order["version"] == "2.1.0"
+
+
+def test_robot_seen_under_two_identities_is_not_silently_rerouted(client, published):
+    """Security review: routing by 'last seen' let any publisher redirect a robot's orders."""
+    _seen("uagv/v2/ActuNode/robot_dup/state", {"serialNumber": "robot_dup"})
+    _seen("uagv/v3/Spoofer/robot_dup/state", {"serialNumber": "robot_dup"})
+
+    response = client.post("/api/missions", json={**P1042, "robot_id": "robot_dup"})
+
+    assert response.status_code == 409
+    detail = response.json()["detail"]
+    assert "ActuNode" in detail and "Spoofer" in detail
+    assert published == []
+
+
+def test_explicit_identity_resolves_the_ambiguity(client, published):
+    _seen("uagv/v2/ActuNode/robot_dup2/state", {"serialNumber": "robot_dup2"})
+    _seen("uagv/v3/Spoofer/robot_dup2/state", {"serialNumber": "robot_dup2"})
+
+    response = client.post(
+        "/api/missions", json={**P1042, "robot_id": "robot_dup2", "manufacturer": "ActuNode", "vda_version": "2"}
+    )
+
+    assert response.status_code == 202
+    assert published[0][0] == "uagv/v2/ActuNode/robot_dup2/order"
+
+
+@pytest.mark.parametrize("manufacturer", ["Evil/robot", "a#b", "+", ""])
+def test_explicit_manufacturer_cannot_inject_topic_levels(client, published, manufacturer):
+    response = client.post("/api/missions", json={**P1042, "manufacturer": manufacturer, "vda_version": "2"})
+
+    assert response.status_code == 422
+    assert published == []

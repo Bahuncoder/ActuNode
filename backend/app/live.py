@@ -95,6 +95,12 @@ class LiveHub:
         )
         robot["vdaMajor"] = parsed.major
         robot["manufacturer"] = parsed.manufacturer
+        # Every (version, manufacturer) this serial number has used. More than one means the serial
+        # alone does not identify a robot (a second vendor, or a spoofing client): see missions.py.
+        identity = {"vdaMajor": parsed.major, "manufacturer": parsed.manufacturer}
+        identities = robot.setdefault("identities", [])
+        if identity not in identities:
+            identities.append(identity)
         if name == "state":
             robot["state"] = body
             robot["lastStateAt"] = received_at
