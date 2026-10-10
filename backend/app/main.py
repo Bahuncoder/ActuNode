@@ -56,6 +56,17 @@ def list_robots() -> list[dict]:
     return hub.snapshot()["robots"]
 
 
+@app.get("/api/validation")
+def validation_summary() -> dict:
+    return hub.validation()
+
+
+@app.post("/api/validation/reset")
+def reset_validation() -> dict:
+    hub.reset_validation()
+    return hub.validation()
+
+
 @app.get("/api/messages")
 def recent_messages() -> list[dict]:
     return hub.snapshot()["messages"]

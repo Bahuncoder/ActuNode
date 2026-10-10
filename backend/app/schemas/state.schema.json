@@ -1,0 +1,128 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:actunode:schema:vda5050:state",
+  "title": "VDA 5050 state (ActuNode subset)",
+  "allOf": [{ "$ref": "urn:actunode:schema:vda5050:header" }],
+  "type": "object",
+  "required": [
+    "orderId", "orderUpdateId", "lastNodeId", "lastNodeSequenceId", "nodeStates", "edgeStates",
+    "driving", "actionStates", "batteryState", "operatingMode", "errors", "safetyState"
+  ],
+  "properties": {
+    "orderId": { "type": "string" },
+    "orderUpdateId": { "type": "integer", "minimum": 0 },
+    "lastNodeId": { "type": "string" },
+    "lastNodeSequenceId": { "type": "integer", "minimum": 0 },
+    "driving": { "type": "boolean" },
+    "paused": { "type": "boolean" },
+    "newBaseRequest": { "type": "boolean" },
+    "distanceSinceLastNode": { "type": "number" },
+    "operatingMode": { "enum": ["AUTOMATIC", "SEMIAUTOMATIC", "MANUAL", "SERVICE", "TEACHIN"] },
+    "nodeStates": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["nodeId", "sequenceId", "released"],
+        "properties": {
+          "nodeId": { "type": "string", "minLength": 1 },
+          "sequenceId": { "type": "integer", "minimum": 0 },
+          "released": { "type": "boolean" }
+        }
+      }
+    },
+    "edgeStates": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["edgeId", "sequenceId", "released"],
+        "properties": {
+          "edgeId": { "type": "string", "minLength": 1 },
+          "sequenceId": { "type": "integer", "minimum": 0 },
+          "released": { "type": "boolean" }
+        }
+      }
+    },
+    "agvPosition": {
+      "type": "object",
+      "required": ["x", "y", "theta", "mapId", "positionInitialized"],
+      "properties": {
+        "x": { "type": "number" },
+        "y": { "type": "number" },
+        "theta": { "type": "number", "minimum": -3.15, "maximum": 3.15 },
+        "mapId": { "type": "string", "minLength": 1 },
+        "positionInitialized": { "type": "boolean" },
+        "localizationScore": { "type": "number", "minimum": 0, "maximum": 1 }
+      }
+    },
+    "velocity": {
+      "type": "object",
+      "properties": {
+        "vx": { "type": "number" },
+        "vy": { "type": "number" },
+        "omega": { "type": "number" }
+      }
+    },
+    "batteryState": {
+      "type": "object",
+      "required": ["batteryCharge", "charging"],
+      "properties": {
+        "batteryCharge": { "type": "number", "minimum": 0, "maximum": 100 },
+        "batteryVoltage": { "type": "number" },
+        "batteryHealth": { "type": "number", "minimum": 0, "maximum": 100 },
+        "charging": { "type": "boolean" },
+        "reach": { "type": "number", "minimum": 0 }
+      }
+    },
+    "actionStates": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["actionId", "actionStatus"],
+        "properties": {
+          "actionId": { "type": "string", "minLength": 1 },
+          "actionType": { "type": "string" },
+          "actionStatus": { "enum": ["WAITING", "INITIALIZING", "RUNNING", "PAUSED", "FINISHED", "FAILED"] },
+          "resultDescription": { "type": "string" }
+        }
+      }
+    },
+    "errors": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["errorType", "errorLevel"],
+        "properties": {
+          "errorType": { "type": "string", "minLength": 1 },
+          "errorLevel": { "enum": ["WARNING", "FATAL"] },
+          "errorDescription": { "type": "string" },
+          "errorReferences": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "required": ["referenceKey", "referenceValue"],
+              "properties": {
+                "referenceKey": { "type": "string" },
+                "referenceValue": { "type": "string" }
+              }
+            }
+          }
+        }
+      }
+    },
+    "safetyState": {
+      "type": "object",
+      "required": ["eStop", "fieldViolation"],
+      "properties": {
+        "eStop": { "enum": ["AUTOACK", "MANUAL", "REMOTE", "NONE"] },
+        "fieldViolation": { "type": "boolean" }
+      }
+    },
+    "actunode": {
+      "type": "object",
+      "description": "ActuNode extension: simulator mission status.",
+      "properties": {
+        "missionStatus": { "enum": ["IDLE", "ACCEPTED", "MOVING", "BLOCKED", "COMPLETED"] }
+      }
+    }
+  }
+}

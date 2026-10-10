@@ -1,0 +1,10 @@
+{
+  "topic": "actunode/v1/sim/robot_01/inject",
+  "payload": {
+    "injectionId": "inj-c95a8e84",
+    "timestamp": "2026-10-09T21:56:11.884Z",
+    "robotId": "robot_01",
+    "failure": "BLOCKED_PATH",
+    "action": "inject"
+  }
+}

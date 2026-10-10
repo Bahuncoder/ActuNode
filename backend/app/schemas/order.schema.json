@@ -1,0 +1,72 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:actunode:schema:vda5050:order",
+  "title": "VDA 5050 order (ActuNode subset)",
+  "allOf": [{ "$ref": "urn:actunode:schema:vda5050:header" }],
+  "type": "object",
+  "required": ["orderId", "orderUpdateId", "nodes", "edges"],
+  "properties": {
+    "orderId": { "type": "string", "minLength": 1 },
+    "orderUpdateId": { "type": "integer", "minimum": 0 },
+    "zoneSetId": { "type": "string" },
+    "nodes": { "type": "array", "minItems": 1, "items": { "$ref": "#/$defs/node" } },
+    "edges": { "type": "array", "items": { "$ref": "#/$defs/edge" } }
+  },
+  "$defs": {
+    "node": {
+      "type": "object",
+      "required": ["nodeId", "sequenceId", "released", "actions"],
+      "properties": {
+        "nodeId": { "type": "string", "minLength": 1 },
+        "sequenceId": { "type": "integer", "minimum": 0 },
+        "released": { "type": "boolean" },
+        "nodeDescription": { "type": "string" },
+        "nodePosition": { "$ref": "#/$defs/nodePosition" },
+        "actions": { "type": "array", "items": { "$ref": "#/$defs/action" } }
+      }
+    },
+    "nodePosition": {
+      "type": "object",
+      "required": ["x", "y", "mapId"],
+      "properties": {
+        "x": { "type": "number" },
+        "y": { "type": "number" },
+        "theta": { "type": "number", "minimum": -3.15, "maximum": 3.15 },
+        "allowedDeviationXY": { "type": "number", "minimum": 0 },
+        "allowedDeviationTheta": { "type": "number", "minimum": 0 },
+        "mapId": { "type": "string", "minLength": 1 }
+      }
+    },
+    "edge": {
+      "type": "object",
+      "required": ["edgeId", "sequenceId", "released", "startNodeId", "endNodeId", "actions"],
+      "properties": {
+        "edgeId": { "type": "string", "minLength": 1 },
+        "sequenceId": { "type": "integer", "minimum": 0 },
+        "released": { "type": "boolean" },
+        "startNodeId": { "type": "string", "minLength": 1 },
+        "endNodeId": { "type": "string", "minLength": 1 },
+        "maxSpeed": { "type": "number", "minimum": 0 },
+        "actions": { "type": "array", "items": { "$ref": "#/$defs/action" } }
+      }
+    },
+    "action": {
+      "type": "object",
+      "required": ["actionType", "actionId", "blockingType"],
+      "properties": {
+        "actionType": { "type": "string", "minLength": 1 },
+        "actionId": { "type": "string", "minLength": 1 },
+        "actionDescription": { "type": "string" },
+        "blockingType": { "enum": ["NONE", "SOFT", "HARD"] },
+        "actionParameters": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["key", "value"],
+            "properties": { "key": { "type": "string", "minLength": 1 } }
+          }
+        }
+      }
+    }
+  }
+}

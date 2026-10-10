@@ -13,7 +13,9 @@ ActuNode Lab is a local integration lab for autonomous mobile robots (AMRs) that
 simulate robots, send missions, inspect messages, inject failures, and record/replay incidents
 without needing a physical fleet.
 
-> Status: **week 1 complete**: simulate robots, send missions, inject failures, record and replay.
+> Status: **weeks 1-5 of the 8-week plan done**: simulate robots, send missions, inject failures,
+> validate every message, record and replay.
+>
 > See [docs/PLAN.md](docs/PLAN.md) for the roadmap and [docs/DEMO.md](docs/DEMO.md) for a 3-minute demo.
 
 ## Quick start (Docker)
@@ -119,6 +121,21 @@ curl -X POST localhost:8000/api/failures -H 'content-type: application/json' -d 
 curl -X POST localhost:8000/api/failures -H 'content-type: application/json' -d '{"robot_id":"robot_01","action":"clear"}'
 curl localhost:8000/api/failures   # failure log
 ```
+
+### Validation
+
+Every message is checked as it arrives: JSON Schemas for `state`, `order`, `connection` and
+ActuNode's inject command ([backend/app/schemas](backend/app/schemas)), plus rules that need
+history: `headerId` increasing per topic, order node/edge sequence, mission state machine,
+`driving` consistency, topic/payload consistency. Issues are attached to each message (and saved
+in recordings), counted per rule in the Validation panel, and shown inline in the message stream.
+
+```bash
+curl localhost:8000/api/validation          # counts per rule + latest example
+curl -X POST localhost:8000/api/validation/reset
+```
+
+See [docs/VDA5050_NOTES.md](docs/VDA5050_NOTES.md) for the rules and the protocol notes behind them.
 
 ### Recording sessions
 

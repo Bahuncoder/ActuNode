@@ -1,0 +1,11 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:actunode:schema:vda5050:connection",
+  "title": "VDA 5050 connection (ActuNode subset)",
+  "allOf": [{ "$ref": "urn:actunode:schema:vda5050:header" }],
+  "type": "object",
+  "required": ["connectionState"],
+  "properties": {
+    "connectionState": { "enum": ["ONLINE", "OFFLINE", "CONNECTIONBROKEN"] }
+  }
+}

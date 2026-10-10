@@ -4,8 +4,10 @@ import FailurePanel from './FailurePanel'
 import { useLiveFeed } from './live'
 import MessageStream from './MessageStream'
 import MissionSender from './MissionSender'
+import PanelBoundary from './PanelBoundary'
 import RecorderPanel from './RecorderPanel'
 import ReplayBanner from './ReplayBanner'
+import ValidationPanel from './ValidationPanel'
 import RobotTable from './RobotTable'
 import WarehouseMap from './WarehouseMap'
 
@@ -82,27 +84,41 @@ export default function App() {
       <ReplayBanner replay={feed.replay} />
 
       <main className="grid">
-        <section className="panel panel-wide">
-          <h2>Warehouse</h2>
-          <WarehouseMap robots={robots} locations={locations} />
-        </section>
+        <PanelBoundary title="Warehouse">
+          <section className="panel panel-wide">
+            <h2>Warehouse</h2>
+            <WarehouseMap robots={robots} locations={locations} />
+          </section>
+        </PanelBoundary>
 
-        <section className="panel panel-wide">
-          <h2>Robots</h2>
-          <RobotTable robots={robots} />
-        </section>
+        <PanelBoundary title="Robots">
+          <section className="panel panel-wide">
+            <h2>Robots</h2>
+            <RobotTable robots={robots} />
+          </section>
+        </PanelBoundary>
 
-        <div className="split">
-          <MissionSender robots={robots.map((robot) => robot.robotId)} locations={locations} />
-          <FailurePanel robots={robots} failures={feed.failures} />
-        </div>
+        <PanelBoundary title="Missions and failures">
+          <div className="split">
+            <MissionSender robots={robots.map((robot) => robot.robotId)} locations={locations} />
+            <FailurePanel robots={robots} failures={feed.failures} />
+          </div>
+        </PanelBoundary>
 
-        <RecorderPanel recording={feed.recording} replay={feed.replay} />
+        <PanelBoundary title="Sessions">
+          <RecorderPanel recording={feed.recording} replay={feed.replay} />
+        </PanelBoundary>
 
-        <section className="panel panel-wide">
-          <h2>Message stream</h2>
-          <MessageStream messages={feed.messages} />
-        </section>
+        <PanelBoundary title="Validation">
+          <ValidationPanel validation={feed.validation} />
+        </PanelBoundary>
+
+        <PanelBoundary title="Message stream">
+          <section className="panel panel-wide">
+            <h2>Message stream</h2>
+            <MessageStream messages={feed.messages} />
+          </section>
+        </PanelBoundary>
 
       </main>
     </div>

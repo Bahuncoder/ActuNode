@@ -49,7 +49,8 @@ class Robot:
         self._actions_by_node: dict[str, list[str]] = {}
 
         self.errors: list[dict] = []
-        self._header_id = 0
+        # VDA 5050: headerId counts up per topic, starting at 1.
+        self._header_ids: dict[str, int] = {}
 
     @property
     def busy(self) -> bool:
@@ -258,14 +259,14 @@ class Robot:
 
     # --- Messages ---------------------------------------------------------
 
-    def next_header_id(self) -> int:
-        self._header_id += 1
-        return self._header_id
+    def next_header_id(self, topic_name: str) -> int:
+        self._header_ids[topic_name] = self._header_ids.get(topic_name, 0) + 1
+        return self._header_ids[topic_name]
 
-    def header(self) -> dict:
+    def header(self, topic_name: str) -> dict:
         """Fields every VDA 5050 message starts with."""
         return {
-            "headerId": self.next_header_id(),
+            "headerId": self.next_header_id(topic_name),
             "timestamp": utc_timestamp(),
             "version": VDA5050_VERSION,
             "manufacturer": MANUFACTURER,
@@ -275,7 +276,7 @@ class Robot:
     def state_message(self) -> dict:
         """VDA 5050 `state` message. ActuNode-specific fields go under `actunode`."""
         return {
-            **self.header(),
+            **self.header("state"),
             "orderId": self.order_id,
             "orderUpdateId": self.order_update_id,
             "lastNodeId": self.last_node_id,
@@ -304,4 +305,4 @@ class Robot:
 
     def connection_message(self, connection_state: str) -> dict:
         """VDA 5050 `connection` message: ONLINE, OFFLINE or CONNECTIONBROKEN."""
-        return {**self.header(), "connectionState": connection_state}
+        return {**self.header("connection"), "connectionState": connection_state}

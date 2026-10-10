@@ -33,6 +33,13 @@ export type Robot = {
   lastSeen: string | null
 }
 
+export type Issue = {
+  severity: 'error' | 'warning'
+  rule: string
+  message: string
+  path: string
+}
+
 export type MqttMessage = {
   id: number
   receivedAt: string
@@ -40,6 +47,22 @@ export type MqttMessage = {
   retained: boolean
   validJson: boolean
   payload: unknown
+  issues: Issue[]
+}
+
+export type RuleCount = {
+  rule: string
+  description: string
+  severity: 'error' | 'warning'
+  count: number
+  last?: { message: string; topic: string; at: string }
+}
+
+export type ValidationSummary = {
+  since: string
+  checked: number
+  withIssues: number
+  byRule: RuleCount[]
 }
 
 export type FailureEntry = {
@@ -78,7 +101,9 @@ type LiveEvent =
       failures: FailureEntry[]
       recording: RecordingStatus | null
       replay: ReplayStatus | null
+      validation: ValidationSummary
     }
+  | { type: 'validation'; validation: ValidationSummary }
   | { type: 'recording'; recording: RecordingStatus | null }
   | { type: 'replay'; replay: ReplayStatus | null }
   | { type: 'message'; message: MqttMessage; robot: Robot | null }
@@ -91,6 +116,7 @@ type Feed = {
   failures: FailureEntry[]
   recording: RecordingStatus | null
   replay: ReplayStatus | null
+  validation: ValidationSummary | null
 }
 
 type Action = { type: 'connected' | 'disconnected' } | { type: 'event'; event: LiveEvent }
@@ -115,7 +141,11 @@ function applyEvent(feed: Feed, event: LiveEvent): Feed {
       failures: event.failures,
       recording: event.recording,
       replay: event.replay,
+      validation: event.validation,
     }
+  }
+  if (event.type === 'validation') {
+    return { ...feed, validation: event.validation }
   }
   if (event.type === 'recording') {
     return { ...feed, recording: event.recording }
@@ -132,7 +162,35 @@ function applyEvent(feed: Feed, event: LiveEvent): Feed {
   if (event.message.id <= lastId) return feed
 
   const robots = event.robot ? { ...feed.robots, [event.robot.robotId]: event.robot } : feed.robots
-  return { ...feed, robots, messages: [...feed.messages, event.message].slice(-MAX_MESSAGES) }
+  return {
+    ...feed,
+    robots,
+    messages: [...feed.messages, event.message].slice(-MAX_MESSAGES),
+    validation: countIssues(feed.validation, event.message),
+  }
+}
+
+// Keep the per-rule counters in step with the server's without polling.
+function countIssues(validation: ValidationSummary | null, message: MqttMessage): ValidationSummary | null {
+  if (!validation) return validation
+  const issues = message.issues ?? []
+  const byRule = validation.byRule.map((rule) => ({ ...rule }))
+  for (const issue of issues) {
+    let rule = byRule.find((candidate) => candidate.rule === issue.rule)
+    if (!rule) {
+      rule = { rule: issue.rule, description: '', severity: issue.severity, count: 0 }
+      byRule.push(rule)
+    }
+    rule.count += 1
+    rule.last = { message: issue.message, topic: message.topic, at: message.receivedAt }
+  }
+  byRule.sort((a, b) => b.count - a.count)
+  return {
+    ...validation,
+    checked: validation.checked + 1,
+    withIssues: validation.withIssues + (issues.length > 0 ? 1 : 0),
+    byRule,
+  }
 }
 
 /** Live robots and MQTT messages from the backend WebSocket, reconnecting on drop. */
@@ -144,6 +202,7 @@ export function useLiveFeed(): Feed {
     failures: [],
     recording: null,
     replay: null,
+    validation: null,
   })
 
   useEffect(() => {
@@ -173,8 +232,47 @@ export function useLiveFeed(): Feed {
   return feed
 }
 
+// Robot data comes from any MQTT client and may be malformed (that is what ActuNode is for),
+// so the UI reads it through these helpers instead of trusting the RobotState type.
+
+export function num(value: unknown): number | undefined {
+  return typeof value === 'number' && Number.isFinite(value) ? value : undefined
+}
+
+export function point(value: unknown): { x: number; y: number } | undefined {
+  const candidate = value as { x?: unknown; y?: unknown } | null
+  const x = num(candidate?.x)
+  const y = num(candidate?.y)
+  return x === undefined || y === undefined ? undefined : { x, y }
+}
+
+export function robotPose(robot: Robot): { x: number; y: number; theta: number } | undefined {
+  const position = point(robot.state?.agvPosition)
+  return position && { ...position, theta: num(robot.state?.agvPosition?.theta) ?? 0 }
+}
+
+export function batteryCharge(robot: Robot): number | undefined {
+  return num(robot.state?.batteryState?.batteryCharge)
+}
+
+export function routePoints(robot: Robot): { x: number; y: number }[] {
+  const nodes = robot.state?.nodeStates
+  return Array.isArray(nodes) ? nodes.flatMap((node) => point(node?.nodePosition) ?? []) : []
+}
+
+export function robotErrors(robot: Robot): string[] {
+  const errors = robot.state?.errors
+  if (!Array.isArray(errors)) return []
+  return errors.map((error) => String(error?.errorDescription ?? error?.errorType ?? 'error'))
+}
+
+export function text(value: unknown): string {
+  return typeof value === 'string' && value ? value : '—'
+}
+
 export function missionStatus(robot: Robot): string {
-  return robot.state?.actunode?.missionStatus ?? 'UNKNOWN'
+  const status = robot.state?.actunode?.missionStatus
+  return typeof status === 'string' ? status : 'UNKNOWN'
 }
 
 export function isOnline(robot: Robot): boolean {

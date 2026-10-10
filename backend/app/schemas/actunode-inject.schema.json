@@ -1,0 +1,14 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:actunode:schema:actunode:inject",
+  "title": "ActuNode failure-injection command",
+  "type": "object",
+  "required": ["injectionId", "timestamp", "robotId", "failure", "action"],
+  "properties": {
+    "injectionId": { "type": "string", "minLength": 1 },
+    "timestamp": { "type": "string", "minLength": 1 },
+    "robotId": { "type": "string", "minLength": 1 },
+    "failure": { "enum": ["BLOCKED_PATH"] },
+    "action": { "enum": ["inject", "clear"] }
+  }
+}

@@ -13,6 +13,7 @@ from collections.abc import Callable
 from datetime import datetime, timezone
 
 from app import vda5050
+from app.validator import RULES, Validator
 
 log = logging.getLogger(__name__)
 
@@ -26,12 +27,18 @@ def _now() -> str:
     return datetime.now(timezone.utc).isoformat(timespec="milliseconds").replace("+00:00", "Z")
 
 
+def _empty_validation() -> dict:
+    return {"since": _now(), "checked": 0, "withIssues": 0, "byRule": {}}
+
+
 class LiveHub:
     def __init__(self):
         self._lock = threading.Lock()
         self._robots: dict[str, dict] = {}
         self._messages: deque[dict] = deque(maxlen=MESSAGE_BUFFER)
         self._failures: deque[dict] = deque(maxlen=FAILURE_BUFFER)
+        self._validator = Validator()
+        self._validation = _empty_validation()
         self._next_id = 1
         self._clients: set[asyncio.Queue] = set()
         self._listeners: list[Callable[[dict], None]] = []
@@ -55,6 +62,7 @@ class LiveHub:
             valid_json = False
 
         with self._lock:
+            issues = self._validator.check(topic, body, valid_json, retained)
             message = {
                 "id": self._next_id,
                 "receivedAt": _now(),
@@ -62,8 +70,10 @@ class LiveHub:
                 "retained": retained,
                 "validJson": valid_json,
                 "payload": body,
+                "issues": issues,
             }
             self._next_id += 1
+            self._count_issues(message)
             self._messages.append(message)
             robot = self._update_robot(topic, body, message["receivedAt"]) if valid_json else None
 
@@ -93,6 +103,32 @@ class LiveHub:
         robot["lastSeen"] = received_at
         return dict(robot)
 
+    def _count_issues(self, message: dict) -> None:
+        stats = self._validation
+        stats["checked"] += 1
+        if not message["issues"]:
+            return
+        stats["withIssues"] += 1
+        for found in message["issues"]:
+            rule = stats["byRule"].setdefault(found["rule"], {
+                "rule": found["rule"],
+                "description": RULES.get(found["rule"], ""),
+                "severity": found["severity"],
+                "count": 0,
+            })
+            rule["count"] += 1
+            rule["last"] = {"message": found["message"], "topic": message["topic"], "at": message["receivedAt"]}
+
+    def reset_validation(self) -> None:
+        with self._lock:
+            self._validation = _empty_validation()
+        self.broadcast({"type": "validation", "validation": self.validation()})
+
+    def validation(self) -> dict:
+        with self._lock:
+            stats = self._validation
+            return {**stats, "byRule": sorted((dict(r) for r in stats["byRule"].values()), key=lambda r: -r["count"])}
+
     def add_failure(self, entry: dict) -> None:
         with self._lock:
             self._failures.append(entry)
@@ -106,8 +142,10 @@ class LiveHub:
             return dict(robot) if robot else None
 
     def snapshot(self) -> dict:
+        validation = self.validation()
         with self._lock:
             return {
+                "validation": validation,
                 "robots": sorted((dict(r) for r in self._robots.values()), key=lambda r: r["robotId"]),
                 "messages": list(self._messages)[-SNAPSHOT_MESSAGES:],
                 "failures": list(self._failures),
@@ -141,3 +179,4 @@ class LiveHub:
 
 
 hub = LiveHub()
+

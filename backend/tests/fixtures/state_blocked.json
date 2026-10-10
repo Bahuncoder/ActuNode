@@ -1,0 +1,87 @@
+{
+  "topic": "uagv/v2/ActuNode/robot_01/state",
+  "payload": {
+    "headerId": 21,
+    "timestamp": "2026-10-09T21:56:11.916Z",
+    "version": "2.1.0",
+    "manufacturer": "ActuNode",
+    "serialNumber": "robot_01",
+    "orderId": "order-bcb609db",
+    "orderUpdateId": 0,
+    "lastNodeId": "RECEIVING_DOOR_2",
+    "lastNodeSequenceId": 0,
+    "nodeStates": [
+      {
+        "nodeId": "STORAGE_A17",
+        "sequenceId": 2,
+        "released": true,
+        "nodePosition": {
+          "x": 14.0,
+          "y": 18.0,
+          "mapId": "warehouse"
+        }
+      }
+    ],
+    "edgeStates": [
+      {
+        "edgeId": "RECEIVING_DOOR_2->STORAGE_A17",
+        "sequenceId": 1,
+        "released": true
+      }
+    ],
+    "driving": false,
+    "operatingMode": "AUTOMATIC",
+    "agvPosition": {
+      "x": 3.793,
+      "y": 14.598,
+      "theta": 0.322,
+      "mapId": "warehouse",
+      "positionInitialized": true
+    },
+    "velocity": {
+      "vx": 0.0,
+      "vy": 0.0,
+      "omega": 0.0
+    },
+    "batteryState": {
+      "batteryCharge": 97.2,
+      "charging": false
+    },
+    "actionStates": [
+      {
+        "actionId": "order-bcb609db-pick",
+        "actionType": "pick",
+        "actionStatus": "FINISHED"
+      },
+      {
+        "actionId": "order-bcb609db-drop",
+        "actionType": "drop",
+        "actionStatus": "WAITING"
+      }
+    ],
+    "errors": [
+      {
+        "errorType": "pathBlocked",
+        "errorLevel": "WARNING",
+        "errorDescription": "Path blocked on edge RECEIVING_DOOR_2->STORAGE_A17",
+        "errorReferences": [
+          {
+            "referenceKey": "edgeId",
+            "referenceValue": "RECEIVING_DOOR_2->STORAGE_A17"
+          },
+          {
+            "referenceKey": "orderId",
+            "referenceValue": "order-bcb609db"
+          }
+        ]
+      }
+    ],
+    "safetyState": {
+      "eStop": "NONE",
+      "fieldViolation": false
+    },
+    "actunode": {
+      "missionStatus": "BLOCKED"
+    }
+  }
+}

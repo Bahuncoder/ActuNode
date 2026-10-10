@@ -1,0 +1,70 @@
+{
+  "topic": "uagv/v2/ActuNode/robot_01/order",
+  "payload": {
+    "headerId": 1,
+    "timestamp": "2026-10-09T21:55:57.860Z",
+    "version": "2.1.0",
+    "manufacturer": "ActuNode",
+    "serialNumber": "robot_01",
+    "orderId": "order-bcb609db",
+    "orderUpdateId": 0,
+    "nodes": [
+      {
+        "nodeId": "RECEIVING_DOOR_2",
+        "sequenceId": 0,
+        "released": true,
+        "nodePosition": {
+          "x": 2.0,
+          "y": 14.0,
+          "mapId": "warehouse"
+        },
+        "actions": [
+          {
+            "actionType": "pick",
+            "actionId": "order-bcb609db-pick",
+            "blockingType": "HARD",
+            "actionParameters": [
+              {
+                "key": "loadId",
+                "value": "P-1042"
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "nodeId": "STORAGE_A17",
+        "sequenceId": 2,
+        "released": true,
+        "nodePosition": {
+          "x": 14.0,
+          "y": 18.0,
+          "mapId": "warehouse"
+        },
+        "actions": [
+          {
+            "actionType": "drop",
+            "actionId": "order-bcb609db-drop",
+            "blockingType": "HARD",
+            "actionParameters": [
+              {
+                "key": "loadId",
+                "value": "P-1042"
+              }
+            ]
+          }
+        ]
+      }
+    ],
+    "edges": [
+      {
+        "edgeId": "RECEIVING_DOOR_2->STORAGE_A17",
+        "sequenceId": 1,
+        "released": true,
+        "startNodeId": "RECEIVING_DOOR_2",
+        "endNodeId": "STORAGE_A17",
+        "actions": []
+      }
+    ]
+  }
+}

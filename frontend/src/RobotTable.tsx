@@ -1,4 +1,4 @@
-import { isOnline, missionStatus, type Robot } from './live'
+import { batteryCharge, isOnline, missionStatus, robotErrors, robotPose, text, type Robot } from './live'
 
 export default function RobotTable({ robots }: { robots: Robot[] }) {
   if (robots.length === 0) {
@@ -22,9 +22,10 @@ export default function RobotTable({ robots }: { robots: Robot[] }) {
         </thead>
         <tbody>
           {robots.map((robot) => {
-            const state = robot.state
             const status = missionStatus(robot)
-            const battery = state?.batteryState?.batteryCharge
+            const battery = batteryCharge(robot)
+            const pose = robotPose(robot)
+            const errors = robotErrors(robot)
             return (
               <tr key={robot.robotId}>
                 <td className="mono">{robot.robotId}</td>
@@ -37,19 +38,15 @@ export default function RobotTable({ robots }: { robots: Robot[] }) {
                 <td>
                   {battery === undefined ? '—' : (
                     <span className="battery">
-                      <span className="battery-bar" style={{ width: `${battery}%` }} />
+                      <span className="battery-bar" style={{ width: `${Math.min(100, Math.max(0, battery))}%` }} />
                       <span className="mono">{battery.toFixed(1)}%</span>
                     </span>
                   )}
                 </td>
-                <td className="mono">
-                  {state?.agvPosition ? `${state.agvPosition.x.toFixed(1)}, ${state.agvPosition.y.toFixed(1)}` : '—'}
-                </td>
-                <td className="mono">{state?.orderId || '—'}</td>
-                <td className="mono">{state?.lastNodeId || '—'}</td>
-                <td className={state?.errors.length ? 'error-text' : ''}>
-                  {state?.errors.length ? state.errors.map((e) => e.errorDescription ?? e.errorType).join('; ') : '—'}
-                </td>
+                <td className="mono">{pose ? `${pose.x.toFixed(1)}, ${pose.y.toFixed(1)}` : '—'}</td>
+                <td className="mono">{text(robot.state?.orderId)}</td>
+                <td className="mono">{text(robot.state?.lastNodeId)}</td>
+                <td className={errors.length ? 'error-text' : ''}>{errors.length ? errors.join('; ') : '—'}</td>
               </tr>
             )
           })}

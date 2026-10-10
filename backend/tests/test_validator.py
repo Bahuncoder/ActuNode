@@ -1,0 +1,209 @@
+import copy
+import json
+from pathlib import Path
+
+import pytest
+from fastapi.testclient import TestClient
+
+from app import vda5050
+from app.live import LiveHub
+from app.main import app
+from app.mqtt_state import mqtt_bridge
+from app.validator import Validator
+
+FIXTURES = Path(__file__).parent / "fixtures"
+
+
+def fixture(name):
+    data = json.loads((FIXTURES / f"{name}.json").read_text())
+    return data["topic"], data["payload"]
+
+
+def rules(issues):
+    return [found["rule"] for found in issues]
+
+
+@pytest.mark.parametrize("name", ["order", "state_moving", "state_blocked", "connection", "inject"])
+def test_real_actunode_messages_are_valid(name):
+    topic, payload = fixture(name)
+
+    assert Validator().check(topic, payload, valid_json=True) == []
+
+
+def test_orders_built_by_the_backend_are_valid():
+    order = vda5050.build_order("robot_01", "o-1", [
+        {"nodeId": "A", "x": 1, "y": 1, "actions": [vda5050.load_action("pick", "o-1-pick", "P-1")]},
+        {"nodeId": "B", "x": 2, "y": 2},
+        {"nodeId": "C", "x": 3, "y": 3, "actions": [vda5050.load_action("drop", "o-1-drop", None)]},
+    ])
+
+    assert Validator().check(vda5050.topic("robot_01", "order"), order, valid_json=True) == []
+
+
+def test_invalid_json_is_an_error():
+    [found] = Validator().check("uagv/v2/ActuNode/robot_01/state", "{oops", valid_json=False)
+
+    assert found["rule"] == "invalid-json"
+    assert found["severity"] == "error"
+
+
+def test_unknown_topics_are_not_checked():
+    assert Validator().check("some/other/topic", {"anything": 1}, valid_json=True) == []
+
+
+def test_missing_required_field_reports_schema_error_with_path():
+    topic, payload = fixture("state_moving")
+    del payload["batteryState"]["batteryCharge"]
+
+    issues = Validator().check(topic, payload, valid_json=True)
+
+    assert rules(issues) == ["schema"]
+    assert issues[0]["path"] == "/batteryState"
+    assert "batteryCharge" in issues[0]["message"]
+
+
+def test_bad_enum_and_range_are_schema_errors():
+    topic, payload = fixture("state_moving")
+    payload["operatingMode"] = "TURBO"
+    payload["batteryState"]["batteryCharge"] = 140
+
+    issues = Validator().check(topic, payload, valid_json=True)
+
+    assert {found["path"] for found in issues} == {"/operatingMode", "/batteryState/batteryCharge"}
+
+
+def test_serial_number_must_match_topic():
+    topic, payload = fixture("connection")
+    payload["serialNumber"] = "robot_99"
+
+    assert rules(Validator().check(topic, payload, valid_json=True)) == ["topic-mismatch"]
+
+
+def test_version_must_match_topic_major_version():
+    topic, payload = fixture("connection")
+    payload["version"] = "3.0.0"
+
+    assert rules(Validator().check(topic, payload, valid_json=True)) == ["version-mismatch"]
+
+
+@pytest.mark.parametrize("timestamp", ["yesterday", "2026-10-09T21:55:50"])
+def test_timestamp_needs_iso_format_with_zone(timestamp):
+    topic, payload = fixture("connection")
+    payload["timestamp"] = timestamp
+
+    assert rules(Validator().check(topic, payload, valid_json=True)) == ["timestamp"]
+
+
+def test_header_id_must_increase_per_topic_but_retained_is_exempt():
+    validator = Validator()
+    topic, payload = fixture("connection")
+
+    validator.check(topic, {**payload, "headerId": 5}, valid_json=True)
+    assert validator.check(topic, {**payload, "headerId": 6}, valid_json=True) == []
+    assert rules(validator.check(topic, {**payload, "headerId": 6}, valid_json=True)) == ["header-id"]
+    assert validator.check(topic, {**payload, "headerId": 1}, valid_json=True, retained=True) == []
+
+
+def test_order_edges_must_connect_neighbouring_nodes():
+    topic, payload = fixture("order")
+    payload["edges"][0]["endNodeId"] = "SOMEWHERE_ELSE"
+
+    issues = Validator().check(topic, payload, valid_json=True)
+
+    assert rules(issues) == ["order-sequence"]
+    assert "SOMEWHERE_ELSE" in issues[0]["message"]
+
+
+def test_order_sequence_ids_must_alternate():
+    topic, payload = fixture("order")
+    payload["nodes"][1]["sequenceId"] = 3
+    payload["edges"] = []
+
+    messages = [found["message"] for found in Validator().check(topic, payload, valid_json=True)]
+
+    assert any("odd sequenceId 3" in message for message in messages)
+    assert any("2 nodes need 1 edges, got 0" in message for message in messages)
+
+
+def state(base, status, header_id, driving=None, last_node=0):
+    payload = copy.deepcopy(base)
+    payload["actunode"]["missionStatus"] = status
+    payload["driving"] = status == "MOVING" if driving is None else driving
+    payload["headerId"] = header_id
+    payload["lastNodeSequenceId"] = last_node
+    return payload
+
+
+def test_mission_status_must_follow_the_state_machine():
+    validator = Validator()
+    topic, base = fixture("state_moving")
+
+    validator.check(topic, state(base, "IDLE", 1), valid_json=True)
+    issues = validator.check(topic, state(base, "COMPLETED", 2), valid_json=True)
+
+    assert rules(issues) == ["mission-transition"]
+    assert "IDLE -> COMPLETED" in issues[0]["message"]
+
+
+def test_full_mission_including_block_and_clear_is_clean():
+    validator = Validator()
+    topic, base = fixture("state_moving")
+
+    sequence = ["IDLE", "ACCEPTED", "MOVING", "BLOCKED", "MOVING", "COMPLETED", "ACCEPTED", "MOVING", "COMPLETED", "IDLE"]
+    found = [validator.check(topic, state(base, status, i + 1), valid_json=True) for i, status in enumerate(sequence)]
+
+    assert found == [[]] * len(sequence)
+
+
+def test_driving_must_match_mission_status():
+    topic, base = fixture("state_moving")
+
+    issues = Validator().check(topic, state(base, "BLOCKED", 1, driving=True), valid_json=True)
+
+    assert rules(issues) == ["driving-consistency"]
+
+
+def test_last_node_must_not_go_backwards_in_an_order():
+    validator = Validator()
+    topic, base = fixture("state_moving")
+
+    validator.check(topic, state(base, "MOVING", 1, last_node=2), valid_json=True)
+    issues = validator.check(topic, state(base, "MOVING", 2, last_node=0), valid_json=True)
+
+    assert rules(issues) == ["last-node-regression"]
+
+
+def test_hub_attaches_issues_and_counts_them_per_rule():
+    live = LiveHub()
+    topic, payload = fixture("connection")
+
+    live.handle_mqtt(topic, json.dumps(payload).encode())
+    live.handle_mqtt(topic, b"{nope")
+    live.handle_mqtt(topic, b"{nope")
+
+    messages = live.snapshot()["messages"]
+    assert messages[0]["issues"] == []
+    assert rules(messages[1]["issues"]) == ["invalid-json"]
+    stats = live.validation()
+    assert (stats["checked"], stats["withIssues"]) == (3, 2)
+    assert stats["byRule"][0]["rule"] == "invalid-json"
+    assert stats["byRule"][0]["count"] == 2
+
+
+@pytest.fixture
+def client(monkeypatch):
+    monkeypatch.setattr(mqtt_bridge, "start", lambda: None)
+    monkeypatch.setattr(mqtt_bridge, "stop", lambda: None)
+    with TestClient(app) as test_client:
+        yield test_client
+
+
+def test_validation_api_reports_and_resets(client):
+    from app.live import hub
+
+    hub.handle_mqtt("uagv/v2/ActuNode/val_01/state", b"not json")
+    assert client.get("/api/validation").json()["withIssues"] >= 1
+
+    reset = client.post("/api/validation/reset").json()
+
+    assert (reset["checked"], reset["withIssues"], reset["byRule"]) == (0, 0, [])

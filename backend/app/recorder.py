@@ -4,11 +4,12 @@ File layout, one JSON object per line:
 
     {"type": "session",  "formatVersion": 1, "sessionId", "name", "startedAt"}
     {"type": "snapshot", "robots": [...]}            latest robot states at start
-    {"type": "message",  "t", "receivedAt", "topic", "retained", "payload"}   (many)
+    {"type": "message",  "t", "receivedAt", "topic", "retained", "payload", "issues"?}   (many)
     {"type": "end",      "endedAt", "messageCount"}  missing if the backend crashed
 
 `t` is seconds since recording started. `payload` is the parsed JSON; a message
 that was not valid JSON is stored as the raw string in `payloadRaw` instead.
+`issues` (validator findings) is present only when the message had any.
 """
 
 import json
@@ -91,6 +92,8 @@ class SessionRecorder:
                 line["payload"] = message["payload"]
             else:
                 line["payloadRaw"] = message["payload"]
+            if message.get("issues"):
+                line["issues"] = message["issues"]
             self._write(line)
             self._current["messageCount"] += 1
 

@@ -1,5 +1,5 @@
 import type { Location } from './api'
-import { isOnline, missionStatus, type Robot } from './live'
+import { isOnline, missionStatus, robotPose, routePoints, type Robot } from './live'
 
 // Warehouse floor in meters, origin bottom-left (same frame as the simulator).
 const WIDTH_M = 40
@@ -84,11 +84,11 @@ export default function WarehouseMap({
 }
 
 function RobotRoute({ robot }: { robot: Robot }) {
-  const position = robot.state?.agvPosition
-  const nodes = robot.state?.nodeStates ?? []
-  if (!position || nodes.length === 0) return null
+  const position = robotPose(robot)
+  const route = routePoints(robot)
+  if (!position || route.length === 0) return null
 
-  const points = [position, ...nodes.flatMap((node) => (node.nodePosition ? [node.nodePosition] : []))]
+  const points = [position, ...route]
   const blocked = missionStatus(robot) === 'BLOCKED'
   return (
     <polyline
@@ -104,11 +104,11 @@ function shortLabel(robotId: string): string {
 }
 
 function RobotMarker({ robot }: { robot: Robot }) {
-  const position = robot.state?.agvPosition
+  const position = robotPose(robot)
   if (!position) return null
 
   const status = missionStatus(robot).toLowerCase()
-  const heading = -(position.theta ?? 0) * (180 / Math.PI)
+  const heading = -position.theta * (180 / Math.PI)
   return (
     <g
       className={`robot status-${status} ${isOnline(robot) ? '' : 'offline'}`}

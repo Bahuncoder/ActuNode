@@ -19,11 +19,11 @@ create three robots, send one mission, inject one failure, and replay the sessio
 
 | Week | Objective | Output |
 |---|---|---|
-| 1 | VDA 5050 concepts, MQTT topics, AMR state machines | Notes + message schemas + Docker Mosquitto |
+| 1 ✅ | VDA 5050 concepts, MQTT topics, AMR state machines | Notes ([VDA5050_NOTES.md](VDA5050_NOTES.md)) + message schemas + Docker Mosquitto |
 | 2 ✅ | One fake AMR with battery, pose, state | Robot publishes status every second |
 | 3 ✅ | Mission sender + state transitions | Move job from start to destination |
 | 4 ✅ | 5-10 robots + simple warehouse map | Multi-robot screen with location/state |
-| 5 | Message inspector + validation | Readable message stream + errors |
+| 5 ✅ | Message inspector + validation | Readable message stream + errors |
 | 6 | Failure injection | Blocked path, low battery, disconnect, invalid payload |
 | 7 ✅ | Record/replay | Session file can reproduce incident |
 | 8 | Demo + README + 3-minute video | GitHub repo + pitch demo |

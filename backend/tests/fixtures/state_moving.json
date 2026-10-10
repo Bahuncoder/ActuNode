@@ -1,0 +1,81 @@
+{
+  "topic": "uagv/v2/ActuNode/robot_01/state",
+  "payload": {
+    "headerId": 7,
+    "timestamp": "2026-10-09T21:55:58.016Z",
+    "version": "2.1.0",
+    "manufacturer": "ActuNode",
+    "serialNumber": "robot_01",
+    "orderId": "order-bcb609db",
+    "orderUpdateId": 0,
+    "lastNodeId": "",
+    "lastNodeSequenceId": 0,
+    "nodeStates": [
+      {
+        "nodeId": "RECEIVING_DOOR_2",
+        "sequenceId": 0,
+        "released": true,
+        "nodePosition": {
+          "x": 2.0,
+          "y": 14.0,
+          "mapId": "warehouse"
+        }
+      },
+      {
+        "nodeId": "STORAGE_A17",
+        "sequenceId": 2,
+        "released": true,
+        "nodePosition": {
+          "x": 14.0,
+          "y": 18.0,
+          "mapId": "warehouse"
+        }
+      }
+    ],
+    "edgeStates": [
+      {
+        "edgeId": "RECEIVING_DOOR_2->STORAGE_A17",
+        "sequenceId": 1,
+        "released": true
+      }
+    ],
+    "driving": true,
+    "operatingMode": "AUTOMATIC",
+    "agvPosition": {
+      "x": 1.5,
+      "y": 2.0,
+      "theta": 0.0,
+      "mapId": "warehouse",
+      "positionInitialized": true
+    },
+    "velocity": {
+      "vx": 1.0,
+      "vy": 0.0,
+      "omega": 0.0
+    },
+    "batteryState": {
+      "batteryCharge": 100.0,
+      "charging": false
+    },
+    "actionStates": [
+      {
+        "actionId": "order-bcb609db-pick",
+        "actionType": "pick",
+        "actionStatus": "WAITING"
+      },
+      {
+        "actionId": "order-bcb609db-drop",
+        "actionType": "drop",
+        "actionStatus": "WAITING"
+      }
+    ],
+    "errors": [],
+    "safetyState": {
+      "eStop": "NONE",
+      "fieldViolation": false
+    },
+    "actunode": {
+      "missionStatus": "MOVING"
+    }
+  }
+}

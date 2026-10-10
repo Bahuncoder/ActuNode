@@ -55,13 +55,14 @@ def test_state_message_has_required_vda5050_fields():
     assert message["timestamp"].endswith("Z")
 
 
-def test_header_id_increments_per_message():
+def test_header_id_counts_per_topic():
     robot = Robot("robot_01")
 
-    first = robot.state_message()["headerId"]
-    second = robot.connection_message("ONLINE")["headerId"]
+    states = [robot.state_message()["headerId"] for _ in range(3)]
+    connection = robot.connection_message("ONLINE")["headerId"]
 
-    assert second == first + 1
+    assert states == [1, 2, 3]
+    assert connection == 1
 
 
 def test_mission_goes_idle_accepted_moving_completed():

@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import type { MqttMessage } from './live'
+import { num, point, type MqttMessage } from './live'
 
 const SHOWN = 200
 
@@ -15,9 +15,13 @@ function robotOf(topic: string): string {
   return parts.length === 5 ? parts[3] : (parts.at(-2) ?? '')
 }
 
-function hasErrors(message: MqttMessage): boolean {
+// Highlight robot-reported errors and validator findings alike.
+function rowClass(message: MqttMessage): string {
+  const issues = message.issues ?? []
+  if (issues.some((issue) => issue.severity === 'error')) return 'has-error'
   const payload = message.payload as { errors?: unknown[] }
-  return !message.validJson || (Array.isArray(payload?.errors) && payload.errors.length > 0)
+  if (issues.length > 0 || (Array.isArray(payload?.errors) && payload.errors.length > 0)) return 'has-warning'
+  return ''
 }
 
 function summary(message: MqttMessage): string {
@@ -25,19 +29,21 @@ function summary(message: MqttMessage): string {
   const p = message.payload as Record<string, any>
   switch (kindOf(message.topic)) {
     case 'state': {
-      const pos = p.agvPosition
+      const pos = point(p.agvPosition)
+      const battery = num(p.batteryState?.batteryCharge)
+      const errors = Array.isArray(p.errors) ? p.errors : []
       const parts = [
-        p.actunode?.missionStatus,
+        typeof p.actunode?.missionStatus === 'string' ? p.actunode.missionStatus : '',
         pos ? `(${pos.x.toFixed(1)}, ${pos.y.toFixed(1)})` : '',
-        p.batteryState ? `${p.batteryState.batteryCharge}%` : '',
-        p.errors?.length ? `⚠ ${p.errors.map((e: any) => e.errorDescription ?? e.errorType).join('; ')}` : '',
+        battery !== undefined ? `${battery}%` : '',
+        errors.length ? `⚠ ${errors.map((e: any) => e?.errorDescription ?? e?.errorType).join('; ')}` : '',
       ]
       return parts.filter(Boolean).join('  ')
     }
     case 'connection':
-      return p.connectionState
+      return String(p.connectionState)
     case 'order':
-      return `${p.orderId} → ${(p.nodes ?? []).map((n: any) => n.nodeId).join(' → ')}`
+      return `${p.orderId} → ${(Array.isArray(p.nodes) ? p.nodes : []).map((n: any) => n?.nodeId).join(' → ')}`
     case 'inject':
       return `${p.failure} ${p.action} (${p.injectionId})`
     default:
@@ -53,6 +59,7 @@ function time(iso: string): string {
 export default function MessageStream({ messages }: { messages: MqttMessage[] }) {
   const [filter, setFilter] = useState('')
   const [hideState, setHideState] = useState(false)
+  const [onlyIssues, setOnlyIssues] = useState(false)
   const [paused, setPaused] = useState<MqttMessage[] | null>(null)
   const [expanded, setExpanded] = useState<number | null>(null)
 
@@ -60,6 +67,7 @@ export default function MessageStream({ messages }: { messages: MqttMessage[] })
   const shown = source
     .filter((m) => !hideState || kindOf(m.topic) !== 'state')
     .filter((m) => !filter || m.topic.includes(filter))
+    .filter((m) => !onlyIssues || (m.issues ?? []).length > 0)
     .slice(-SHOWN)
     .reverse()
 
@@ -70,6 +78,10 @@ export default function MessageStream({ messages }: { messages: MqttMessage[] })
         <label>
           <input type="checkbox" checked={hideState} onChange={(e) => setHideState(e.target.checked)} />
           Hide state messages
+        </label>
+        <label>
+          <input type="checkbox" checked={onlyIssues} onChange={(e) => setOnlyIssues(e.target.checked)} />
+          Only validation issues
         </label>
         <button type="button" onClick={() => setPaused(paused ? null : messages)}>
           {paused ? '▶ Resume' : '❚❚ Pause'}
@@ -83,13 +95,28 @@ export default function MessageStream({ messages }: { messages: MqttMessage[] })
           const kind = kindOf(message.topic)
           const open = expanded === message.id
           return (
-            <li key={message.id} className={hasErrors(message) ? 'has-error' : ''}>
+            <li key={message.id} className={rowClass(message)}>
               <button type="button" className="stream-row" onClick={() => setExpanded(open ? null : message.id)}>
                 <span className="mono muted">{time(message.receivedAt)}</span>
                 <span className={`kind kind-${kind}`}>{kind}</span>
                 <span className="mono">{robotOf(message.topic)}</span>
                 <span className="mono stream-summary">{summary(message)}</span>
+                {(message.issues ?? []).length > 0 && (
+                  <span className={`issue-count ${message.issues.some((i) => i.severity === 'error') ? 'error' : 'warning'}`}>
+                    {message.issues.length} issue{message.issues.length > 1 ? 's' : ''}
+                  </span>
+                )}
               </button>
+              {(message.issues ?? []).length > 0 && (
+                <ul className="issues">
+                  {message.issues.map((issue, index) => (
+                    <li key={index} className={issue.severity}>
+                      <span className="mono">{issue.rule}</span> {issue.message}
+                      {issue.path && <span className="mono muted"> at {issue.path}</span>}
+                    </li>
+                  ))}
+                </ul>
+              )}
               {open && (
                 <pre className="raw">
                   {message.topic}

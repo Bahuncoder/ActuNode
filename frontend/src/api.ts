@@ -100,6 +100,10 @@ export async function stopReplay(): Promise<void> {
   await postJson('/api/replay/stop', {})
 }
 
+export async function resetValidation(): Promise<void> {
+  await postJson('/api/validation/reset', {})
+}
+
 async function postJson(url: string, body: unknown): Promise<unknown> {
   const response = await fetch(url, {
     method: 'POST',

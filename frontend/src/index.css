@@ -516,6 +516,11 @@ code,
   background: var(--signal-blue);
 }
 
+.badge.warn {
+  color: var(--node-navy);
+  background: #ffb86b;
+}
+
 .battery {
   display: inline-flex;
   align-items: center;
@@ -598,6 +603,88 @@ code,
 
 .stream li.has-error {
   background: rgba(255, 107, 107, 0.08);
+}
+
+.stream li.has-warning {
+  background: rgba(255, 184, 107, 0.07);
+}
+
+.issue-count {
+  flex: none;
+  margin-left: auto;
+  padding: 1px 7px;
+  border-radius: 4px;
+  font-size: 10px;
+  font-weight: 600;
+  color: var(--node-navy);
+}
+
+.issue-count.error {
+  background: var(--danger);
+}
+
+.issue-count.warning {
+  background: #ffb86b;
+}
+
+.issues {
+  list-style: none;
+  margin: 0;
+  padding: 0 10px 8px 100px;
+  font-size: 12px;
+}
+
+.issues li {
+  padding: 2px 0;
+  border: 0 !important;
+}
+
+.issues li.error {
+  color: var(--danger);
+}
+
+.issues li.warning {
+  color: #ffb86b;
+}
+
+.validation-totals {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 24px;
+  margin-top: 12px;
+}
+
+.validation-totals strong {
+  display: block;
+  font-size: 22px;
+  font-family: 'JetBrains Mono', ui-monospace, monospace;
+}
+
+.validation-totals span {
+  color: var(--industrial-gray);
+  font-size: 12px;
+}
+
+.validation-totals .clean {
+  color: var(--machine-mint);
+}
+
+.validation-totals .dirty {
+  color: var(--danger);
+}
+
+.validation-totals button {
+  margin-left: auto;
+  height: 30px;
+  padding: 0 12px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--node-navy);
+  color: var(--fog-white);
+  font: inherit;
+  font-size: 13px;
+  cursor: pointer;
 }
 
 .stream-row {
