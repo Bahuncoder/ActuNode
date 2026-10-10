@@ -264,3 +264,19 @@ def test_session_cannot_be_deleted_while_it_is_replayed(client, published, tmp_p
 
     assert response.status_code == 409
     assert "replayed" in response.json()["detail"]
+
+
+def test_replay_restores_each_robot_on_its_own_version_topic():
+    from app.replay import snapshot_plan
+
+    robots = [
+        {"robotId": "r2", "vdaMajor": "v2", "manufacturer": "ActuNode", "connection": "ONLINE", "state": STATE},
+        {"robotId": "r3", "vdaMajor": "v3", "manufacturer": "VendorX", "connection": "ONLINE", "state": STATE},
+        {"robotId": "old", "connection": "ONLINE", "state": STATE},  # sessions recorded before vdaMajor existed
+    ]
+
+    topics = [topic for _, topic, _ in snapshot_plan(robots)]
+
+    assert "uagv/v2/ActuNode/r2/state" in topics
+    assert "uagv/v3/VendorX/r3/state" in topics
+    assert "uagv/v2/ActuNode/old/state" in topics

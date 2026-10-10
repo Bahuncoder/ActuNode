@@ -6,7 +6,6 @@ from datetime import UTC, datetime
 from itertools import count
 
 MANUFACTURER = "ActuNode"
-VDA5050_VERSION = "2.1.0"
 MAP_ID = "warehouse"
 
 # Topic layout: interfaceName/majorVersion/manufacturer/serialNumber/topic
@@ -16,8 +15,8 @@ MAJOR_VERSION = os.getenv("ACTUNODE_VDA_MAJOR_VERSION", "v2")
 _header_ids: dict[str, count] = {}
 
 
-def topic(serial_number: str, name: str) -> str:
-    return f"{INTERFACE_NAME}/{MAJOR_VERSION}/{MANUFACTURER}/{serial_number}/{name}"
+def topic(serial_number: str, name: str, major: str = MAJOR_VERSION, manufacturer: str = MANUFACTURER) -> str:
+    return f"{INTERFACE_NAME}/{major}/{manufacturer}/{serial_number}/{name}"
 
 
 # Topic major version -> protocol version ActuNode understands for it (D-15).
@@ -50,23 +49,26 @@ def utc_timestamp() -> str:
     return datetime.now(UTC).isoformat(timespec="milliseconds").replace("+00:00", "Z")
 
 
-def header(serial_number: str, topic_name: str) -> dict:
+def header(serial_number: str, topic_name: str, major: str = MAJOR_VERSION, manufacturer: str = MANUFACTURER) -> dict:
     """headerId counts up per topic, as the spec requires."""
-    ids = _header_ids.setdefault(f"{serial_number}/{topic_name}", count(1))
+    ids = _header_ids.setdefault(topic(serial_number, topic_name, major, manufacturer), count(1))
     return {
         "headerId": next(ids),
         "timestamp": utc_timestamp(),
-        "version": VDA5050_VERSION,
-        "manufacturer": MANUFACTURER,
+        "version": SUPPORTED_MAJOR_VERSIONS[major],
+        "manufacturer": manufacturer,
         "serialNumber": serial_number,
     }
 
 
-def build_order(serial_number: str, order_id: str, stops: list[dict]) -> dict:
-    """Build an order that visits `stops` in sequence.
+def build_order(
+    serial_number: str, order_id: str, stops: list[dict], major: str = MAJOR_VERSION, manufacturer: str = MANUFACTURER
+) -> dict:
+    """Build an order that visits `stops` in sequence, in the robot's VDA 5050 version.
 
     Each stop: {"nodeId", "x", "y", "actions": [VDA 5050 action, ...]}.
-    Nodes get even sequence ids, the edges between them odd ones.
+    Nodes get even sequence ids, the edges between them odd ones. 2.x edges also name their start and
+    end node; 3.0 removed those fields.
     """
     nodes = []
     edges = []
@@ -82,19 +84,13 @@ def build_order(serial_number: str, order_id: str, stops: list[dict]) -> dict:
         )
         if index > 0:
             previous = stops[index - 1]["nodeId"]
-            edges.append(
-                {
-                    "edgeId": f"{previous}->{stop['nodeId']}",
-                    "sequenceId": index * 2 - 1,
-                    "released": True,
-                    "startNodeId": previous,
-                    "endNodeId": stop["nodeId"],
-                    "actions": [],
-                }
-            )
+            edge = {"edgeId": f"{previous}->{stop['nodeId']}", "sequenceId": index * 2 - 1, "released": True}
+            if major == "v2":
+                edge |= {"startNodeId": previous, "endNodeId": stop["nodeId"]}
+            edges.append({**edge, "actions": []})
 
     return {
-        **header(serial_number, "order"),
+        **header(serial_number, "order", major, manufacturer),
         "orderId": order_id,
         "orderUpdateId": 0,
         "nodes": nodes,

@@ -121,3 +121,23 @@ describe('live feed reducer', () => {
     expect(feed.failures).toHaveLength(1)
   })
 })
+
+describe('VDA 5050 3.0 robots', () => {
+  const v3 = robotWith({
+    version: '3.0.0',
+    mobileRobotPosition: { x: 4, y: 5, theta: 1, mapId: 'warehouse', localized: true },
+    powerSupply: { stateOfCharge: 72.5, charging: false },
+    actunode: { missionStatus: 'MOVING' },
+  })
+
+  it('reads position and charge from the 3.0 field names', () => {
+    expect(robotPose(v3)).toEqual({ x: 4, y: 5, theta: 1 })
+    expect(batteryCharge(v3)).toBe(72.5)
+  })
+
+  it('prefers nothing invented: a robot with neither shape has no position or charge', () => {
+    const bare = robotWith({ version: '3.0.0' })
+    expect(robotPose(bare)).toBeUndefined()
+    expect(batteryCharge(bare)).toBeUndefined()
+  })
+})

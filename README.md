@@ -96,6 +96,13 @@ map + message stream   missions, replay        VDA 5050 topics              Pyth
 | `mosquitto/` | Local broker config |
 | `docs/` | Plan tracker and brand assets |
 
+## VDA 5050 2.1 and 3.0
+
+ActuNode understands both versions at once, per robot, from the topic (`uagv/v2/...` or `uagv/v3/...`):
+messages are validated against the official schema of their version, and orders are sent in the
+version each robot speaks. To run 3.0 robots: `ACTUNODE_VDA_VERSION=3 docker compose up --build`
+(or `--vda-version 3` for the simulator). See [docs/research/VDA5050_3_0.md](docs/research/VDA5050_3_0.md).
+
 ## MQTT topics
 
 Robots follow the VDA 5050 topic layout

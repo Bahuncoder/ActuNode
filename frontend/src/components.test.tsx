@@ -47,6 +47,40 @@ describe('RobotTable', () => {
   })
 })
 
+const v3robot: Robot = {
+  robotId: 'robot_31',
+  connection: 'ONLINE',
+  lastSeen: null,
+  vdaMajor: 'v3',
+  state: {
+    version: '3.0.0',
+    orderId: '',
+    lastNodeId: '',
+    driving: false,
+    mobileRobotPosition: { x: 7, y: 3, theta: 0, mapId: 'warehouse', localized: true },
+    powerSupply: { stateOfCharge: 64, charging: false },
+    nodeStates: [],
+    errors: [],
+    actunode: { missionStatus: 'IDLE' },
+  } as unknown as Robot['state'],
+}
+
+describe('mixed fleet (VDA 5050 2.1 and 3.0)', () => {
+  it('shows each robot with its version, position and charge', () => {
+    render(<RobotTable robots={[healthy, v3robot]} />)
+
+    expect(screen.getByText('3.0.0')).toBeTruthy()
+    expect(screen.getByText('64.0%')).toBeTruthy()
+    expect(screen.getByText('7.0, 3.0')).toBeTruthy()
+  })
+
+  it('draws 3.0 robots on the map', () => {
+    const { container } = render(<WarehouseMap robots={[healthy, v3robot]} locations={{}} />)
+
+    expect(container.querySelectorAll('g.robot')).toHaveLength(2)
+  })
+})
+
 describe('WarehouseMap', () => {
   it('draws healthy robots and their routes, and skips robots without a valid position', () => {
     const { container } = render(<WarehouseMap robots={[malformed, healthy]} locations={{}} />)

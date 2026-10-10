@@ -3,7 +3,7 @@
 import json
 import time
 
-from conftest import ROBOTS, wait_for
+from conftest import CONNECTION_BROKEN, ROBOTS, wait_for
 
 
 def connections(stack) -> set[str]:
@@ -14,7 +14,7 @@ def test_killed_simulator_is_reported_as_connection_broken(stack):
     assert stack.all_online(), "precondition: robots must be live before the kill"
     stack.compose("kill", "simulator")  # SIGKILL: no goodbye, only the MQTT last will
     try:
-        wait_for(lambda: connections(stack) == {"CONNECTIONBROKEN"}, 30, "last will CONNECTIONBROKEN for all robots")
+        wait_for(lambda: connections(stack) == {CONNECTION_BROKEN}, 30, f"last will {CONNECTION_BROKEN} for all robots")
     finally:
         stack.start_and_wait_live("start", "simulator")
 

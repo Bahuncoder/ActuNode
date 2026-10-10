@@ -6,6 +6,7 @@ What changed, per commit, newest first. Status and plans are in [docs/PROGRESS.m
 
 ### Added
 - Simulator `--vda-version 3` (`ACTUNODE_VDA_VERSION`): robots speak VDA 5050 3.0.0 (part B of #8).
+- Orders and replay use each robot's own VDA 5050 version and manufacturer; UI reads 3.0 fields and shows a VDA column; e2e runs for 2.1 and 3.0 in CI (parts C–D of #8).
 - VDA 5050 3.0 (part A of #8): validation against the official 3.0.0 schemas on `v3` topics; 3.0 robots appear in the robot list.
 - Frontend tests (Vitest + React Testing Library, `npm test`), run in CI (D-19).
 - Sessions: size limit (`ACTUNODE_MAX_SESSION_MB`, default 200), end record `reason`, delete

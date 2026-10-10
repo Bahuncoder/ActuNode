@@ -19,8 +19,13 @@ export type RobotState = {
   orderId: string
   lastNodeId: string
   driving: boolean
+  version?: string
+  // VDA 5050 2.x names ...
   agvPosition?: { x: number; y: number; theta: number }
   batteryState?: { batteryCharge: number; charging: boolean }
+  // ... and their 3.0 replacements (docs/research/VDA5050_3_0.md)
+  mobileRobotPosition?: { x: number; y: number; theta: number }
+  powerSupply?: { stateOfCharge: number; charging: boolean }
   nodeStates: NodeState[]
   errors: RobotError[]
   actunode?: { missionStatus: string }
@@ -31,6 +36,8 @@ export type Robot = {
   connection: string | null
   state: RobotState | null
   lastSeen: string | null
+  vdaMajor?: string
+  manufacturer?: string
 }
 
 export type Issue = {
@@ -261,12 +268,13 @@ export function point(value: unknown): { x: number; y: number } | undefined {
 }
 
 export function robotPose(robot: Robot): { x: number; y: number; theta: number } | undefined {
-  const position = point(robot.state?.agvPosition)
-  return position && { ...position, theta: num(robot.state?.agvPosition?.theta) ?? 0 }
+  const raw = robot.state?.agvPosition ?? robot.state?.mobileRobotPosition // 2.x or 3.0
+  const position = point(raw)
+  return position && { ...position, theta: num(raw?.theta) ?? 0 }
 }
 
 export function batteryCharge(robot: Robot): number | undefined {
-  return num(robot.state?.batteryState?.batteryCharge)
+  return num(robot.state?.batteryState?.batteryCharge) ?? num(robot.state?.powerSupply?.stateOfCharge) // 2.x or 3.0
 }
 
 export function routePoints(robot: Robot): { x: number; y: number }[] {

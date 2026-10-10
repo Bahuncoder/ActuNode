@@ -5,6 +5,7 @@ from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel, Field
 
 from app import vda5050
+from app.live import hub
 from app.mqtt_state import mqtt_bridge
 from app.warehouse import LOCATIONS
 
@@ -44,8 +45,13 @@ def send_mission(mission: MissionRequest) -> dict:
         )
     )
 
-    order = vda5050.build_order(mission.robot_id, order_id, stops)
-    order_topic = vda5050.topic(mission.robot_id, "order")
+    # Address the robot the way it speaks: its own topic version and manufacturer, as last seen.
+    # A robot not seen yet gets the configured defaults.
+    seen = hub.robot(mission.robot_id) or {}
+    major = seen.get("vdaMajor") or vda5050.MAJOR_VERSION
+    manufacturer = seen.get("manufacturer") or vda5050.MANUFACTURER
+    order = vda5050.build_order(mission.robot_id, order_id, stops, major, manufacturer)
+    order_topic = vda5050.topic(mission.robot_id, "order", major, manufacturer)
     # VDA 5050 section 6.2: order is published with QoS 0.
     mqtt_bridge.publish(order_topic, json.dumps(order), qos=0)
 

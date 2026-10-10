@@ -94,6 +94,7 @@ class LiveHub:
             {"robotId": serial_number, "connection": None, "state": None, "lastSeen": None, "lastStateAt": None},
         )
         robot["vdaMajor"] = parsed.major
+        robot["manufacturer"] = parsed.manufacturer
         if name == "state":
             robot["state"] = body
             robot["lastStateAt"] = received_at

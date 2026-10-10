@@ -29,8 +29,8 @@ function summary(message: MqttMessage): string {
   const p = message.payload as Record<string, any>
   switch (kindOf(message.topic)) {
     case 'state': {
-      const pos = point(p.agvPosition)
-      const battery = num(p.batteryState?.batteryCharge)
+      const pos = point(p.agvPosition ?? p.mobileRobotPosition) // 2.x or 3.0
+      const battery = num(p.batteryState?.batteryCharge) ?? num(p.powerSupply?.stateOfCharge)
       const errors = Array.isArray(p.errors) ? p.errors : []
       const parts = [
         typeof p.actunode?.missionStatus === 'string' ? p.actunode.missionStatus : '',

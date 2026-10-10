@@ -16,6 +16,8 @@ from collections.abc import Callable, Iterator
 from datetime import UTC, datetime
 from pathlib import Path
 
+from app import vda5050
+
 log = logging.getLogger("actunode.replay")
 
 STATUS_EVERY_S = 0.5
@@ -93,7 +95,10 @@ def snapshot_plan(robots: list[dict]) -> list[tuple[float, str, str]]:
         state = robot.get("state")
         if not state:
             continue
-        prefix = f"uagv/v2/{state.get('manufacturer', 'ActuNode')}/{robot['robotId']}"
+        # Each robot on its own topic version (sessions recorded before vdaMajor existed are 2.x).
+        major = robot.get("vdaMajor") or "v2"
+        manufacturer = robot.get("manufacturer") or state.get("manufacturer", "ActuNode")
+        prefix = f"{vda5050.INTERFACE_NAME}/{major}/{manufacturer}/{robot['robotId']}"
         if robot.get("connection"):
             header = {
                 k: state[k] for k in ("headerId", "timestamp", "version", "manufacturer", "serialNumber") if k in state

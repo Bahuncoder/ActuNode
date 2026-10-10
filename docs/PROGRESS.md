@@ -122,14 +122,13 @@ exercised by hand with a real browser and MQTT traffic.
 
 ## Open issues and technical debt
 
-Numbered so they can be referenced from commits. Remove an item only when it is fixed and verified; numbers are never reused (fixed: 1, 2, 4, 7, 9, 10, 11, 13, 14, 16, 18).
+Numbered so they can be referenced from commits. Remove an item only when it is fixed and verified; numbers are never reused (fixed: 1, 2, 4, 7, 8, 9, 10, 11, 13, 14, 16, 18).
 
 | # | Issue | Impact | Plan |
 |---|---|---|---|
 | 3 | CI `compose` job failed on Days 1–5, passes since Day 6. No build-relevant file changed in between; logs need a GitHub login | Probably transient (base image pulls), but unconfirmed | Check the job logs on GitHub Actions |
 | 5 | No collision avoidance or traffic management; robots drive through each other | Unrealistic with many robots | Decide in Week 4 whether to model it |
 | 6 | No real-browser tests (component and logic tests exist since D-19, but run in jsdom, not a browser) | Browser-only issues (layout, WebSocket in a real browser) are caught by hand | Add Playwright tests against the e2e stack |
-| 8 | VDA 5050 3.0 support in progress (D-15): validation, robot list and simulator (`--vda-version 3`) done; orders, replay and UI still assume 2.1 | ActuNode cannot yet send orders to a 3.0 robot or show its position/battery | Parts C–D of #8 |
 | 12 | No authentication: Mosquitto allows anonymous clients, the API has no login, no TLS | Since D-18 the lab is reachable only from the same computer by default; with `ACTUNODE_BIND_ADDRESS=0.0.0.0` anyone on the network can command robots | Broker credentials + API auth + TLS before any shared deployment |
 | 15 | From the dev machine, `127.0.0.1:8000` (backend published port) accepts connections but never answers, while the LAN address `192.168.1.151:8000`, port 8080 on loopback, and container-to-container calls all work. Seen from the assistant's sandboxed shell; not yet checked from a normal terminal | API docs at localhost:8000/docs may be unreachable; the UI is unaffected (it uses 8080) | Seen again on 10 Oct for MQTT ports 1883/11883 from the same shell while the LAN address worked, so most likely the assistant's sandbox; on GitHub's CI machine the same e2e tests reach the stack via plain `localhost`. E2E tests take `ACTUNODE_E2E_HOST` for this. Still: run `curl -m 5 localhost:8000/api/health` in a normal terminal; if it hangs there too, investigate Docker's port forwarding |
 | 17 | Official VDA 5050 3.0.0 schemas are not valid JSON: trailing commas in `factsheet.schema` (4), `order.schema` (1, line 315), `visualization.schema` (2) | Any tool loading them as-is fails | Vendored with only those 7 commas removed (verified by diff); report upstream (needs your GitHub account) |
@@ -140,6 +139,12 @@ Newest first. One entry per work session: what was done, what was learned, what 
 
 ### Sat 10 Oct 2026: working through open issues one by one
 
+- **#8 closed (parts C–D).** Orders now go to each robot's own topic version **and manufacturer** (found
+  while reading: orders always went to `ActuNode` + `v2`, so a robot of another vendor would never have
+  received them); 3.0 orders omit start/end node ids and pass the official 3.0 order schema. Replay
+  restores robots on their own version topic (old sessions default to v2). UI reads 3.0 position and
+  charge, robot table has a VDA column. E2E suite runs for both versions: 10/10 with 3.0 robots,
+  10/10 with 2.1; CI runs both.
 - **#8 part B: simulator speaks 3.0.** `--vda-version 3` / `ACTUNODE_VDA_VERSION=3`: v3 topics, version
   3.0.0, 3.0 field names, `CONNECTION_BROKEN`. New permanent conformance test: every message in every
   mission state (IDLE, ACCEPTED, MOVING, BLOCKED, FAILED, 3 connection states) passes the official

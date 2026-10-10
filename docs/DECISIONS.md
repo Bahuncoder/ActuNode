@@ -149,7 +149,7 @@ editors; `ruff.toml` is the source of truth. The frontend keeps oxlint.
 discussed in review, and bugbear catches likely bugs early.
 
 ## D-15 · Support VDA 5050 2.x and 3.0 side by side, selected by topic
-10 Oct 2026 · Accepted (implementation planned for Week 5)
+10 Oct 2026 · Accepted · implemented 10 Oct 2026 (issue 8, ahead of the Week 5 plan)
 
 **Context.** VDA 5050 3.0 (March 2026) is breaking: renamed fields, new enums, edges without
 start/end node ids ([research note](research/VDA5050_3_0.md)). Installed fleets probably stay on 2.x

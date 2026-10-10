@@ -3,7 +3,7 @@
 import time
 from datetime import datetime
 
-from conftest import ROBOTS, STATE_TOPIC, wait_for
+from conftest import ROBOTS, STATE_TOPIC, VDA, wait_for
 
 CHARGING = (11.0, 2.2)
 
@@ -17,6 +17,7 @@ def test_stack_is_healthy(stack):
     for robot_id in ROBOTS:
         assert robots[robot_id]["connection"] == "ONLINE"
         assert robots[robot_id]["state"]["actunode"]["missionStatus"] == "IDLE"
+        assert robots[robot_id]["vdaMajor"] == f"v{VDA}"
 
 
 def test_idle_robot_publishes_state_every_second(stack):

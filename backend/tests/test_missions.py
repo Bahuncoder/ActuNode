@@ -101,3 +101,48 @@ def test_orders_are_published_with_qos_0_as_vda5050_requires(client, monkeypatch
     client.post("/api/missions", json=P1042)
 
     assert qos_used == [0]
+
+
+def _seen(topic: str, payload: dict) -> None:
+    """Let the live hub see a robot, as if its state had arrived over MQTT."""
+    from app.live import hub
+
+    hub.handle_mqtt(topic, json.dumps(payload).encode())
+
+
+def test_order_to_a_3_0_robot_uses_its_version_and_passes_the_official_3_0_schema(client, published):
+    from pathlib import Path
+
+    from app.validator import Validator
+
+    fixture = json.loads((Path(__file__).parent / "fixtures" / "v3_state.json").read_text())
+    _seen(fixture["topic"], fixture["payload"])
+
+    response = client.post("/api/missions", json={**P1042, "robot_id": "robot_31"})
+
+    assert response.status_code == 202
+    [(topic, order)] = published
+    assert topic == "uagv/v3/ActuNode/robot_31/order"
+    assert order["version"] == "3.0.0"
+    assert all("startNodeId" not in edge and "endNodeId" not in edge for edge in order["edges"])
+    assert Validator().check(topic, order, valid_json=True) == []
+
+
+def test_order_goes_to_the_robots_own_manufacturer_topic(client, published):
+    _seen("uagv/v2/VendorX/amr_1/state", {"serialNumber": "amr_1", "manufacturer": "VendorX"})
+
+    client.post("/api/missions", json={**P1042, "robot_id": "amr_1"})
+
+    [(topic, order)] = published
+    assert topic == "uagv/v2/VendorX/amr_1/order"
+    assert order["manufacturer"] == "VendorX"
+    assert order["version"] == "2.1.0"
+    assert "startNodeId" in order["edges"][0]
+
+
+def test_order_to_a_robot_never_seen_uses_the_configured_default(client, published):
+    client.post("/api/missions", json={**P1042, "robot_id": "robot_unseen"})
+
+    [(topic, order)] = published
+    assert topic == "uagv/v2/ActuNode/robot_unseen/order"
+    assert order["version"] == "2.1.0"

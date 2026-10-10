@@ -3,7 +3,7 @@
 import json
 import time
 
-from conftest import STATE_TOPIC, wait_for
+from conftest import ORDER_TOPIC, STATE_TOPIC, wait_for
 
 
 def read_session(stack, session_id: str) -> list[dict]:
@@ -20,7 +20,7 @@ def test_record_a_mission_then_replay_it(stack):
     records = read_session(stack, session_id)
     assert records[0]["type"] == "session" and records[-1]["type"] == "end"
     topics = {record["topic"] for record in records if record["type"] == "message"}
-    assert "uagv/v2/ActuNode/robot_03/order" in topics
+    assert ORDER_TOPIC.format("robot_03") in topics
     assert (stack.sessions_dir / f"{session_id}.jsonl").stat().st_uid == int(stack.env["ACTUNODE_UID"])
 
     # Replay is refused while the robots are live ...

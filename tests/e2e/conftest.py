@@ -26,10 +26,14 @@ import pytest
 ROOT = pathlib.Path(__file__).resolve().parents[2]
 PROJECT = "actunode-e2e"
 HOST = os.environ.get("ACTUNODE_E2E_HOST", "localhost")
+# VDA 5050 major version the simulated robots speak in this run (CI runs both): "2" or "3".
+VDA = os.environ.get("ACTUNODE_VDA_VERSION", "2")
+CONNECTION_BROKEN = "CONNECTIONBROKEN" if VDA == "2" else "CONNECTION_BROKEN"
+ORDER_TOPIC = f"uagv/v{VDA}/ActuNode/{{}}/order"
 UI_PORT = 18080
 MQTT_PORT = 11883
 ROBOTS = ("robot_01", "robot_02", "robot_03")
-STATE_TOPIC = "uagv/v2/ActuNode/{}/state"
+STATE_TOPIC = f"uagv/v{os.environ.get('ACTUNODE_VDA_VERSION', '2')}/ActuNode/{{}}/state"
 
 
 class Stack:
@@ -64,7 +68,8 @@ class Stack:
         return state.get("actunode", {}).get("missionStatus")
 
     def position(self, robot_id: str) -> tuple[float, float]:
-        position = self.robots()[robot_id]["state"]["agvPosition"]
+        state = self.robots()[robot_id]["state"]
+        position = state.get("agvPosition") or state["mobileRobotPosition"]  # 2.x or 3.0
         return position["x"], position["y"]
 
     def post(self, path: str, body: dict | None = None, expect: int | None = None) -> httpx.Response:
@@ -168,6 +173,7 @@ def stack(tmp_path_factory):
         "ACTUNODE_UID": str(os.getuid()),
         "ACTUNODE_GID": str(os.getgid()),
         "ACTUNODE_SIM_ROBOTS": str(len(ROBOTS)),
+        "ACTUNODE_VDA_VERSION": VDA,
     }
     stack = Stack(env, sessions_dir)
     stack.compose("up", "-d", "--build", "--wait", "--wait-timeout", "180")

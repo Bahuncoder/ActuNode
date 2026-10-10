@@ -43,8 +43,10 @@ request, so the backend can be restarted on its own (D-13).
 
 ## MQTT topics
 
-VDA 5050 layout: `interfaceName/majorVersion/manufacturer/serialNumber/topic`, currently
-`uagv/v2/ActuNode/<robot>/<topic>`.
+VDA 5050 layout: `interfaceName/majorVersion/manufacturer/serialNumber/topic`, e.g.
+`uagv/v2/ActuNode/<robot>/<topic>`. Both `v2` (2.1.0) and `v3` (3.0.0) are understood (D-15): the
+validator picks the official schema set by the topic, and orders/replay address each robot with the
+version and manufacturer it last used. Robots never seen get `ACTUNODE_VDA_MAJOR_VERSION` (default `v2`).
 
 | Topic | Publisher | Subscriber | QoS | Retained | Content |
 |---|---|---|---|---|---|

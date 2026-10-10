@@ -57,9 +57,16 @@ jobs:
       - run: npm run build
 
   e2e:
-    # Builds and runs the real Docker Compose stack (Mosquitto, backend, simulator, nginx).
+    # Builds and runs the real Docker Compose stack (Mosquitto, backend, simulator, nginx),
+    # once with robots speaking VDA 5050 2.1.0 and once with 3.0.0 (D-15).
     runs-on: ubuntu-24.04
     needs: [lint, backend, simulator, frontend]
+    strategy:
+      fail-fast: false
+      matrix:
+        vda: ["2", "3"]
+    env:
+      ACTUNODE_VDA_VERSION: ${{ matrix.vda }}
     steps:
       - uses: actions/checkout@v7
       - uses: actions/setup-python@v7
@@ -70,5 +77,5 @@ jobs:
       - if: failure()
         uses: actions/upload-artifact@v7
         with:
-          name: e2e-container-logs
+          name: e2e-container-logs-vda${{ matrix.vda }}
           path: tests/e2e/last-run.log
