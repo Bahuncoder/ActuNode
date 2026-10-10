@@ -63,6 +63,7 @@ npm run dev        # http://localhost:5173
 python3 -m venv simulator/.venv
 simulator/.venv/bin/pip install -r simulator/requirements-dev.txt
 simulator/.venv/bin/python -m simulator --robots 3   # up to 50; 10 fill the charging area
+# add --vda-version 3 for robots that speak VDA 5050 3.0.0 (ACTUNODE_VDA_VERSION=3 in Docker)
 
 # Frontend unit and component tests
 (cd frontend && npm test)

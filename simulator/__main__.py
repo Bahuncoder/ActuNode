@@ -10,7 +10,7 @@ import signal
 import time
 
 from simulator.publisher import RobotConnection
-from simulator.robot import Robot
+from simulator.robot import VDA_VERSIONS, Robot
 
 # Robots park in a grid in the charging area (x 0-12 m, y 0-4 m) until missions arrive.
 # Ten robots fill it; more spill over into rows above.
@@ -44,6 +44,12 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--host", default=os.getenv("ACTUNODE_MQTT_HOST", "localhost"))
     parser.add_argument("--port", type=int, default=int(os.getenv("ACTUNODE_MQTT_PORT", "1883")))
     parser.add_argument("--interval", type=float, default=1.0, help="seconds between state messages")
+    parser.add_argument(
+        "--vda-version",
+        choices=["2", "3"],
+        default=os.getenv("ACTUNODE_VDA_VERSION", "2"),
+        help="VDA 5050 major version the robots speak (2 = 2.1.0, 3 = 3.0.0)",
+    )
     return parser.parse_args()
 
 
@@ -51,7 +57,9 @@ def main() -> None:
     args = parse_args()
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
 
-    robots = [Robot(f"robot_{i + 1:02d}", *parking_spot(i)) for i in range(args.robots)]
+    robots = [
+        Robot(f"robot_{i + 1:02d}", *parking_spot(i), vda_major=f"v{args.vda_version}") for i in range(args.robots)
+    ]
     connections = [RobotConnection(robot, args.host, args.port) for robot in robots]
 
     running = True
@@ -65,7 +73,13 @@ def main() -> None:
 
     for connection in connections:
         connection.start()
-    logging.info("Simulating %d robots against %s:%s", len(robots), args.host, args.port)
+    logging.info(
+        "Simulating %d robots (VDA 5050 %s) against %s:%s",
+        len(robots),
+        VDA_VERSIONS[f"v{args.vda_version}"],
+        args.host,
+        args.port,
+    )
 
     ticks_per_publish = max(1, round(args.interval / TICK_S))
     tick = 0

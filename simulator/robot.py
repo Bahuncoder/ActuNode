@@ -3,7 +3,9 @@ import math
 from datetime import UTC, datetime
 
 MANUFACTURER = "ActuNode"
-VDA5050_VERSION = "2.1.0"
+# Topic major version -> protocol version a robot reports (D-15). 2.1 is the default.
+VDA_VERSIONS = {"v2": "2.1.0", "v3": "3.0.0"}
+VDA5050_VERSION = VDA_VERSIONS["v2"]
 MAP_ID = "warehouse"
 
 SPEED_M_PER_S = 1.0
@@ -28,8 +30,11 @@ def utc_timestamp() -> str:
 
 
 class Robot:
-    def __init__(self, robot_id: str, x: float = 0.0, y: float = 0.0):
+    def __init__(self, robot_id: str, x: float = 0.0, y: float = 0.0, vda_major: str = "v2"):
+        if vda_major not in VDA_VERSIONS:
+            raise ValueError(f"unsupported VDA 5050 major version {vda_major!r}; use one of {list(VDA_VERSIONS)}")
         self.robot_id = robot_id
+        self.vda_major = vda_major
 
         self.x = x
         self.y = y
@@ -296,14 +301,15 @@ class Robot:
         return {
             "headerId": self.next_header_id(topic_name),
             "timestamp": utc_timestamp(),
-            "version": VDA5050_VERSION,
+            "version": VDA_VERSIONS[self.vda_major],
             "manufacturer": MANUFACTURER,
             "serialNumber": self.robot_id,
         }
 
     def state_message(self) -> dict:
-        """VDA 5050 `state` message. ActuNode-specific fields go under `actunode`."""
-        return {
+        """VDA 5050 `state` message in the robot's version. ActuNode-specific fields go under `actunode`."""
+        position = {"x": round(self.x, 3), "y": round(self.y, 3), "theta": round(self.theta, 3), "mapId": MAP_ID}
+        state = {
             **self.header("state"),
             "orderId": self.order_id,
             "orderUpdateId": self.order_update_id,
@@ -313,24 +319,25 @@ class Robot:
             "edgeStates": [dict(edge) for edge in self.edge_states],
             "driving": self.mission_status == MOVING,
             "operatingMode": "AUTOMATIC",
-            "agvPosition": {
-                "x": round(self.x, 3),
-                "y": round(self.y, 3),
-                "theta": round(self.theta, 3),
-                "mapId": MAP_ID,
-                "positionInitialized": True,
-            },
             "velocity": {"vx": SPEED_M_PER_S if self.mission_status == MOVING else 0.0, "vy": 0.0, "omega": 0.0},
-            "batteryState": {
-                "batteryCharge": round(self.battery, 1),
-                "charging": self.charging,
-            },
             "actionStates": [dict(action) for action in self.action_states],
             "errors": [dict(error) for error in self.errors],
-            "safetyState": {"eStop": "NONE", "fieldViolation": False},
             "actunode": {"missionStatus": self.mission_status},
         }
+        if self.vda_major == "v3":
+            # 3.0 renamed these (see docs/research/VDA5050_3_0.md) and requires instantActionStates.
+            state["mobileRobotPosition"] = {**position, "localized": True}
+            state["powerSupply"] = {"stateOfCharge": round(self.battery, 1), "charging": self.charging}
+            state["safetyState"] = {"activeEmergencyStop": "NONE", "fieldViolation": False}
+            state["instantActionStates"] = []
+        else:
+            state["agvPosition"] = {**position, "positionInitialized": True}
+            state["batteryState"] = {"batteryCharge": round(self.battery, 1), "charging": self.charging}
+            state["safetyState"] = {"eStop": "NONE", "fieldViolation": False}
+        return state
 
     def connection_message(self, connection_state: str) -> dict:
-        """VDA 5050 `connection` message: ONLINE, OFFLINE or CONNECTIONBROKEN."""
+        """VDA 5050 `connection` message: ONLINE, OFFLINE or CONNECTIONBROKEN (CONNECTION_BROKEN in 3.0)."""
+        if self.vda_major == "v3" and connection_state == "CONNECTIONBROKEN":
+            connection_state = "CONNECTION_BROKEN"
         return {**self.header("connection"), "connectionState": connection_state}

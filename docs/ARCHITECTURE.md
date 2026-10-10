@@ -194,7 +194,9 @@ can go first).
 | `ACTUNODE_SESSIONS_DIR` | backend | `<repo>/sessions` |
 | `ACTUNODE_MAX_SESSION_MB` | backend (recording stops itself at this size; fractions allowed) | `200` |
 | `ACTUNODE_SIM_ROBOTS` | simulator | `3` (1–50) |
-| `ACTUNODE_VDA_INTERFACE`, `ACTUNODE_VDA_MAJOR_VERSION` | backend, simulator | `uagv`, `v2` |
+| `ACTUNODE_VDA_INTERFACE` | backend, simulator | `uagv` |
+| `ACTUNODE_VDA_MAJOR_VERSION` | backend (topic version of orders it sends) | `v2` |
+| `ACTUNODE_VDA_VERSION` | simulator (`--vda-version`): robots speak VDA 5050 2.1.0 (`2`) or 3.0.0 (`3`) | `2` |
 | `ACTUNODE_API_URL` | frontend dev server | `http://localhost:8000` |
 | `ACTUNODE_UID`, `ACTUNODE_GID` | Docker Compose (backend user) | `1000`, `1000` |
 | `ACTUNODE_BIND_ADDRESS` | Docker Compose (interface the ports are published on, D-18) | `127.0.0.1` |

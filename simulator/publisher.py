@@ -22,9 +22,9 @@ class RobotConnection:
         self.robot = robot
         self.host = host
         self.port = port
-        self.state_topic = topic(MANUFACTURER, robot.robot_id, "state")
-        self.connection_topic = topic(MANUFACTURER, robot.robot_id, "connection")
-        self.order_topic = topic(MANUFACTURER, robot.robot_id, "order")
+        self.state_topic = topic(MANUFACTURER, robot.robot_id, "state", robot.vda_major)
+        self.connection_topic = topic(MANUFACTURER, robot.robot_id, "connection", robot.vda_major)
+        self.order_topic = topic(MANUFACTURER, robot.robot_id, "order", robot.vda_major)
         self.inject_topic = control_topic(robot.robot_id, "inject")
         self.inbox: queue.Queue[tuple[str, bytes]] = queue.Queue()
 
