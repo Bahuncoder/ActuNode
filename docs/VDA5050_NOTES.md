@@ -42,6 +42,12 @@ problems by being more reliable than the standard).
 `headerId` (counts up **per topic**, starting at 1), `timestamp` (ISO 8601 UTC), `version`
 (e.g. `2.1.0`), `manufacturer`, `serialNumber`.
 
+**headerId across restarts.** The spec only says it is per topic and incremented by 1 per sent message;
+it says nothing about restarts. ActuNode (backend and simulated robots) starts again at 1 after a
+restart, like most implementations. Orders are identified by `orderId` + `orderUpdateId`, not
+`headerId`. The validator reports a decrease it observes as a `header-id` *warning* ("sender restarted,
+duplicate, or replay?"), not an error.
+
 ## Orders
 
 - An order is a graph: **nodes** (positions, with actions) and **edges** (connections, with actions).
