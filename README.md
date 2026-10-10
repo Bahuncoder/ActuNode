@@ -211,5 +211,6 @@ Watch them live: `mosquitto_sub -h localhost -t 'uagv/#' -v`
 | [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) | Components, topics, API, data formats |
 | [docs/DECISIONS.md](docs/DECISIONS.md) | Why things are built the way they are |
 | [docs/VDA5050_NOTES.md](docs/VDA5050_NOTES.md) | Protocol notes and validator rules |
+| [docs/research/](docs/research) | Research notes (e.g. VDA 5050 3.0 vs 2.1) |
 | [docs/DEMO.md](docs/DEMO.md) | 3-minute demo script |
 | [CHANGELOG.md](CHANGELOG.md) | Changes per commit |

@@ -61,7 +61,7 @@ Plan objective is done. Remaining work for this week is verification and documen
 - [x] **Run the Docker Compose stack end to end**: definition of done passed on 10 Oct (record → mission → block → clear → replay, UI via nginx)
 - [ ] Confirm `curl localhost:8000/api/health` works from a normal terminal (open issue 15)
 - [ ] Confirm the Day 1–5 CI compose failures are understood (open issue 3)
-- [ ] Read the VDA 5050 3.0 release notes and record what changes for us (open issue 9)
+- [x] Read the VDA 5050 3.0 release notes and record what changes for us ([research note](research/VDA5050_3_0.md), D-15)
 - [x] Python linter and formatter (ruff, 120 columns) in CI (issue 16, D-14)
 - [ ] Customer discovery: first outreach messages sent (plan: 30 conversations in 60 days)
 
@@ -72,7 +72,7 @@ Proposed focus for the coming weeks (each week's plan objective + hardening of w
 | 2 | End-to-end tests against real Mosquitto in CI (broker as a service container); fix battery-at-0; reconnect behaviour |
 | 3 | `instantActions` cancelOrder (the "cancel" in *cancel, reroute or escalate*); order updates (`orderUpdateId`) |
 | 4 | Load test 10/25/50 robots (CPU, message rate, UI frame rate); decide whether to model traffic/near-collisions |
-| 5 | Compare our schemas with the official VDA 5050 JSON schemas; offline validation of session files |
+| 5 | Version-aware validation with the official 2.1.0 and 3.0.0 schemas, chosen by topic (D-15); offline validation of session files |
 | 6 | Remaining failures: low battery, disconnect, invalid payload, timeouts |
 | 7 | Session size limits and retention; upload a session someone sent you; streaming replay |
 | 8 | Record the demo video ([DEMO.md](DEMO.md)); polish README; publish |
@@ -98,7 +98,7 @@ exercised by hand with a real browser and MQTT traffic.
 
 ## Open issues and technical debt
 
-Numbered so they can be referenced from commits. Remove an item only when it is fixed and verified; numbers are never reused (fixed: 1, 2, 16).
+Numbered so they can be referenced from commits. Remove an item only when it is fixed and verified; numbers are never reused (fixed: 1, 2, 9, 16).
 
 | # | Issue | Impact | Plan |
 |---|---|---|---|
@@ -106,19 +106,30 @@ Numbered so they can be referenced from commits. Remove an item only when it is 
 | 4 | A robot whose battery reaches 0 % mid-mission stops but keeps reporting `MOVING` and `driving: true` | Wrong state; would also trip the validator's driving rule | Fix with the low-battery failure; Week 2/6 |
 | 5 | No collision avoidance or traffic management; robots drive through each other | Unrealistic with many robots | Decide in Week 4 whether to model it |
 | 6 | No automated frontend tests; no end-to-end tests in CI | Regressions in UI or MQTT flow are caught by hand only | Week 2 |
-| 7 | Schemas are a hand-written subset of VDA 5050 2.x | May accept messages the official schemas reject, or the reverse | Compare with official schemas; Week 5 |
-| 8 | Topics and messages use VDA 5050 v2 (`uagv/v2`, `2.1.0`) | 3.0 (Apr 2026) not supported | Research 3.0 first (issue 9), then decide |
-| 9 | VDA 5050 3.0 not yet researched | Notes may be outdated | Week 1 |
+| 7 | Schemas are a hand-written subset of VDA 5050 2.x | May accept messages the official schemas reject, or the reverse | Replace with the official 2.1.0 / 3.0.0 schemas (D-15); Week 5 |
+| 8 | ActuNode speaks only VDA 5050 2.1 (`uagv/v2`, `2.1.0`); 3.0 is breaking ([research note](research/VDA5050_3_0.md)) | 3.0 robots or fleet managers cannot be tested; the validator would reject all their messages | Support both side by side, chosen by topic (D-15); Week 5 |
 | 10 | Backend keeps `headerId` counters in memory; after a restart its order `headerId`s start at 1 again | Validator warns `header-id` on the next order per robot | Low; persist counters or accept |
 | 11 | Session files have no size limit or retention; replay loads the whole file into memory | Large sessions could exhaust memory | Week 7 |
 | 12 | No authentication anywhere; Mosquitto allows anonymous clients | Fine for a laptop lab only; must not be exposed on a network | Documented; revisit before any shared deployment |
 | 13 | Robot `state` is published with QoS 0, so it can be dropped; recordings capture only what the backend receives | Rare gaps in recordings | Accept for now; document |
 | 14 | CI warnings: `actions/checkout@v4` uses Node 20 (deprecated); `ubuntu-latest` moves to Ubuntu 26 from 19 Oct 2026 | CI may break after the migration | Update actions; watch the first run after 19 Oct |
 | 15 | From the dev machine, `127.0.0.1:8000` (backend published port) accepts connections but never answers, while the LAN address `192.168.1.151:8000`, port 8080 on loopback, and container-to-container calls all work. Seen from the assistant's sandboxed shell; not yet checked from a normal terminal | API docs at localhost:8000/docs may be unreachable; the UI is unaffected (it uses 8080) | Run `curl -m 5 localhost:8000/api/health` in a normal terminal; if it hangs there too, investigate Docker's port forwarding |
+| 17 | Official VDA 5050 `json_schemas/order.schema` at tag 3.0.0 is invalid JSON (trailing comma, line 315) | Loading the official schemas fails until fixed locally | Apply a documented local fix when vendoring (Week 5); report upstream (needs your GitHub account) |
 
 ## Session log
 
 Newest first. One entry per work session: what was done, what was learned, what is next.
+
+### Sat 10 Oct 2026 (night): VDA 5050 3.0 research
+
+- Read the 3.0.0 release notes in full and compared the official 2.1.0 and 3.0.0 `state`, `order`
+  and `connection` schemas field by field. Result: [research/VDA5050_3_0.md](research/VDA5050_3_0.md).
+- 3.0 is breaking for everything ActuNode emits (position, battery, connection enum, order edges);
+  topic layout and header are unchanged.
+- Found: the official 3.0.0 `order.schema` is invalid JSON (issue 17).
+- Decision D-15: support 2.x and 3.0 side by side, chosen by topic; implement in Week 5.
+  Issue 9 closed; issues 7 and 8 now point at the Week 5 plan.
+- Customer discovery question added: which VDA 5050 version do your robots speak?
 
 ### Sat 10 Oct 2026 (night): Python lint and format
 

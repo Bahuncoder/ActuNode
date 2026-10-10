@@ -1,8 +1,13 @@
 # VDA 5050 notes
 
 Working notes on the parts of VDA 5050 that ActuNode uses. Written from the 2.x specification;
-check the official text before relying on details. **VDA 5050 3.0 was published in April 2026
-(mixed fleets, free navigation zones, path sharing) and has not been worked through here yet.**
+check the official text before relying on details.
+
+**VDA 5050 3.0 (March 2026) is a breaking release**: same topic layout and header, but renamed
+fields (`agvPosition` → `mobileRobotPosition`, `batteryState` → `powerSupply`), new enums
+(`CONNECTION_BROKEN`, error levels URGENT/CRITICAL) and edges without `startNodeId`/`endNodeId`.
+Everything below describes **2.x**, which ActuNode speaks today. See
+[research/VDA5050_3_0.md](research/VDA5050_3_0.md) for the full comparison and the plan (D-15).
 
 ## What it is
 
@@ -84,6 +89,6 @@ Rules: `backend/app/validator.py`.
 
 ## Open questions to research
 
-- What exactly changed in 3.0 (topics, zones, path sharing) and how to support 2.x and 3.x side by side.
-- Use the official JSON schemas from the VDA 5050 repository as an optional, stricter check.
+- ~~What changed in 3.0~~ → [research/VDA5050_3_0.md](research/VDA5050_3_0.md). Supporting 2.x and 3.0 side by side is planned for Week 5 (D-15).
+- Validate against the official JSON schemas of both versions (Week 5).
 - `instantActions` cancelOrder as the response to a blocked path (plan: "cancel, reroute or escalate").

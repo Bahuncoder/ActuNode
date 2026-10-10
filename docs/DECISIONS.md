@@ -147,3 +147,17 @@ and formats the code; line length 120. CI fails on any finding. `.flake8` mirror
 editors; `ruff.toml` is the source of truth. The frontend keeps oxlint.
 **Consequences.** One reformatting commit touched most Python files; from now on style is not
 discussed in review, and bugbear catches likely bugs early.
+
+## D-15 · Support VDA 5050 2.x and 3.0 side by side, selected by topic
+10 Oct 2026 · Accepted (implementation planned for Week 5)
+
+**Context.** VDA 5050 3.0 (March 2026) is breaking: renamed fields, new enums, edges without
+start/end node ids ([research note](research/VDA5050_3_0.md)). Installed fleets probably stay on 2.x
+for a while (unverified; to be asked in customer discovery). An integration lab is most useful where
+versions meet.
+**Decision.** Keep 2.1.0 as the default. In Week 5 make validation version-aware using the
+**official** schemas of both versions, chosen per message by the topic's major version (`v2`/`v3`);
+make the backend and UI read both; add a simulator `--vda-version` option. Zones, path sharing and
+the `responses` topic are out of scope until users ask. Supersedes the "2.x for now" part of D-2.
+**Consequences.** Two schema sets to maintain; one version-aware reading layer in backend and UI.
+The official 3.0 `order.schema` needs a one-character local fix until upstream fixes it.

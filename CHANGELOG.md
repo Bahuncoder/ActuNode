@@ -5,7 +5,11 @@ What changed, per commit, newest first. Status and plans are in [docs/PROGRESS.m
 ## Unreleased
 
 ### Added
+- [docs/research/VDA5050_3_0.md](docs/research/VDA5050_3_0.md): VDA 5050 3.0 vs 2.1 comparison and plan (D-15).
 - ruff lint and format for Python (`ruff.toml`, 120 columns) and a `lint` job in CI (D-14).
+- Project tracking and documentation: [docs/PROGRESS.md](docs/PROGRESS.md),
+  [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md), [docs/DECISIONS.md](docs/DECISIONS.md), this changelog.
+- [docs/PLAN.md](docs/PLAN.md) is now the plan reference with calendar dates; status moved to PROGRESS.md.
 
 ### Fixed
 - HTTP errors raised from recorder/replay errors now keep the original error as their cause.
@@ -17,11 +21,6 @@ What changed, per commit, newest first. Status and plans are in [docs/PROGRESS.m
   and the backend as the host user (D-12).
 - Docker: recreating the backend container broke the UI with 502 until nginx restarted; nginx now
   re-resolves the backend through Docker's DNS (D-13).
-
-### Added
-- Project tracking and documentation: [docs/PROGRESS.md](docs/PROGRESS.md),
-  [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md), [docs/DECISIONS.md](docs/DECISIONS.md), this changelog.
-- [docs/PLAN.md](docs/PLAN.md) is now the plan reference with calendar dates; status moved to PROGRESS.md.
 
 ## 2026-10-10
 
