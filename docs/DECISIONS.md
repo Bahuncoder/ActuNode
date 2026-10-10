@@ -214,3 +214,18 @@ jsdom (`npm test`), run in CI. The developer's nvm default is left unchanged; `n
 selects 24.
 **Consequences.** Supported runtime with security fixes; tests for the live-data logic and for
 components rendering malformed robot data. Real-browser tests are still to come (issue 6).
+
+## D-20 · Validate against the official VDA 5050 2.1.0 schemas
+10 Oct 2026 · Accepted · supersedes the hand-written-schema part of D-8
+
+**Context.** D-8 used a hand-written subset of the schemas (issue 7), which could disagree with the
+standard. The official 2.1.0 schemas are MIT-licensed and set no `additionalProperties`, so extensions
+are allowed; every message ActuNode produces (recorded and freshly generated, all mission states)
+passes them.
+**Decision.** Vendor the six official 2.1.0 schemas unchanged (pinned commit, license kept) and check
+every VDA 5050 topic against its schema. Keep ActuNode's own schemas only for the `actunode` extension
+and the inject command. Checks the official schema does not make become separately named plausibility
+warnings, not `schema` errors: the 2.1.0 schema leaves `batteryCharge` unbounded, so 140 % is reported
+as `value-range` (warning).
+**Consequences.** `schema` errors now mean "violates the official standard", nothing more; all six
+topics are covered (before: three). Groundwork for 3.0 (D-15): add the 3.0 set next to it.

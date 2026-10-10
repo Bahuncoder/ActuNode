@@ -85,13 +85,13 @@ last will if the robot vanishes.
 
 ## What the validator checks
 
-Schemas: `backend/app/schemas/` (a subset written from the spec, not the official schemas).
-Rules: `backend/app/validator.py`.
+Schemas: the **official VDA 5050 2.1.0 schemas** (vendored unchanged, see `backend/app/schemas/README.md`)
+plus ActuNode's own schemas for its extension and inject command. Rules: `backend/app/validator.py`.
 
 | Rule | Severity | Check |
 |---|---|---|
 | `invalid-json` | error | Payload parses as JSON |
-| `schema` | error | Required fields, types, enums, ranges for state / order / connection / inject |
+| `schema` | error | Official VDA 5050 schema of the topic (all six topics), plus ActuNode's extension and inject schemas |
 | `topic-mismatch` | error | `serialNumber` / `manufacturer` match the topic |
 | `version-mismatch` | error | `version` major matches the topic's major version |
 | `timestamp` | error | ISO 8601 with a time zone |
@@ -100,9 +100,10 @@ Rules: `backend/app/validator.py`.
 | `mission-transition` | warning | ActuNode mission state machine is followed |
 | `driving-consistency` | warning | `driving` is true exactly when MOVING |
 | `last-node-regression` | warning | `lastNodeSequenceId` never goes backwards within an order |
+| `value-range` | warning | Plausibility the official schema does not check: `batteryCharge` within 0–100 % |
 
 ## Open questions to research
 
 - ~~What changed in 3.0~~ → [research/VDA5050_3_0.md](research/VDA5050_3_0.md). Supporting 2.x and 3.0 side by side is planned for Week 5 (D-15).
-- Validate against the official JSON schemas of both versions (Week 5).
+- ~~Validate against the official JSON schemas~~ done for 2.1.0; 3.0 per D-15.
 - `instantActions` cancelOrder as the response to a blocked path (plan: "cancel, reroute or escalate").

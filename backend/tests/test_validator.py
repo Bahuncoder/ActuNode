@@ -66,14 +66,36 @@ def test_missing_required_field_reports_schema_error_with_path():
     assert "batteryCharge" in issues[0]["message"]
 
 
-def test_bad_enum_and_range_are_schema_errors():
+def test_bad_enum_is_a_schema_error_and_impossible_battery_a_plausibility_warning():
+    """The official 2.1.0 schema has no range for batteryCharge, so 140 % is not a spec violation;
+    ActuNode flags it separately as a value-range warning."""
     topic, payload = fixture("state_moving")
     payload["operatingMode"] = "TURBO"
     payload["batteryState"]["batteryCharge"] = 140
 
     issues = Validator().check(topic, payload, valid_json=True)
 
-    assert {found["path"] for found in issues} == {"/operatingMode", "/batteryState/batteryCharge"}
+    assert {(i["rule"], i["severity"], i["path"]) for i in issues} == {
+        ("schema", "error", "/operatingMode"),
+        ("value-range", "warning", "/batteryState/batteryCharge"),
+    }
+
+
+def test_actunode_extension_is_checked_against_its_own_schema():
+    topic, payload = fixture("state_moving")
+    payload["actunode"]["missionStatus"] = "DANCING"
+
+    issues = Validator().check(topic, payload, valid_json=True)
+
+    schema_issues = [(i["rule"], i["path"]) for i in issues if i["rule"] == "schema"]
+    assert schema_issues == [("schema", "/actunode/missionStatus")]
+
+
+def test_every_vda5050_topic_has_an_official_schema():
+    validator = Validator()
+
+    for topic_name in ("order", "instantActions", "state", "visualization", "connection", "factsheet"):
+        assert validator._validators.get(topic_name), topic_name
 
 
 def test_serial_number_must_match_topic():

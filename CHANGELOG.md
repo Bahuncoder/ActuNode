@@ -21,6 +21,8 @@ What changed, per commit, newest first. Status and plans are in [docs/PROGRESS.m
 - [docs/PLAN.md](docs/PLAN.md) is now the plan reference with calendar dates; status moved to PROGRESS.md.
 
 ### Changed
+- Validator uses the official VDA 5050 2.1.0 schemas (vendored, MIT) for all six topics instead of a
+  hand-written subset; `batteryCharge` outside 0–100 % is a `value-range` warning (D-20).
 - Frontend moved from end-of-life Node.js 20 to Node.js 24 LTS (dev, CI, Docker) (D-19).
 - CI: GitHub Actions upgraded to v7 (Node.js 24); runner pinned to `ubuntu-24.04`.
 - Compose: containers no longer have fixed names (`actunode-backend` → `actunode-backend-1`, etc.).

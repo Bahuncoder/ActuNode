@@ -10,11 +10,12 @@ from datetime import datetime
 from pathlib import Path
 
 from jsonschema import Draft202012Validator
-from referencing import Registry, Resource
 
 from app import vda5050
 
 SCHEMA_DIR = Path(__file__).parent / "schemas"
+# Official VDA 5050 schemas, vendored unchanged (MIT, see the LICENSE.txt next to them).
+OFFICIAL_SCHEMA_DIR = SCHEMA_DIR / "vda5050-2.1.0"
 MAX_SCHEMA_ISSUES = 5
 
 # ActuNode mission status machine (IDLE is always allowed: robot stopped or restarted).
@@ -38,18 +39,25 @@ RULES = {
     "mission-transition": "Mission status changed in a way the state machine does not allow",
     "driving-consistency": "driving flag disagrees with the mission status",
     "last-node-regression": "lastNodeSequenceId went backwards within the same order",
+    "value-range": "Value outside its physical range (ActuNode plausibility check, not in the official schema)",
 }
 
 
-def _load_validators() -> dict[str, Draft202012Validator]:
-    schemas = {
-        path.name.removesuffix(".schema.json"): json.loads(path.read_text())
-        for path in SCHEMA_DIR.glob("*.schema.json")
-    }
-    registry = Registry().with_resources((schema["$id"], Resource.from_contents(schema)) for schema in schemas.values())
-    return {
-        name: Draft202012Validator(schema, registry=registry) for name, schema in schemas.items() if name != "header"
-    }
+def _load_validators() -> dict[str, list[Draft202012Validator]]:
+    """Schemas per message kind: the official VDA 5050 schema for each VDA topic, plus ActuNode's
+    own schemas for its extension of `state` and for its inject command."""
+    validators: dict[str, list[Draft202012Validator]] = {}
+    for path in sorted(OFFICIAL_SCHEMA_DIR.glob("*.schema")):
+        validators.setdefault(path.name.removesuffix(".schema"), []).append(
+            Draft202012Validator(json.loads(path.read_text()))
+        )
+    validators.setdefault("state", []).append(_own("actunode-state"))
+    validators["actunode-inject"] = [_own("actunode-inject")]
+    return validators
+
+
+def _own(name: str) -> Draft202012Validator:
+    return Draft202012Validator(json.loads((SCHEMA_DIR / f"{name}.schema.json").read_text()))
 
 
 def issue(severity: str, rule: str, message: str, path: str = "") -> dict:
@@ -100,10 +108,11 @@ class Validator:
     # --- Single-message checks -------------------------------------------------
 
     def _schema_issues(self, kind: str, payload: dict) -> list[dict]:
-        validator = self._validators.get(kind)
-        if validator is None:
-            return []
-        errors = sorted(validator.iter_errors(payload), key=lambda error: list(error.absolute_path))
+        validators = self._validators.get(kind, [])
+        errors = sorted(
+            (error for validator in validators for error in validator.iter_errors(payload)),
+            key=lambda error: list(error.absolute_path),
+        )
         return [
             issue("error", "schema", error.message[:200], "/" + "/".join(str(p) for p in error.absolute_path))
             for error in errors[:MAX_SCHEMA_ISSUES]
@@ -191,6 +200,17 @@ class Validator:
 
     def _state_issues(self, robot_id: str, payload: dict) -> list[dict]:
         issues = []
+        # The official 2.1.0 schema limits batteryHealth to 0-100 but not batteryCharge ("in %").
+        charge = (payload.get("batteryState") or {}).get("batteryCharge")
+        if isinstance(charge, int | float) and not isinstance(charge, bool) and not 0 <= charge <= 100:
+            issues.append(
+                issue(
+                    "warning",
+                    "value-range",
+                    f"batteryCharge {charge} is outside 0-100 %",
+                    "/batteryState/batteryCharge",
+                )
+            )
         status = (payload.get("actunode") or {}).get("missionStatus")
         if isinstance(status, str):
             previous = self._last_status.get(robot_id)

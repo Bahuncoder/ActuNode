@@ -1,0 +1,15 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:actunode:schema:actunode:state-extension",
+  "title": "ActuNode extension of the VDA 5050 state message",
+  "description": "Checked in addition to the official VDA 5050 state schema. The `actunode` object is ActuNode's own; other systems ignore it.",
+  "type": "object",
+  "properties": {
+    "actunode": {
+      "type": "object",
+      "properties": {
+        "missionStatus": { "enum": ["IDLE", "ACCEPTED", "MOVING", "BLOCKED", "COMPLETED", "FAILED"] }
+      }
+    }
+  }
+}

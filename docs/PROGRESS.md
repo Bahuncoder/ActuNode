@@ -117,19 +117,18 @@ exercised by hand with a real browser and MQTT traffic.
 | Docker stack, end to end | **Automated** (`tests/e2e`, in CI): health, state every second, mission state machine, BLOCKED_PATH, validation clean, record/replay, last will on kill, broker restart recovery, shutdown with open recording | No frontend/browser tests |
 | P-1042 scenario (mission → block → clear → complete) | E2E, several times | |
 | Record → replay | E2E; replay timing matched the recording within ~25 ms at 5× | |
-| Validator | Real recorded messages produce 0 issues; 8 kinds of planted bad messages all flagged | Schemas not compared with official ones |
+| Validator | Official VDA 5050 2.1.0 schemas (D-20); real and generated messages in every mission state pass them; planted bad messages flagged; e2e: all live traffic clean | 3.0 not supported (issue 8) |
 | 10 robots, 6 concurrent missions | E2E screenshot | No load test |
 
 ## Open issues and technical debt
 
-Numbered so they can be referenced from commits. Remove an item only when it is fixed and verified; numbers are never reused (fixed: 1, 2, 4, 9, 10, 11, 13, 14, 16, 18).
+Numbered so they can be referenced from commits. Remove an item only when it is fixed and verified; numbers are never reused (fixed: 1, 2, 4, 7, 9, 10, 11, 13, 14, 16, 18).
 
 | # | Issue | Impact | Plan |
 |---|---|---|---|
 | 3 | CI `compose` job failed on Days 1–5, passes since Day 6. No build-relevant file changed in between; logs need a GitHub login | Probably transient (base image pulls), but unconfirmed | Check the job logs on GitHub Actions |
 | 5 | No collision avoidance or traffic management; robots drive through each other | Unrealistic with many robots | Decide in Week 4 whether to model it |
 | 6 | No real-browser tests (component and logic tests exist since D-19, but run in jsdom, not a browser) | Browser-only issues (layout, WebSocket in a real browser) are caught by hand | Add Playwright tests against the e2e stack |
-| 7 | Schemas are a hand-written subset of VDA 5050 2.x | May accept messages the official schemas reject, or the reverse | Replace with the official 2.1.0 / 3.0.0 schemas (D-15); Week 5 |
 | 8 | ActuNode speaks only VDA 5050 2.1 (`uagv/v2`, `2.1.0`); 3.0 is breaking ([research note](research/VDA5050_3_0.md)) | 3.0 robots or fleet managers cannot be tested; the validator would reject all their messages | Support both side by side, chosen by topic (D-15); Week 5 |
 | 12 | No authentication: Mosquitto allows anonymous clients, the API has no login, no TLS | Since D-18 the lab is reachable only from the same computer by default; with `ACTUNODE_BIND_ADDRESS=0.0.0.0` anyone on the network can command robots | Broker credentials + API auth + TLS before any shared deployment |
 | 15 | From the dev machine, `127.0.0.1:8000` (backend published port) accepts connections but never answers, while the LAN address `192.168.1.151:8000`, port 8080 on loopback, and container-to-container calls all work. Seen from the assistant's sandboxed shell; not yet checked from a normal terminal | API docs at localhost:8000/docs may be unreachable; the UI is unaffected (it uses 8080) | Seen again on 10 Oct for MQTT ports 1883/11883 from the same shell while the LAN address worked, so most likely the assistant's sandbox; on GitHub's CI machine the same e2e tests reach the stack via plain `localhost`. E2E tests take `ACTUNODE_E2E_HOST` for this. Still: run `curl -m 5 localhost:8000/api/health` in a normal terminal; if it hangs there too, investigate Docker's port forwarding |
@@ -141,6 +140,12 @@ Newest first. One entry per work session: what was done, what was learned, what 
 
 ### Sat 10 Oct 2026: working through open issues one by one
 
+- **#7 closed.** Checked first: official 2.1.0 schemas are MIT and set no `additionalProperties`; all of
+  ActuNode's messages (4 recorded, 6 generated incl. IDLE/MOVING/BLOCKED/FAILED) pass them. Vendored the
+  six schemas unchanged (commit 511d01d, license kept), replaced the hand-written subset; own schemas only
+  for the `actunode` extension and inject command. Found: the official schema does **not** bound
+  `batteryCharge` (but does bound `batteryHealth`), so 140 % is now a `value-range` *warning*, not a
+  schema error (D-20). Validation now covers all six topics (was three). Unit and e2e tests pass.
 - **#6 narrowed; #18 found and closed.** Frontend tests: Vitest + React Testing Library, 10 tests for the
   live-data reducer, the defensive readers and components with malformed robot data. Proved the
   regression test works: putting the old unguarded battery read back makes it fail with the original
