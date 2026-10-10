@@ -13,8 +13,8 @@ the status line, the schedule table, the session log, and the open issues.
 | | |
 |---|---|
 | **Calendar** | Week 1 of 8 (Fri 9 Oct – Thu 15 Oct 2026) |
-| **Last updated** | Sat 10 Oct 2026 |
-| **Status** | Ahead on features, behind on verification. Most of the 8-week feature list exists as a first version; Docker has never been run end to end and there are no end-to-end tests in CI. |
+| **Last updated** | Sat 10 Oct 2026 (evening) |
+| **Status** | Ahead on features, catching up on verification. The Docker stack now runs the full definition-of-done scenario end to end; there are still no end-to-end tests in CI. |
 | **Working rule** | Follow the calendar. Being ahead is not a reason to start the next week's features: spare time goes into hardening, verification, documentation and user conversations. |
 
 ## Schedule
@@ -23,8 +23,8 @@ Week 1 started on Friday 9 October 2026 (Day 1). Each week runs Friday to Thursd
 
 | Week | Dates | Plan objective | Plan output | Feature state | Quality state |
 |---|---|---|---|---|---|
-| **1** | 9–15 Oct | VDA 5050 concepts, MQTT topics, AMR state machines | Notes + message schemas + Docker Mosquitto | ✅ Done | 🟡 Docker stack never run end to end |
-| 2 | 16–22 Oct | One fake AMR with battery, pose, state | Robot publishes status every second | ✅ Built early (Day 2) | 🟡 Battery-at-0 bug; only tested against amqtt, not Mosquitto |
+| **1** | 9–15 Oct | VDA 5050 concepts, MQTT topics, AMR state machines | Notes + message schemas + Docker Mosquitto | ✅ Done | ✅ Docker stack verified end to end (10 Oct) |
+| 2 | 16–22 Oct | One fake AMR with battery, pose, state | Robot publishes status every second | ✅ Built early (Day 2) | 🟡 Battery-at-0 bug; no automated E2E tests |
 | 3 | 23–29 Oct | Mission sender + state transitions | Move job from start to destination | ✅ Built early (Day 3) | 🟡 No order updates, no cancel |
 | 4 | 30 Oct – 5 Nov | 5–10 robots + simple warehouse map | Multi-robot screen with location/state | ✅ Built early (Day 4, 10 Oct) | 🟡 Not load-tested beyond 10 robots; no collision avoidance |
 | 5 | 6–12 Nov | Message inspector + validation | Readable message stream + errors | ✅ Built early (Day 4, 10 Oct) | 🟡 Schemas are a hand-written subset; not compared with official ones |
@@ -58,7 +58,8 @@ Plan objective is done. Remaining work for this week is verification and documen
 - [x] Message schemas ([backend/app/schemas](../backend/app/schemas))
 - [x] Mosquitto in Docker Compose (config written)
 - [x] Project documentation: progress, architecture, decisions, changelog
-- [ ] **Run the Docker Compose stack end to end** (Docker is installed; needs docker-group permission first, see open issue 1)
+- [x] **Run the Docker Compose stack end to end**: definition of done passed on 10 Oct (record → mission → block → clear → replay, UI via nginx)
+- [ ] Confirm `curl localhost:8000/api/health` works from a normal terminal (open issue 15)
 - [ ] Confirm the Day 1–5 CI compose failures are understood (open issue 3)
 - [ ] Read the VDA 5050 3.0 release notes and record what changes for us (open issue 9)
 - [ ] Customer discovery: first outreach messages sent (plan: 30 conversations in 60 days)
@@ -85,8 +86,8 @@ exercised by hand with a real browser and MQTT traffic.
 | Backend API | 65 unit/API tests (pytest), run in CI | |
 | Simulator | 32 unit tests (pytest), run in CI | |
 | Frontend | Type check + lint + production build in CI; E2E by headless-Chrome screenshots | No automated UI tests |
-| MQTT flow | E2E against **amqtt** (Python broker) | Never run against **Mosquitto** |
-| Docker images | `docker compose build` passes in CI since Day 6 | `docker compose up` never run |
+| MQTT flow | E2E against amqtt (9 Oct) and **Mosquitto in Docker** (10 Oct) | Not automated |
+| Docker stack | `docker compose build` in CI; `docker compose up` run by hand on 10 Oct: definition-of-done scenario passed, UI and WebSocket through nginx, 0 validation issues on 182 messages | Not automated; host access to port 8000 unconfirmed (issue 15) |
 | P-1042 scenario (mission → block → clear → complete) | E2E, several times | |
 | Record → replay | E2E; replay timing matched the recording within ~25 ms at 5× | |
 | Validator | Real recorded messages produce 0 issues; 8 kinds of planted bad messages all flagged | Schemas not compared with official ones |
@@ -94,12 +95,10 @@ exercised by hand with a real browser and MQTT traffic.
 
 ## Open issues and technical debt
 
-Numbered so they can be referenced from commits. Remove an item only when it is fixed and verified.
+Numbered so they can be referenced from commits. Remove an item only when it is fixed and verified; numbers are never reused (fixed: 1, 2).
 
 | # | Issue | Impact | Plan |
 |---|---|---|---|
-| 1 | Docker Compose stack never run end to end. Docker 29.9.0 + Compose v5.6.0 **are installed** (since 8 Oct; an earlier check wrongly reported them missing), but user `rupert` is not in the `docker` group, so `docker ps` is denied | The "one command" promise is unverified | `sudo usermod -aG docker rupert`, re-login, then run the [DEMO.md](DEMO.md) script; Week 1 |
-| 2 | All E2E testing used amqtt, not Mosquitto | Broker-specific behaviour (retained messages, last will timing) unverified | Mosquitto in CI E2E tests; Week 2 |
 | 3 | CI `compose` job failed on Days 1–5, passes since Day 6. No build-relevant file changed in between; logs need a GitHub login | Probably transient (base image pulls), but unconfirmed | Check the job logs on GitHub Actions |
 | 4 | A robot whose battery reaches 0 % mid-mission stops but keeps reporting `MOVING` and `driving: true` | Wrong state; would also trip the validator's driving rule | Fix with the low-battery failure; Week 2/6 |
 | 5 | No collision avoidance or traffic management; robots drive through each other | Unrealistic with many robots | Decide in Week 4 whether to model it |
@@ -112,10 +111,26 @@ Numbered so they can be referenced from commits. Remove an item only when it is 
 | 12 | No authentication anywhere; Mosquitto allows anonymous clients | Fine for a laptop lab only; must not be exposed on a network | Documented; revisit before any shared deployment |
 | 13 | Robot `state` is published with QoS 0, so it can be dropped; recordings capture only what the backend receives | Rare gaps in recordings | Accept for now; document |
 | 14 | CI warnings: `actions/checkout@v4` uses Node 20 (deprecated); `ubuntu-latest` moves to Ubuntu 26 from 19 Oct 2026 | CI may break after the migration | Update actions; watch the first run after 19 Oct |
+| 15 | From the dev machine, `127.0.0.1:8000` (backend published port) accepts connections but never answers, while the LAN address `192.168.1.151:8000`, port 8080 on loopback, and container-to-container calls all work. Seen from the assistant's sandboxed shell; not yet checked from a normal terminal | API docs at localhost:8000/docs may be unreachable; the UI is unaffected (it uses 8080) | Run `curl -m 5 localhost:8000/api/health` in a normal terminal; if it hangs there too, investigate Docker's port forwarding |
 
 ## Session log
 
 Newest first. One entry per work session: what was done, what was learned, what is next.
+
+### Sat 10 Oct 2026 (evening): first real Docker run
+
+- `rupert` added to the `docker` group. `docker compose up --build`: all four services start;
+  Mosquitto healthy.
+- **Definition of done passed under Docker**: record → P-1042 mission → BLOCKED_PATH → clear →
+  COMPLETED → stop simulator → replay at 10×; UI and live WebSocket through nginx on :8080;
+  182 messages validated, 0 issues. Open issues 1 and 2 closed.
+- Found and fixed: **session files were written as root** (backend container ran as root), so the
+  user could not delete their own recordings. Backend and simulator images now run as a non-root
+  user; Compose runs the backend as the host uid/gid (D-12).
+- Found and fixed: **nginx cached the backend's IP**, so recreating the backend container broke the
+  UI with 502 until nginx restarted. nginx now re-resolves through Docker's DNS; verified by forcing
+  the backend from 172.18.0.4 to 172.18.0.6.
+- Found, not yet understood: host loopback port 8000 hangs from the sandboxed shell (issue 15).
 
 ### Sat 10 Oct 2026 (later): Docker check
 

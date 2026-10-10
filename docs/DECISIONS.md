@@ -115,3 +115,24 @@ schedule.
 verification, tests, documentation and user conversations, not for pulling the next weeks' features
 forward. Track everything in [PROGRESS.md](PROGRESS.md).
 **Consequences.** Slower feature growth, better-understood and better-tested code.
+
+## D-12 · Containers run as non-root; the backend runs as the host user
+10 Oct 2026 · Accepted
+
+**Context.** The first Docker run wrote session files into the mounted `./sessions` directory as
+`root`, so the user could not delete or edit their own recordings without `sudo`. Running services
+as root is also needless privilege.
+**Decision.** Backend and simulator images create and switch to an unprivileged user. Compose runs
+the backend as `${ACTUNODE_UID:-1000}:${ACTUNODE_GID:-1000}` so files it writes belong to the host user.
+nginx (frontend) keeps the official image's default.
+**Consequences.** Users whose uid/gid is not 1000 must set `ACTUNODE_UID` / `ACTUNODE_GID`
+(documented in the README).
+
+## D-13 · nginx resolves the backend per request
+10 Oct 2026 · Accepted
+
+**Context.** nginx resolved `backend` once at start-up. When the backend container was recreated
+with a new IP, every `/api` request failed with 502 until nginx was restarted.
+**Decision.** Use Docker's embedded DNS (`resolver 127.0.0.11 valid=10s`) and a variable in
+`proxy_pass`, so the name is re-resolved.
+**Consequences.** Restarting or rebuilding the backend alone no longer breaks the UI.

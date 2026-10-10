@@ -21,6 +21,9 @@ services:
   backend:
     build: ./backend
     container_name: actunode-backend
+    # Write session files as the host user, not root. Set ACTUNODE_UID/ACTUNODE_GID
+    # if your user id is not 1000 (check with `id -u` and `id -g`).
+    user: "${ACTUNODE_UID:-1000}:${ACTUNODE_GID:-1000}"
     environment:
       ACTUNODE_MQTT_HOST: mosquitto
       ACTUNODE_MQTT_PORT: 1883

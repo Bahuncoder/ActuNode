@@ -4,6 +4,12 @@ What changed, per commit, newest first. Status and plans are in [docs/PROGRESS.m
 
 ## Unreleased
 
+### Fixed
+- Docker: session files were written as `root`; backend and simulator now run as a non-root user,
+  and the backend as the host user (D-12).
+- Docker: recreating the backend container broke the UI with 502 until nginx restarted; nginx now
+  re-resolves the backend through Docker's DNS (D-13).
+
 ### Added
 - Project tracking and documentation: [docs/PROGRESS.md](docs/PROGRESS.md),
   [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md), [docs/DECISIONS.md](docs/DECISIONS.md), this changelog.

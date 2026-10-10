@@ -14,7 +14,7 @@ simulate robots, send missions, inspect messages, inject failures, and record/re
 without needing a physical fleet.
 
 > Status: **early development, week 1 of 8.** Simulate robots, send missions, inject a failure,
-> validate every message, record and replay. Not yet verified end to end with Docker.
+> validate every message, record and replay. Verified end to end with Docker on 10 Oct 2026.
 >
 > **Where the project is:** [docs/PROGRESS.md](docs/PROGRESS.md).
 
@@ -29,6 +29,12 @@ docker compose up --build
 | Lab UI | http://localhost:8080 |
 | API docs | http://localhost:8000/docs |
 | MQTT broker | `localhost:1883` (WebSocket `9001`) |
+
+Your user needs access to Docker (`sudo usermod -aG docker $USER`, then log in again).
+Recordings are written to `./sessions` as your user; if `id -u` / `id -g` are not `1000`, start with
+`ACTUNODE_UID=$(id -u) ACTUNODE_GID=$(id -g) docker compose up --build`.
+
+Stop with `docker compose down`. Replay needs the simulator stopped: `docker compose stop simulator`.
 
 ## Local development (without Docker)
 

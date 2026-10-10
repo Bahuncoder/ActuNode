@@ -37,6 +37,10 @@ Four processes, each its own Docker Compose service:
 | `backend` | [backend/app](../backend/app) | 8000 | REST + WebSocket API, validation, recording, replay |
 | `frontend` | [frontend/src](../frontend/src) | 8080 (nginx) / 5173 (dev) | Lab UI; nginx proxies `/api` to the backend |
 
+Backend and simulator run as an unprivileged user; Compose runs the backend as the host user so
+session files in `./sessions` belong to them (D-12). nginx re-resolves the backend's name per
+request, so the backend can be restarted on its own (D-13).
+
 ## MQTT topics
 
 VDA 5050 layout: `interfaceName/majorVersion/manufacturer/serialNumber/topic`, currently
@@ -163,6 +167,7 @@ helpers in `live.ts` rather than trusting the TypeScript types.
 | `ACTUNODE_SIM_ROBOTS` | simulator | `3` (1–50) |
 | `ACTUNODE_VDA_INTERFACE`, `ACTUNODE_VDA_MAJOR_VERSION` | backend, simulator | `uagv`, `v2` |
 | `ACTUNODE_API_URL` | frontend dev server | `http://localhost:8000` |
+| `ACTUNODE_UID`, `ACTUNODE_GID` | Docker Compose (backend user) | `1000`, `1000` |
 
 ## Tests and CI
 
