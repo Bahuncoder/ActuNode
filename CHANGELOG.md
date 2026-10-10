@@ -17,6 +17,7 @@ What changed, per commit, newest first. Status and plans are in [docs/PROGRESS.m
 - [docs/PLAN.md](docs/PLAN.md) is now the plan reference with calendar dates; status moved to PROGRESS.md.
 
 ### Changed
+- CI: GitHub Actions upgraded to v7 (Node.js 24); runner pinned to `ubuntu-24.04`.
 - Compose: containers no longer have fixed names (`actunode-backend` → `actunode-backend-1`, etc.).
 - CI: the `compose` build job is replaced by the `e2e` job, which builds and runs the stack.
 
