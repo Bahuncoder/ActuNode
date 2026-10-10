@@ -5,6 +5,10 @@ What changed, per commit, newest first. Status and plans are in [docs/PROGRESS.m
 ## Unreleased
 
 ### Fixed
+- Backend hung on shutdown when no MQTT traffic flowed (idle WebSocket handler), so Docker killed it
+  and an open recording lost its end line. Handler now watches for the close; uvicorn has a 5 s
+  graceful-shutdown limit.
+- Simulator crashed on shutdown when the broker had already stopped.
 - Docker: session files were written as `root`; backend and simulator now run as a non-root user,
   and the backend as the host user (D-12).
 - Docker: recreating the backend container broke the UI with 502 until nginx restarted; nginx now

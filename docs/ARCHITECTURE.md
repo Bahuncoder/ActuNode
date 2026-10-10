@@ -157,6 +157,19 @@ One JSON object per line; see [recorder.py](../backend/app/recorder.py).
 Robot data is **untrusted** (any MQTT client can publish anything), so components read it through
 helpers in `live.ts` rather than trusting the TypeScript types.
 
+## Shutdown
+
+Stopping must never lose data, in whatever order Docker stops the services (on a reboot the broker
+can go first).
+
+- **Backend:** the lifespan shutdown stops a running replay, closes an open recording with its `end`
+  line, and disconnects from MQTT. WebSocket handlers watch for the close separately, so an idle feed
+  cannot block shutdown. uvicorn's `--timeout-graceful-shutdown 5` keeps the whole sequence inside
+  Docker's 10 s stop timeout. Covered by `tests/test_shutdown.py` (real uvicorn server).
+- **Simulator:** each robot publishes `OFFLINE` if still connected; if the broker is gone it logs and
+  carries on. A connection that drops without a goodbye is reported by the broker's last will
+  (`CONNECTIONBROKEN`).
+
 ## Configuration
 
 | Variable | Used by | Default |

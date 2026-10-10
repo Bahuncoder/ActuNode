@@ -47,8 +47,16 @@ class RobotConnection:
         self._client.loop_start()
 
     def stop(self) -> None:
-        info = self._publish(self.connection_topic, self.robot.connection_message("OFFLINE"), qos=1, retain=True)
-        info.wait_for_publish(timeout=2)
+        """Say OFFLINE if we still can, then disconnect. Never raises: shutdown must finish
+        even when the broker is already gone (e.g. both containers stopping together)."""
+        if self._client.is_connected():
+            info = self._publish(self.connection_topic, self.robot.connection_message("OFFLINE"), qos=1, retain=True)
+            try:
+                info.wait_for_publish(timeout=2)
+            except (RuntimeError, ValueError) as error:
+                log.warning("%s: could not publish OFFLINE: %s", self.robot.robot_id, error)
+        else:
+            log.warning("%s: not connected at shutdown; OFFLINE not sent", self.robot.robot_id)
         self._client.disconnect()
         self._client.loop_stop()
 

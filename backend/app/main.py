@@ -77,6 +77,9 @@ async def live_feed(websocket: WebSocket):
     """Snapshot on connect, then every MQTT message as it arrives."""
     await websocket.accept()
     queue = hub.subscribe()  # before the snapshot, so nothing falls in between
+    # Watch for the close separately: with no events flowing (e.g. broker down) a handler
+    # that only sends would never notice it, and would block server shutdown.
+    closed = asyncio.create_task(_wait_for_close(websocket))
     try:
         await websocket.send_json({
             "type": "snapshot",
@@ -85,8 +88,20 @@ async def live_feed(websocket: WebSocket):
             "replay": sessions.replayer.status(),
         })
         while True:
-            await websocket.send_json(await queue.get())
+            next_event = asyncio.create_task(queue.get())
+            done, _ = await asyncio.wait({next_event, closed}, return_when=asyncio.FIRST_COMPLETED)
+            if closed in done:
+                next_event.cancel()
+                break
+            await websocket.send_json(next_event.result())
     except (WebSocketDisconnect, RuntimeError):
         pass
     finally:
+        closed.cancel()
         hub.unsubscribe(queue)
+
+
+async def _wait_for_close(websocket: WebSocket) -> None:
+    """Return when the client (or server shutdown) closes the socket; ignore client messages."""
+    while (await websocket.receive())["type"] != "websocket.disconnect":
+        pass

@@ -79,3 +79,4 @@ def test_websocket_sends_snapshot_then_live_messages(client):
 
     assert event["type"] == "message"
     assert event["robot"]["state"]["actunode"]["missionStatus"] == "MOVING"
+

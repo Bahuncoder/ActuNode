@@ -13,7 +13,7 @@ the status line, the schedule table, the session log, and the open issues.
 | | |
 |---|---|
 | **Calendar** | Week 1 of 8 (Fri 9 Oct – Thu 15 Oct 2026) |
-| **Last updated** | Sat 10 Oct 2026 (evening) |
+| **Last updated** | Sat 10 Oct 2026 (late evening) |
 | **Status** | Ahead on features, catching up on verification. The Docker stack now runs the full definition-of-done scenario end to end; there are still no end-to-end tests in CI. |
 | **Working rule** | Follow the calendar. Being ahead is not a reason to start the next week's features: spare time goes into hardening, verification, documentation and user conversations. |
 
@@ -83,10 +83,11 @@ exercised by hand with a real browser and MQTT traffic.
 
 | Area | How it was verified | Gaps |
 |---|---|---|
-| Backend API | 65 unit/API tests (pytest), run in CI | |
-| Simulator | 32 unit tests (pytest), run in CI | |
+| Backend API | 66 unit/API tests (pytest), run in CI, including a shutdown test under a real uvicorn server | |
+| Simulator | 34 unit tests (pytest), run in CI | |
 | Frontend | Type check + lint + production build in CI; E2E by headless-Chrome screenshots | No automated UI tests |
 | MQTT flow | E2E against amqtt (9 Oct) and **Mosquitto in Docker** (10 Oct) | Not automated |
+| Shutdown | Reboot reproduced by stopping the broker first, then simulator and backend: both exit 0 in ~1 s, open recording closed with its end line; normal stop leaves all robots OFFLINE | Not automated in Docker |
 | Docker stack | `docker compose build` in CI; `docker compose up` run by hand on 10 Oct: definition-of-done scenario passed, UI and WebSocket through nginx, 0 validation issues on 182 messages | Not automated; host access to port 8000 unconfirmed (issue 15) |
 | P-1042 scenario (mission → block → clear → complete) | E2E, several times | |
 | Record → replay | E2E; replay timing matched the recording within ~25 ms at 5× | |
@@ -112,10 +113,28 @@ Numbered so they can be referenced from commits. Remove an item only when it is 
 | 13 | Robot `state` is published with QoS 0, so it can be dropped; recordings capture only what the backend receives | Rare gaps in recordings | Accept for now; document |
 | 14 | CI warnings: `actions/checkout@v4` uses Node 20 (deprecated); `ubuntu-latest` moves to Ubuntu 26 from 19 Oct 2026 | CI may break after the migration | Update actions; watch the first run after 19 Oct |
 | 15 | From the dev machine, `127.0.0.1:8000` (backend published port) accepts connections but never answers, while the LAN address `192.168.1.151:8000`, port 8080 on loopback, and container-to-container calls all work. Seen from the assistant's sandboxed shell; not yet checked from a normal terminal | API docs at localhost:8000/docs may be unreachable; the UI is unaffected (it uses 8080) | Run `curl -m 5 localhost:8000/api/health` in a normal terminal; if it hangs there too, investigate Docker's port forwarding |
+| 16 | No linter or formatter configured for Python (no agreed line length; the IDE flags E501 against the default 79) | Inconsistent style creeps in | Add `ruff` with the project's line length to CI; Week 1/2 |
 
 ## Session log
 
 Newest first. One entry per work session: what was done, what was learned, what is next.
+
+### Sat 10 Oct 2026 (late evening): laptop restart exposed two shutdown bugs
+
+- The laptop restarted (13:25) while the stack ran. Containers stopped in the wrong order (broker
+  first) and two exit codes were wrong.
+- Found and fixed: **simulator crashed on shutdown** (exit 1) when the broker was already gone:
+  publishing OFFLINE raised `RuntimeError`. Now skips/logs it; the broker's last will covers a
+  dropped connection. Tests added.
+- Found and fixed: **backend hung on shutdown and was killed** (exit 137) when no MQTT traffic
+  flowed: the WebSocket handler only noticed a closed socket when sending. Its shutdown cleanup
+  never ran, so **an open recording would have lost its end line**. The handler now also waits for
+  the close; uvicorn gets a 5 s graceful-shutdown limit as a backstop. Reproduced first with a
+  failing test under a real uvicorn server (FastAPI's TestClient hid the bug).
+- Verified in Docker with the reboot order (broker first): simulator and backend exit 0 in ~1 s;
+  recording closed with its end line. Normal stop: all robots retained OFFLINE.
+- Port 8000 still hangs from the assistant's shell in a fresh session (issue 15 stays open).
+- New issue 16: no Python linter/formatter configured.
 
 ### Sat 10 Oct 2026 (evening): first real Docker run
 
