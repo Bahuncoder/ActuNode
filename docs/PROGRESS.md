@@ -50,6 +50,16 @@ the 8-week plan; the 8-week plan is the full roadmap. All of Days 1–7 were bui
 | Days 6–7 | Record to JSONL, replay | Week 7 |
 | 10 Oct | 10 robots; validator, schemas, VDA 5050 notes | Weeks 4, 5, 1 (rest) |
 
+## Week 2 (16–22 Oct): hardening, started early on 10 Oct
+
+Plan objective: one fake AMR with battery, pose and state; status every second. The feature exists
+since Day 2; this week makes it verified and correct (allowed early under D-11: no new features).
+
+- [x] End-to-end tests against the real Docker stack, in CI (D-16); stable over 3 consecutive runs
+- [x] Objective verified automatically: state every ~1 s, consecutive `headerId`s
+- [x] Reconnect behaviour: robots and backend recover after a broker restart; killed simulator → CONNECTIONBROKEN
+- [ ] Fix battery at 0 % mid-mission (open issue 4)
+
 ## This week (Week 1, 9–15 Oct)
 
 Plan objective is done. Remaining work for this week is verification and documentation, not features.
@@ -102,9 +112,9 @@ exercised by hand with a real browser and MQTT traffic.
 | Simulator | 34 unit tests (pytest), run in CI | |
 | Python style | `ruff check` + `ruff format --check` in CI (backend, simulator) | |
 | Frontend | Type check + lint + production build in CI; E2E by headless-Chrome screenshots | No automated UI tests |
-| MQTT flow | E2E against amqtt (9 Oct) and **Mosquitto in Docker** (10 Oct) | Not automated |
-| Shutdown | Reboot reproduced by stopping the broker first, then simulator and backend: both exit 0 in ~1 s, open recording closed with its end line; normal stop leaves all robots OFFLINE | Not automated in Docker |
-| Docker stack | `docker compose build` in CI; `docker compose up` run by hand on 10 Oct: definition-of-done scenario passed, UI and WebSocket through nginx, 0 validation issues on 182 messages | Not automated; host access to port 8000 unconfirmed (issue 15) |
+| MQTT flow | Automated against Mosquitto in Docker (`tests/e2e`) | |
+| Shutdown | Automated in `tests/e2e` (broker first, then backend; recording gets its end line) and `backend/tests/test_shutdown.py` | |
+| Docker stack, end to end | **Automated** (`tests/e2e`, in CI): health, state every second, mission state machine, BLOCKED_PATH, validation clean, record/replay, last will on kill, broker restart recovery, shutdown with open recording | No frontend/browser tests |
 | P-1042 scenario (mission → block → clear → complete) | E2E, several times | |
 | Record → replay | E2E; replay timing matched the recording within ~25 ms at 5× | |
 | Validator | Real recorded messages produce 0 issues; 8 kinds of planted bad messages all flagged | Schemas not compared with official ones |
@@ -119,7 +129,7 @@ Numbered so they can be referenced from commits. Remove an item only when it is 
 | 3 | CI `compose` job failed on Days 1–5, passes since Day 6. No build-relevant file changed in between; logs need a GitHub login | Probably transient (base image pulls), but unconfirmed | Check the job logs on GitHub Actions |
 | 4 | A robot whose battery reaches 0 % mid-mission stops but keeps reporting `MOVING` and `driving: true` | Wrong state; would also trip the validator's driving rule | Fix with the low-battery failure; Week 2/6 |
 | 5 | No collision avoidance or traffic management; robots drive through each other | Unrealistic with many robots | Decide in Week 4 whether to model it |
-| 6 | No automated frontend tests; no end-to-end tests in CI | Regressions in UI or MQTT flow are caught by hand only | Week 2 |
+| 6 | No automated frontend (browser) tests | UI regressions are caught by hand only | End-to-end tests now cover API and MQTT (D-16); add browser tests later |
 | 7 | Schemas are a hand-written subset of VDA 5050 2.x | May accept messages the official schemas reject, or the reverse | Replace with the official 2.1.0 / 3.0.0 schemas (D-15); Week 5 |
 | 8 | ActuNode speaks only VDA 5050 2.1 (`uagv/v2`, `2.1.0`); 3.0 is breaking ([research note](research/VDA5050_3_0.md)) | 3.0 robots or fleet managers cannot be tested; the validator would reject all their messages | Support both side by side, chosen by topic (D-15); Week 5 |
 | 10 | Backend keeps `headerId` counters in memory; after a restart its order `headerId`s start at 1 again | Validator warns `header-id` on the next order per robot | Low; persist counters or accept |
@@ -127,12 +137,24 @@ Numbered so they can be referenced from commits. Remove an item only when it is 
 | 12 | No authentication anywhere; Mosquitto allows anonymous clients | Fine for a laptop lab only; must not be exposed on a network | Documented; revisit before any shared deployment |
 | 13 | Robot `state` is published with QoS 0, so it can be dropped; recordings capture only what the backend receives | Rare gaps in recordings | Accept for now; document |
 | 14 | CI warnings: `actions/checkout@v4` uses Node 20 (deprecated); `ubuntu-latest` moves to Ubuntu 26 from 19 Oct 2026 | CI may break after the migration | Update actions; watch the first run after 19 Oct |
-| 15 | From the dev machine, `127.0.0.1:8000` (backend published port) accepts connections but never answers, while the LAN address `192.168.1.151:8000`, port 8080 on loopback, and container-to-container calls all work. Seen from the assistant's sandboxed shell; not yet checked from a normal terminal | API docs at localhost:8000/docs may be unreachable; the UI is unaffected (it uses 8080) | Run `curl -m 5 localhost:8000/api/health` in a normal terminal; if it hangs there too, investigate Docker's port forwarding |
+| 15 | From the dev machine, `127.0.0.1:8000` (backend published port) accepts connections but never answers, while the LAN address `192.168.1.151:8000`, port 8080 on loopback, and container-to-container calls all work. Seen from the assistant's sandboxed shell; not yet checked from a normal terminal | API docs at localhost:8000/docs may be unreachable; the UI is unaffected (it uses 8080) | Seen again on 10 Oct for MQTT ports 1883/11883 from the same shell while the LAN address worked, so most likely the assistant's sandbox. E2E tests take `ACTUNODE_E2E_HOST` for this. Still: run `curl -m 5 localhost:8000/api/health` in a normal terminal; if it hangs there too, investigate Docker's port forwarding |
 | 17 | Official VDA 5050 `json_schemas/order.schema` at tag 3.0.0 is invalid JSON (trailing comma, line 315) | Loading the official schemas fails until fixed locally | Apply a documented local fix when vendoring (Week 5); report upstream (needs your GitHub account) |
 
 ## Session log
 
 Newest first. One entry per work session: what was done, what was learned, what is next.
+
+### Sat 10 Oct 2026 (late night): Week 2 started early — end-to-end tests
+
+- `tests/e2e`: 10 tests against an isolated copy of the real Docker stack; in CI as the `e2e` job (D-16).
+- Compose: health checks, configurable host ports and sessions directory, no fixed container names.
+- Three test-design bugs found and fixed while making the suite trustworthy: a timing window that
+  miscounted messages; a failing test that left the simulator stopped for the next tests; and a
+  "robots are live" check fooled by a replay that had just ended (Docker's event log showed the
+  simulator was killed in the same second it was started, before it ever connected).
+- Product verified: last will arrives within seconds of a SIGKILL; backend and robots recover after a
+  broker restart; recordings close on shutdown.
+- MQTT on loopback ports hung from the assistant's shell too (issue 15 updated); the LAN address works.
 
 ### Sat 10 Oct 2026 (night): customer discovery kit
 

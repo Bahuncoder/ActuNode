@@ -1,0 +1,178 @@
+"""End-to-end tests against the real Docker Compose stack (Mosquitto, backend, simulator, nginx).
+
+Each run starts its own isolated copy (project "actunode-e2e", its own ports and a temporary
+sessions directory) and removes it afterwards, so a stack you are using is never touched.
+
+    pip install -r tests/e2e/requirements.txt
+    pytest tests/e2e            # ACTUNODE_E2E_KEEP=1 leaves the stack running for debugging
+
+ACTUNODE_E2E_HOST sets the address used to reach the published ports (default "localhost"). Use the
+machine's LAN address in sandboxes where loopback connections to Docker ports hang (PROGRESS issue 15).
+"""
+
+import json
+import os
+import pathlib
+import subprocess
+import threading
+import time
+from contextlib import contextmanager
+from datetime import UTC, datetime, timedelta
+
+import httpx
+import paho.mqtt.client as mqtt
+import pytest
+
+ROOT = pathlib.Path(__file__).resolve().parents[2]
+PROJECT = "actunode-e2e"
+HOST = os.environ.get("ACTUNODE_E2E_HOST", "localhost")
+UI_PORT = 18080
+MQTT_PORT = 11883
+ROBOTS = ("robot_01", "robot_02", "robot_03")
+STATE_TOPIC = "uagv/v2/ActuNode/{}/state"
+
+
+class Stack:
+    def __init__(self, env: dict, sessions_dir: pathlib.Path):
+        self.env = env
+        self.sessions_dir = sessions_dir
+        self.api = httpx.Client(base_url=f"http://{HOST}:{UI_PORT}/api", timeout=10)
+
+    # --- Docker -----------------------------------------------------------------
+
+    def compose(self, *args: str, timeout: float = 600) -> str:
+        print(f"[{datetime.now(UTC):%H:%M:%S.%f}] docker compose {' '.join(args)}", flush=True)
+        result = subprocess.run(
+            ["docker", "compose", "-p", PROJECT, *args],
+            cwd=ROOT,
+            env=self.env,
+            capture_output=True,
+            text=True,
+            timeout=timeout,
+        )
+        if result.returncode != 0:
+            raise RuntimeError(f"docker compose {' '.join(args)} failed:\n{result.stdout}\n{result.stderr}")
+        return result.stdout
+
+    # --- API --------------------------------------------------------------------
+
+    def robots(self) -> dict[str, dict]:
+        return {robot["robotId"]: robot for robot in self.api.get("/robots").json()}
+
+    def status(self, robot_id: str) -> str | None:
+        state = (self.robots().get(robot_id) or {}).get("state") or {}
+        return state.get("actunode", {}).get("missionStatus")
+
+    def position(self, robot_id: str) -> tuple[float, float]:
+        position = self.robots()[robot_id]["state"]["agvPosition"]
+        return position["x"], position["y"]
+
+    def post(self, path: str, body: dict | None = None, expect: int | None = None) -> httpx.Response:
+        response = self.api.post(path, json=body or {})
+        if expect is not None:
+            assert response.status_code == expect, f"POST {path}: {response.status_code} {response.text}"
+        return response
+
+    def all_online(self) -> bool:
+        """ONLINE *and* a state message in the last 3 s. The connection flag alone is not proof:
+        a replay republishes recorded ONLINE messages for robots that are not running (D-7)."""
+        robots = self.robots()
+        now = datetime.now(UTC)
+        for robot_id in ROBOTS:
+            robot = robots.get(robot_id) or {}
+            last_state = robot.get("lastStateAt")
+            if robot.get("connection") != "ONLINE" or not last_state:
+                return False
+            if now - datetime.fromisoformat(last_state) > timedelta(seconds=3):
+                return False
+        return True
+
+    def live_since(self, since: datetime) -> bool:
+        """Every robot ONLINE with a state message received after `since`."""
+        robots = self.robots()
+        for robot_id in ROBOTS:
+            robot = robots.get(robot_id) or {}
+            last_state = robot.get("lastStateAt")
+            if robot.get("connection") != "ONLINE" or not last_state or datetime.fromisoformat(last_state) <= since:
+                return False
+        return True
+
+    def start_and_wait_live(self, *compose_args: str, timeout: float = 60) -> None:
+        """Run a compose command that (re)starts services, then wait for robot state sent *after* it.
+        Recency alone is not enough: a replay that just ended leaves fresh-looking ONLINE robots."""
+        since = datetime.now(UTC)
+        self.compose(*compose_args)
+        wait_for(lambda: self.live_since(since), timeout, f"robots live after: docker compose {' '.join(compose_args)}")
+
+    # --- MQTT -------------------------------------------------------------------
+
+    @contextmanager
+    def watch(self, topic: str):
+        """Collect (monotonic time, topic, payload dict or None, retained) while the block runs."""
+        messages: list[tuple] = []
+        ready = threading.Event()
+        client = mqtt.Client(callback_api_version=mqtt.CallbackAPIVersion.VERSION2)
+
+        def on_connect(c, userdata, flags, reason_code, properties):
+            c.subscribe(topic, qos=1)
+
+        def on_subscribe(*args):
+            ready.set()
+
+        def on_message(c, userdata, message):
+            try:
+                payload = json.loads(message.payload)
+            except ValueError:
+                payload = None
+            messages.append((time.monotonic(), message.topic, payload, message.retain))
+
+        client.on_connect, client.on_subscribe, client.on_message = on_connect, on_subscribe, on_message
+        client.connect(HOST, MQTT_PORT)
+        client.loop_start()
+        assert ready.wait(10), "MQTT subscription did not complete"
+        try:
+            yield messages
+        finally:
+            client.loop_stop()
+            client.disconnect()
+
+
+def wait_for(predicate, timeout: float, what: str, interval: float = 0.25):
+    deadline = time.monotonic() + timeout
+    last_error = None
+    while time.monotonic() < deadline:
+        try:
+            value = predicate()
+            if value:
+                return value
+        except (httpx.HTTPError, KeyError, TypeError) as error:
+            last_error = error
+        time.sleep(interval)
+    detail = f" (last error: {last_error})" if last_error else ""
+    raise AssertionError(f"timed out after {timeout:.0f} s waiting for: {what}{detail}")
+
+
+@pytest.fixture(scope="session")
+def stack(tmp_path_factory):
+    sessions_dir = tmp_path_factory.mktemp("sessions")
+    env = {
+        **os.environ,
+        "ACTUNODE_UI_HOST_PORT": str(UI_PORT),
+        "ACTUNODE_API_HOST_PORT": "18000",
+        "ACTUNODE_MQTT_HOST_PORT": str(MQTT_PORT),
+        "ACTUNODE_MQTT_WS_HOST_PORT": "19001",
+        "ACTUNODE_SESSIONS_HOST_DIR": str(sessions_dir),
+        "ACTUNODE_UID": str(os.getuid()),
+        "ACTUNODE_GID": str(os.getgid()),
+        "ACTUNODE_SIM_ROBOTS": str(len(ROBOTS)),
+    }
+    stack = Stack(env, sessions_dir)
+    stack.compose("up", "-d", "--build", "--wait", "--wait-timeout", "180")
+    try:
+        wait_for(stack.all_online, 30, "all robots ONLINE")
+        yield stack
+    finally:
+        logs = ROOT / "tests" / "e2e" / "last-run.log"
+        logs.write_text(stack.compose("logs", "--no-color", "--timestamps"))
+        if not os.environ.get("ACTUNODE_E2E_KEEP"):
+            stack.compose("down", "-v", "--remove-orphans")

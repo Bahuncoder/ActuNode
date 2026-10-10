@@ -5,12 +5,20 @@ What changed, per commit, newest first. Status and plans are in [docs/PROGRESS.m
 ## Unreleased
 
 ### Added
+- End-to-end tests (`tests/e2e`) against the real Docker stack, run in CI (D-16). They check
+  state every second, the mission state machine, BLOCKED_PATH, validation, record/replay,
+  last will on a killed simulator, recovery after a broker restart, and shutdown with an open recording.
+- Compose: health checks for backend and frontend; configurable host ports and sessions directory.
 - Customer discovery kit: [outreach messages](docs/discovery/OUTREACH.md) and [interview guide](docs/discovery/INTERVIEW_GUIDE.md).
 - [docs/research/VDA5050_3_0.md](docs/research/VDA5050_3_0.md): VDA 5050 3.0 vs 2.1 comparison and plan (D-15).
 - ruff lint and format for Python (`ruff.toml`, 120 columns) and a `lint` job in CI (D-14).
 - Project tracking and documentation: [docs/PROGRESS.md](docs/PROGRESS.md),
   [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md), [docs/DECISIONS.md](docs/DECISIONS.md), this changelog.
 - [docs/PLAN.md](docs/PLAN.md) is now the plan reference with calendar dates; status moved to PROGRESS.md.
+
+### Changed
+- Compose: containers no longer have fixed names (`actunode-backend` → `actunode-backend-1`, etc.).
+- CI: the `compose` build job is replaced by the `e2e` job, which builds and runs the stack.
 
 ### Fixed
 - HTTP errors raised from recorder/replay errors now keep the original error as their cause.

@@ -55,8 +55,19 @@ jobs:
       - run: npm run lint
       - run: npm run build
 
-  compose:
+  e2e:
+    # Builds and runs the real Docker Compose stack (Mosquitto, backend, simulator, nginx).
     runs-on: ubuntu-latest
+    needs: [lint, backend, simulator, frontend]
     steps:
       - uses: actions/checkout@v4
-      - run: docker compose build
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: pip install -r tests/e2e/requirements.txt
+      - run: pytest tests/e2e -v
+      - if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: e2e-container-logs
+          path: tests/e2e/last-run.log

@@ -64,6 +64,11 @@ backend/.venv/bin/ruff check . && backend/.venv/bin/ruff format --check .
 # Tests
 cd backend && .venv/bin/pytest
 simulator/.venv/bin/pytest simulator   # from repo root
+
+# End-to-end tests: start an isolated copy of the Docker stack (ports 18080/11883),
+# drive it through the API and MQTT, then remove it (~2 minutes)
+python3 -m venv tests/e2e/.venv && tests/e2e/.venv/bin/pip install -r tests/e2e/requirements.txt
+tests/e2e/.venv/bin/pytest tests/e2e
 ```
 
 ## Architecture

@@ -181,6 +181,10 @@ can go first).
 | `ACTUNODE_VDA_INTERFACE`, `ACTUNODE_VDA_MAJOR_VERSION` | backend, simulator | `uagv`, `v2` |
 | `ACTUNODE_API_URL` | frontend dev server | `http://localhost:8000` |
 | `ACTUNODE_UID`, `ACTUNODE_GID` | Docker Compose (backend user) | `1000`, `1000` |
+| `ACTUNODE_UI_HOST_PORT`, `ACTUNODE_API_HOST_PORT` | Docker Compose (host ports) | `8080`, `8000` |
+| `ACTUNODE_MQTT_HOST_PORT`, `ACTUNODE_MQTT_WS_HOST_PORT` | Docker Compose (host ports) | `1883`, `9001` |
+| `ACTUNODE_SESSIONS_HOST_DIR` | Docker Compose (recordings on the host) | `./sessions` |
+| `ACTUNODE_E2E_HOST` | end-to-end tests | `localhost` |
 
 ## Tests and CI
 
@@ -190,5 +194,4 @@ can go first).
 | Backend | `cd backend && .venv/bin/pytest` | ✅ |
 | Simulator | `simulator/.venv/bin/pytest simulator` | ✅ |
 | Frontend | `cd frontend && npm run lint && npm run build` | ✅ |
-| Docker images | `docker compose build` | ✅ |
-| End to end | manual (see [PROGRESS.md](PROGRESS.md) verification status) | ⬜ |
+| End to end | `pytest tests/e2e` (needs Docker; starts its own isolated stack, D-16) | ✅ |

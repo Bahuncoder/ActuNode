@@ -161,3 +161,18 @@ make the backend and UI read both; add a simulator `--vda-version` option. Zones
 the `responses` topic are out of scope until users ask. Supersedes the "2.x for now" part of D-2.
 **Consequences.** Two schema sets to maintain; one version-aware reading layer in backend and UI.
 The official 3.0 `order.schema` needs a one-character local fix until upstream fixes it.
+
+## D-16 · End-to-end tests run the real Docker Compose stack, isolated per run
+10 Oct 2026 · Accepted
+
+**Context.** Behaviour across processes (MQTT timing, last will, reconnects, shutdown order, nginx)
+was verified only by hand, and several real bugs appeared only in Docker. Unit tests cannot see them.
+**Decision.** `tests/e2e` starts the stack exactly as users run it (`docker compose up --build --wait`)
+under its own project name, host ports and temporary sessions directory, drives it through the HTTP
+API and MQTT, and removes it afterwards. Compose host ports and the sessions directory became
+configurable for this; fixed container names were dropped so two copies can coexist. Runs in CI on
+every push. After restarting a service, tests wait for robot state sent *after* the restart, never
+for recent-looking state (a replay that just ended produces exactly that).
+**Consequences.** CI takes ~2 minutes longer; a developer's own stack and recordings are never
+touched by a test run. `ACTUNODE_E2E_HOST` exists for environments where loopback to Docker ports
+misbehaves (issue 15).

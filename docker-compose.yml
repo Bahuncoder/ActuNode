@@ -2,14 +2,16 @@
 # UI:      http://localhost:8080
 # API:     http://localhost:8000/docs
 # MQTT:    localhost:1883 (ws: 9001)
+#
+# Host ports and the sessions directory can be overridden with environment variables
+# (the end-to-end tests use this to run a second, isolated copy). Defaults are shown below.
 
 services:
   mosquitto:
     image: eclipse-mosquitto:2
-    container_name: actunode-mosquitto
     ports:
-      - "1883:1883"
-      - "9001:9001"
+      - "${ACTUNODE_MQTT_HOST_PORT:-1883}:1883"
+      - "${ACTUNODE_MQTT_WS_HOST_PORT:-9001}:9001"
     volumes:
       - ./mosquitto/config/mosquitto.conf:/mosquitto/config/mosquitto.conf:ro
     healthcheck:
@@ -20,7 +22,6 @@ services:
 
   backend:
     build: ./backend
-    container_name: actunode-backend
     # Write session files as the host user, not root. Set ACTUNODE_UID/ACTUNODE_GID
     # if your user id is not 1000 (check with `id -u` and `id -g`).
     user: "${ACTUNODE_UID:-1000}:${ACTUNODE_GID:-1000}"
@@ -29,9 +30,14 @@ services:
       ACTUNODE_MQTT_PORT: 1883
       ACTUNODE_SESSIONS_DIR: /app/sessions
     ports:
-      - "8000:8000"
+      - "${ACTUNODE_API_HOST_PORT:-8000}:8000"
     volumes:
-      - ./sessions:/app/sessions
+      - ${ACTUNODE_SESSIONS_HOST_DIR:-./sessions}:/app/sessions
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/api/health', timeout=2)"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
     depends_on:
       mosquitto:
         condition: service_healthy
@@ -40,19 +46,23 @@ services:
     build:
       context: .
       dockerfile: simulator/Dockerfile
-    container_name: actunode-simulator
     environment:
       ACTUNODE_MQTT_HOST: mosquitto
       ACTUNODE_MQTT_PORT: 1883
-      ACTUNODE_SIM_ROBOTS: 3
+      ACTUNODE_SIM_ROBOTS: ${ACTUNODE_SIM_ROBOTS:-3}
     depends_on:
       mosquitto:
         condition: service_healthy
 
   frontend:
     build: ./frontend
-    container_name: actunode-frontend
     ports:
-      - "8080:80"
+      - "${ACTUNODE_UI_HOST_PORT:-8080}:80"
+    healthcheck:
+      test: ["CMD", "wget", "-qO", "/dev/null", "http://127.0.0.1/"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
     depends_on:
-      - backend
+      backend:
+        condition: service_healthy

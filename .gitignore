@@ -19,3 +19,4 @@ docs/company/
 .vscode/
 .idea/
 .DS_Store
+tests/e2e/last-run.log
