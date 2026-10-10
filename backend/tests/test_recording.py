@@ -190,3 +190,19 @@ def test_summary_of_complete_session_reads_only_header_and_end(tmp_path, monkeyp
     assert summary["complete"] is True
     assert summary["endedAt"] == "2026-10-09T12:10:00Z"
     assert len(calls) <= 3, f"parsed {len(calls)} lines for a complete file"
+
+
+def test_delete_session(client):
+    session_id = client.post("/api/recording/start", json={"name": "trash"}).json()["sessionId"]
+    assert client.delete(f"/api/sessions/{session_id}").status_code == 409  # still recording
+    client.post("/api/recording/stop")
+
+    assert client.delete(f"/api/sessions/{session_id}").status_code == 204
+
+    assert session_id not in [s["sessionId"] for s in client.get("/api/sessions").json()]
+    assert client.delete(f"/api/sessions/{session_id}").status_code == 404
+
+
+@pytest.mark.parametrize("session_id", ["..%2F..%2Fetc%2Fpasswd", "nope"])
+def test_delete_rejects_unknown_and_unsafe_ids(client, session_id):
+    assert client.delete(f"/api/sessions/{session_id}").status_code == 404

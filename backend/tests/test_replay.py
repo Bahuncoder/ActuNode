@@ -249,3 +249,18 @@ def test_stop_without_replay_is_refused(client, published):
     if sessions.replayer.running:
         sessions.replayer.stop()
     assert client.post("/api/replay/stop").status_code == 409
+
+
+def test_session_cannot_be_deleted_while_it_is_replayed(client, published, tmp_path):
+    long = [
+        {"t": 0.0, "topic": "uagv/v2/ActuNode/rp_08/state", "payload": {}},
+        {"t": 30.0, "topic": "uagv/v2/ActuNode/rp_08/state", "payload": {}},
+    ]
+    write_session(tmp_path / "20261009-120000_busy.jsonl", long, robots=[])
+    client.post("/api/sessions/20261009-120000_busy/replay")
+
+    response = client.delete("/api/sessions/20261009-120000_busy")
+    client.post("/api/replay/stop")
+
+    assert response.status_code == 409
+    assert "replayed" in response.json()["detail"]

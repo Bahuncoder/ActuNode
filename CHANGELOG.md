@@ -5,6 +5,9 @@ What changed, per commit, newest first. Status and plans are in [docs/PROGRESS.m
 ## Unreleased
 
 ### Added
+- Sessions: size limit (`ACTUNODE_MAX_SESSION_MB`, default 200), end record `reason`, delete
+  (`DELETE /api/sessions/{id}` and a UI button), size shown while recording, auto-stop notice and
+  SIZE LIMIT / WRITE ERROR badges in the UI.
 - End-to-end tests (`tests/e2e`) against the real Docker stack, run in CI (D-16). They check
   state every second, the mission state machine, BLOCKED_PATH, validation, record/replay,
   last will on a killed simulator, recovery after a broker restart, and shutdown with an open recording.
@@ -22,6 +25,11 @@ What changed, per commit, newest first. Status and plans are in [docs/PROGRESS.m
 - CI: the `compose` build job is replaced by the `e2e` job, which builds and runs the stack.
 
 ### Fixed
+- A write error (e.g. disk full) during recording logged a traceback for every message and silently
+  dropped messages; recording now stops once with the reason.
+- Replay loaded the whole session into memory twice (90 MB peak for a 25 MB file); it now streams
+  (0.03 MB).
+- Listing sessions parsed every line of every file; it now reads the first and last line.
 - Security: all ports were published on every network interface, so anyone on the same network could
   connect to the anonymous broker and the API. Ports are now published on 127.0.0.1 by default
   (`ACTUNODE_BIND_ADDRESS` to change, D-18).

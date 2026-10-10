@@ -1,13 +1,14 @@
 import { useEffect, useState } from 'react'
 import {
-  fetchRecordingCount,
+  deleteSession,
+  fetchRecording,
   fetchSessions,
   startRecording,
   startReplay,
   stopRecording,
   type SessionSummary,
 } from './api'
-import type { RecordingStatus, ReplayStatus } from './live'
+import type { RecordingStatus, RecordingStopped, ReplayStatus } from './live'
 
 const POLL_MS = 1000
 const SPEEDS = [1, 2, 5, 10]
@@ -22,6 +23,12 @@ function formatSize(bytes: number): string {
   return bytes < 1024 ? `${bytes} B` : bytes < 1024 ** 2 ? `${(bytes / 1024).toFixed(1)} KB` : `${(bytes / 1024 ** 2).toFixed(1)} MB`
 }
 
+function stopExplanation(reason: string): string {
+  if (reason === 'sizeLimit') return 'it reached the size limit (ACTUNODE_MAX_SESSION_MB)'
+  if (reason.startsWith('writeError')) return `the file could not be written (${reason.slice('writeError: '.length)})`
+  return reason
+}
+
 function sessionDuration(session: SessionSummary): string {
   if (!session.startedAt || !session.endedAt) return '—'
   return formatDuration((Date.parse(session.endedAt) - Date.parse(session.startedAt)) / 1000)
@@ -29,32 +36,35 @@ function sessionDuration(session: SessionSummary): string {
 
 export default function RecorderPanel({
   recording,
+  recordingStopped,
   replay,
 }: {
   recording: RecordingStatus | null
+  recordingStopped: RecordingStopped | null
   replay: ReplayStatus | null
 }) {
   const [name, setName] = useState('')
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [sessions, setSessions] = useState<SessionSummary[]>([])
-  const [count, setCount] = useState<number | null>(null)
+  const [live, setLive] = useState<RecordingStatus | null>(null)
   const [now, setNow] = useState(() => Date.now())
   const [speed, setSpeed] = useState(1)
   const [includeCommands, setIncludeCommands] = useState(false)
 
   // Refresh the list whenever recording starts or stops (from this tab or another).
   const recordingId = recording?.sessionId ?? null
+  const [listVersion, setListVersion] = useState(0)
   useEffect(() => {
     fetchSessions().then(setSessions).catch(() => {})
-  }, [recordingId])
+  }, [recordingId, listVersion])
 
   // Live counter while recording.
   useEffect(() => {
     if (!recordingId) return
     const timer = setInterval(() => {
       setNow(Date.now())
-      fetchRecordingCount().then(setCount).catch(() => {})
+      fetchRecording().then(setLive).catch(() => {})
     }, POLL_MS)
     return () => clearInterval(timer)
   }, [recordingId])
@@ -67,7 +77,7 @@ export default function RecorderPanel({
         await stopRecording()
       } else {
         await startRecording(name)
-        setCount(0)
+        setLive(null)
       }
     } catch (err) {
       setError((err as Error).message)
@@ -80,6 +90,17 @@ export default function RecorderPanel({
     setError(null)
     try {
       await startReplay(sessionId, speed, includeCommands)
+    } catch (err) {
+      setError((err as Error).message)
+    }
+  }
+
+  async function removeSession(sessionId: string) {
+    if (!window.confirm(`Delete session ${sessionId}? This cannot be undone.`)) return
+    setError(null)
+    try {
+      await deleteSession(sessionId)
+      setListVersion((version) => version + 1)
     } catch (err) {
       setError((err as Error).message)
     }
@@ -113,7 +134,8 @@ export default function RecorderPanel({
         {recording && (
           <span className="recording-indicator mono">
             <span className="rec-dot" /> {recording.sessionId} · {formatDuration(elapsed)} ·{' '}
-            {count ?? recording.messageCount} messages
+            {live?.messageCount ?? recording.messageCount} messages · {formatSize(live?.sizeBytes ?? 0)}
+            {recording.maxBytes ? ` of ${formatSize(recording.maxBytes)}` : ''}
           </span>
         )}
       </div>
@@ -136,6 +158,11 @@ export default function RecorderPanel({
         </label>
       </div>
 
+      {recordingStopped && !recording && (
+        <p className="result mono error">
+          Recording {recordingStopped.sessionId} stopped automatically: {stopExplanation(recordingStopped.reason)}.
+        </p>
+      )}
       {error && <p className="result mono error">{error}</p>}
 
       <div className="table-scroll">
@@ -163,6 +190,16 @@ export default function RecorderPanel({
                 <td className="mono">
                   {session.sessionId}
                   {session.recording && <span className="badge down session-badge">REC</span>}
+                  {session.reason === 'sizeLimit' && (
+                    <span className="badge down session-badge" title="Stopped at the size limit">
+                      SIZE LIMIT
+                    </span>
+                  )}
+                  {session.reason?.startsWith('writeError') && (
+                    <span className="badge down session-badge" title={session.reason}>
+                      WRITE ERROR
+                    </span>
+                  )}
                   {!session.recording && session.complete === false && (
                     <span className="badge session-badge" title="No end record: the backend stopped while recording">
                       INCOMPLETE
@@ -171,7 +208,9 @@ export default function RecorderPanel({
                 </td>
                 <td className="mono">{session.startedAt ? new Date(session.startedAt).toLocaleString() : '—'}</td>
                 <td className="mono">{session.recording ? 'recording…' : sessionDuration(session)}</td>
-                <td className="mono">{session.recording ? (count ?? session.messageCount) : session.messageCount}</td>
+                <td className="mono">
+                  {session.recording ? (live?.messageCount ?? session.messageCount) : session.messageCount}
+                </td>
                 <td className="mono">{formatSize(session.sizeBytes)}</td>
                 <td>
                   {!session.recording && (
@@ -187,6 +226,14 @@ export default function RecorderPanel({
                       <a className="link" href={`/api/sessions/${session.sessionId}/download`} download>
                         Download
                       </a>
+                      <button
+                        type="button"
+                        className="link-button danger-link"
+                        disabled={replaying && replay?.sessionId === session.sessionId}
+                        onClick={() => removeSession(session.sessionId)}
+                      >
+                        Delete
+                      </button>
                     </span>
                   )}
                 </td>

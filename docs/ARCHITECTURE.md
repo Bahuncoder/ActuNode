@@ -124,6 +124,7 @@ WebSocket client's queue → `send_json`.
 | POST | `/api/recording/start`, `/api/recording/stop` | Start / stop recording |
 | GET | `/api/sessions` | Recorded sessions |
 | GET | `/api/sessions/{id}/download` | Session file (JSONL) |
+| DELETE | `/api/sessions/{id}` | Delete a session (refused while it is recorded or replayed) |
 | POST | `/api/sessions/{id}/replay` | Replay a session (`speed`, `include_commands`) |
 | GET | `/api/replay` | Replay progress |
 | POST | `/api/replay/stop` | Stop replay |
@@ -144,13 +145,19 @@ Interactive docs: http://localhost:8000/docs.
 
 ### Session file format (v1)
 
+Recording stops by itself at `ACTUNODE_MAX_SESSION_MB` or on a write error, writing an end record with
+the reason and telling the UI. Listing sessions reads only each file's first and last line. Replay
+streams the file (one pass to count, one to publish), so memory does not grow with session size.
+
+
 One JSON object per line; see [recorder.py](../backend/app/recorder.py).
 
 ```
 {"type":"session","formatVersion":1,"sessionId","name","startedAt"}
 {"type":"snapshot","robots":[...]}
 {"type":"message","t","receivedAt","topic","retained","payload" | "payloadRaw","issues"?}   × N
-{"type":"end","endedAt","messageCount"}                                   (missing after a crash)
+{"type":"end","endedAt","messageCount","reason"}    reason: stopped | sizeLimit | writeError: …
+                                                         (line missing after a crash)
 ```
 
 ## Frontend
@@ -185,6 +192,7 @@ can go first).
 | `ACTUNODE_MQTT_HOST`, `ACTUNODE_MQTT_PORT` | backend, simulator | `localhost`, `1883` |
 | `ACTUNODE_MQTT_CLIENT_ID` | backend | `actunode-backend` |
 | `ACTUNODE_SESSIONS_DIR` | backend | `<repo>/sessions` |
+| `ACTUNODE_MAX_SESSION_MB` | backend (recording stops itself at this size; fractions allowed) | `200` |
 | `ACTUNODE_SIM_ROBOTS` | simulator | `3` (1–50) |
 | `ACTUNODE_VDA_INTERFACE`, `ACTUNODE_VDA_MAJOR_VERSION` | backend, simulator | `uagv`, `v2` |
 | `ACTUNODE_API_URL` | frontend dev server | `http://localhost:8000` |

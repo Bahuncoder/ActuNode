@@ -80,7 +80,12 @@ export type RecordingStatus = {
   startedAt: string
   messageCount: number
   duration: number
+  sizeBytes?: number
+  maxBytes?: number
 }
+
+/** Set when the server stopped a recording by itself (size limit or write error). */
+export type RecordingStopped = { sessionId: string; reason: string }
 
 export type ReplayStatus = {
   sessionId: string
@@ -104,7 +109,7 @@ type LiveEvent =
       validation: ValidationSummary
     }
   | { type: 'validation'; validation: ValidationSummary }
-  | { type: 'recording'; recording: RecordingStatus | null }
+  | { type: 'recording'; recording: RecordingStatus | null; stoppedReason?: string; stopped?: RecordingStatus }
   | { type: 'replay'; replay: ReplayStatus | null }
   | { type: 'message'; message: MqttMessage; robot: Robot | null }
   | { type: 'failure'; failure: FailureEntry }
@@ -115,6 +120,7 @@ type Feed = {
   messages: MqttMessage[]
   failures: FailureEntry[]
   recording: RecordingStatus | null
+  recordingStopped: RecordingStopped | null
   replay: ReplayStatus | null
   validation: ValidationSummary | null
 }
@@ -148,7 +154,13 @@ function applyEvent(feed: Feed, event: LiveEvent): Feed {
     return { ...feed, validation: event.validation }
   }
   if (event.type === 'recording') {
-    return { ...feed, recording: event.recording }
+    const recordingStopped =
+      event.stoppedReason && event.stopped
+        ? { sessionId: event.stopped.sessionId, reason: event.stoppedReason }
+        : event.recording
+          ? null // a new recording clears an old notice
+          : feed.recordingStopped
+    return { ...feed, recording: event.recording, recordingStopped }
   }
   if (event.type === 'replay') {
     return { ...feed, replay: event.replay }
@@ -201,6 +213,7 @@ export function useLiveFeed(): Feed {
     messages: [],
     failures: [],
     recording: null,
+    recordingStopped: null,
     replay: null,
     validation: null,
   })

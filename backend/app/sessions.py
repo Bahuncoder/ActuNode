@@ -1,7 +1,7 @@
 import re
 from datetime import UTC, datetime, timedelta
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, Response
 from fastapi.responses import FileResponse
 from pydantic import BaseModel, Field
 
@@ -21,7 +21,7 @@ def _recording_stopped(status: dict, reason: str) -> None:
 
 recorder = SessionRecorder(
     settings.sessions_dir,
-    max_bytes=settings.max_session_mb * 1024 * 1024,
+    max_bytes=int(settings.max_session_mb * 1024 * 1024),
     on_stopped=_recording_stopped,
 )
 hub.add_listener(recorder.record)
@@ -91,6 +91,21 @@ def download_session(session_id: str) -> FileResponse:
     if path is None:
         raise HTTPException(404, f"Unknown session: {session_id}")
     return FileResponse(path, media_type="application/x-ndjson", filename=path.name)
+
+
+@router.delete("/sessions/{session_id}", status_code=204)
+def delete_session(session_id: str) -> Response:
+    path = recorder.path_for(session_id)
+    if path is None:
+        raise HTTPException(404, f"Unknown session: {session_id}")
+    current = recorder.status()
+    if current and current["sessionId"] == session_id:
+        raise HTTPException(409, "Cannot delete a session that is still being recorded")
+    replay = replayer.status()
+    if replayer.running and replay and replay["sessionId"] == session_id:
+        raise HTTPException(409, "Cannot delete a session while it is being replayed")
+    path.unlink()
+    return Response(status_code=204)
 
 
 @router.get("/replay")

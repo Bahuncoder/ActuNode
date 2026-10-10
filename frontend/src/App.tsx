@@ -106,7 +106,7 @@ export default function App() {
         </PanelBoundary>
 
         <PanelBoundary title="Sessions">
-          <RecorderPanel recording={feed.recording} replay={feed.replay} />
+          <RecorderPanel recording={feed.recording} recordingStopped={feed.recordingStopped} replay={feed.replay} />
         </PanelBoundary>
 
         <PanelBoundary title="Validation">

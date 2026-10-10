@@ -122,7 +122,7 @@ exercised by hand with a real browser and MQTT traffic.
 
 ## Open issues and technical debt
 
-Numbered so they can be referenced from commits. Remove an item only when it is fixed and verified; numbers are never reused (fixed: 1, 2, 4, 9, 10, 13, 14, 16).
+Numbered so they can be referenced from commits. Remove an item only when it is fixed and verified; numbers are never reused (fixed: 1, 2, 4, 9, 10, 11, 13, 14, 16).
 
 | # | Issue | Impact | Plan |
 |---|---|---|---|
@@ -131,7 +131,6 @@ Numbered so they can be referenced from commits. Remove an item only when it is 
 | 6 | No automated frontend (browser) tests | UI regressions are caught by hand only | End-to-end tests now cover API and MQTT (D-16); add browser tests later |
 | 7 | Schemas are a hand-written subset of VDA 5050 2.x | May accept messages the official schemas reject, or the reverse | Replace with the official 2.1.0 / 3.0.0 schemas (D-15); Week 5 |
 | 8 | ActuNode speaks only VDA 5050 2.1 (`uagv/v2`, `2.1.0`); 3.0 is breaking ([research note](research/VDA5050_3_0.md)) | 3.0 robots or fleet managers cannot be tested; the validator would reject all their messages | Support both side by side, chosen by topic (D-15); Week 5 |
-| 11 | Session files have no size limit or retention; replay loads the whole file into memory | Large sessions could exhaust memory | Week 7 |
 | 12 | No authentication: Mosquitto allows anonymous clients, the API has no login, no TLS | Since D-18 the lab is reachable only from the same computer by default; with `ACTUNODE_BIND_ADDRESS=0.0.0.0` anyone on the network can command robots | Broker credentials + API auth + TLS before any shared deployment |
 | 15 | From the dev machine, `127.0.0.1:8000` (backend published port) accepts connections but never answers, while the LAN address `192.168.1.151:8000`, port 8080 on loopback, and container-to-container calls all work. Seen from the assistant's sandboxed shell; not yet checked from a normal terminal | API docs at localhost:8000/docs may be unreachable; the UI is unaffected (it uses 8080) | Seen again on 10 Oct for MQTT ports 1883/11883 from the same shell while the LAN address worked, so most likely the assistant's sandbox; on GitHub's CI machine the same e2e tests reach the stack via plain `localhost`. E2E tests take `ACTUNODE_E2E_HOST` for this. Still: run `curl -m 5 localhost:8000/api/health` in a normal terminal; if it hangs there too, investigate Docker's port forwarding |
 | 17 | Official VDA 5050 `json_schemas/order.schema` at tag 3.0.0 is invalid JSON (trailing comma, line 315) | Loading the official schemas fails until fixed locally | Apply a documented local fix when vendoring (Week 5); report upstream (needs your GitHub account) |
@@ -142,6 +141,14 @@ Newest first. One entry per work session: what was done, what was learned, what 
 
 ### Sat 10 Oct 2026: working through open issues one by one
 
+- **#11 closed.** Reading the code found four problems, not two: no limit; a write error (disk full)
+  logged a traceback per message and silently dropped messages; replay loaded the file twice
+  (measured 90 MB peak for a 25 MB file); listing parsed every line of every file. Fixed: size limit
+  with end-record `reason` and UI notice; one clean stop on write errors; streaming replay (0.03 MB
+  peak); list reads first/last line; delete endpoint + button. Found on the way: the limit setting was
+  not passed through Docker Compose (would have been ignored) — fixed and verified in Docker (20 KB
+  limit → stopped after 8.5 s, one log line). The INCOMPLETE 13:04 session in `sessions/` is real
+  evidence of the shutdown bug fixed earlier (laptop restart while recording).
 - **#10 closed: not a defect (verified).** Experiment: orders got headerId 1, 2; after a backend restart the
   next got 1 again, and the validator reported **no** warning (it restarts with the backend), so the
   predicted warning cannot happen. The spec says nothing about restarts; orders are identified by

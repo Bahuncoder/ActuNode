@@ -182,6 +182,10 @@ curl -OJ localhost:8000/api/sessions/<sessionId>/download
 jq -c 'select(.type=="message" and (.topic|endswith("robot_01/state"))) | [.t, .payload.actunode.missionStatus]' sessions/*.jsonl
 ```
 
+A recording stops itself at 200 MB (about 5–6 hours with 10 robots; change with
+`ACTUNODE_MAX_SESSION_MB`) or if the disk fills up; the end line records why. Delete old sessions with
+`curl -X DELETE localhost:8000/api/sessions/<sessionId>` or the Delete button.
+
 Or use the Sessions panel in the UI.
 
 ### Replaying a session

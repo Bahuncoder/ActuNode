@@ -1,3 +1,5 @@
+import type { RecordingStatus } from './live'
+
 export type Health = {
   status: string
   version: string
@@ -68,6 +70,8 @@ export type SessionSummary = {
   messageCount: number
   recording: boolean
   complete?: boolean
+  // Why recording ended: 'stopped', 'sizeLimit' or 'writeError: ...' (older files: missing).
+  reason?: string | null
   sizeBytes: number
 }
 
@@ -77,11 +81,19 @@ export async function fetchSessions(): Promise<SessionSummary[]> {
   return response.json()
 }
 
-export async function fetchRecordingCount(): Promise<number | null> {
+export async function fetchRecording(): Promise<RecordingStatus | null> {
   const response = await fetch('/api/recording')
   if (!response.ok) return null
   const body = await response.json()
-  return body.recording?.messageCount ?? null
+  return body.recording ?? null
+}
+
+export async function deleteSession(sessionId: string): Promise<void> {
+  const response = await fetch(`/api/sessions/${encodeURIComponent(sessionId)}`, { method: 'DELETE' })
+  if (!response.ok) {
+    const body = await response.json().catch(() => ({}))
+    throw new Error(errorDetail(body) ?? `Delete failed: ${response.status}`)
+  }
 }
 
 export async function startRecording(name: string): Promise<void> {

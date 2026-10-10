@@ -218,6 +218,10 @@ code,
   cursor: pointer;
 }
 
+.danger-link {
+  color: var(--danger);
+}
+
 .link-button:disabled {
   color: var(--industrial-gray);
   cursor: default;
