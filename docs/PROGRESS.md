@@ -122,7 +122,7 @@ exercised by hand with a real browser and MQTT traffic.
 
 ## Open issues and technical debt
 
-Numbered so they can be referenced from commits. Remove an item only when it is fixed and verified; numbers are never reused (fixed: 1, 2, 4, 9, 14, 16).
+Numbered so they can be referenced from commits. Remove an item only when it is fixed and verified; numbers are never reused (fixed: 1, 2, 4, 9, 13, 14, 16).
 
 | # | Issue | Impact | Plan |
 |---|---|---|---|
@@ -134,7 +134,6 @@ Numbered so they can be referenced from commits. Remove an item only when it is 
 | 10 | Backend keeps `headerId` counters in memory; after a restart its order `headerId`s start at 1 again | Validator warns `header-id` on the next order per robot | Low; persist counters or accept |
 | 11 | Session files have no size limit or retention; replay loads the whole file into memory | Large sessions could exhaust memory | Week 7 |
 | 12 | No authentication anywhere; Mosquitto allows anonymous clients | Fine for a laptop lab only; must not be exposed on a network | Documented; revisit before any shared deployment |
-| 13 | Robot `state` is published with QoS 0, so it can be dropped; recordings capture only what the backend receives | Rare gaps in recordings | Accept for now; document |
 | 15 | From the dev machine, `127.0.0.1:8000` (backend published port) accepts connections but never answers, while the LAN address `192.168.1.151:8000`, port 8080 on loopback, and container-to-container calls all work. Seen from the assistant's sandboxed shell; not yet checked from a normal terminal | API docs at localhost:8000/docs may be unreachable; the UI is unaffected (it uses 8080) | Seen again on 10 Oct for MQTT ports 1883/11883 from the same shell while the LAN address worked, so most likely the assistant's sandbox; on GitHub's CI machine the same e2e tests reach the stack via plain `localhost`. E2E tests take `ACTUNODE_E2E_HOST` for this. Still: run `curl -m 5 localhost:8000/api/health` in a normal terminal; if it hangs there too, investigate Docker's port forwarding |
 | 17 | Official VDA 5050 `json_schemas/order.schema` at tag 3.0.0 is invalid JSON (trailing comma, line 315) | Loading the official schemas fails until fixed locally | Apply a documented local fix when vendoring (Week 5); report upstream (needs your GitHub account) |
 
@@ -144,6 +143,11 @@ Newest first. One entry per work session: what was done, what was learned, what 
 
 ### Sat 10 Oct 2026: working through open issues one by one
 
+- **#13 closed (issue was wrong; found a real deviation instead).** VDA 5050 2.1 section 6.2 (and 3.0)
+  *requires* QoS 0 for `state`, so a lost state message is by design. Checking every publish/subscribe
+  call against the spec showed the opposite problem: the backend sent **orders at QoS 1** and the
+  simulator subscribed to them at QoS 1; the spec says QoS 0. Fixed with failing tests first; all unit
+  and end-to-end tests pass. Spec rule recorded in VDA5050_NOTES and ARCHITECTURE.
 - **#14 closed.** CI annotations showed `actions/checkout@v4`, `setup-python@v5`, `setup-node@v4` running on
   deprecated Node.js 20. Looked up each action's latest release and its `action.yml`: all at v7 on
   Node.js 24, and every input we use still exists. Upgraded (also `upload-artifact` to v7). Runner pinned

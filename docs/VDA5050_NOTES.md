@@ -31,6 +31,12 @@ uagv/v2/ActuNode/robot_01/state
 | `connection` | robot → master | ONLINE / OFFLINE / CONNECTIONBROKEN, retained, last will | ✅ |
 | `factsheet` | robot → master | Robot capabilities | ⬜ |
 
+**QoS (section 6.2, same in 3.0):** QoS 0 (best effort) for `order`, `instantActions`, `state`,
+`factsheet`, `visualization` (3.0 adds `zoneSet`, `responses`); QoS 1 (at least once) for `connection`.
+So a `state` message may be lost by design: robots repeat state periodically and on every change, and a
+fleet manager must cope with gaps. ActuNode follows this exactly (an integration tool must not hide
+problems by being more reliable than the standard).
+
 ## Header (every message)
 
 `headerId` (counts up **per topic**, starting at 1), `timestamp` (ISO 8601 UTC), `version`

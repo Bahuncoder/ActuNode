@@ -91,3 +91,13 @@ def test_locations_are_listed(client, published):
 
     assert "RECEIVING_DOOR_2" in locations
     assert "STORAGE_A17" in locations
+
+
+def test_orders_are_published_with_qos_0_as_vda5050_requires(client, monkeypatch):
+    """VDA 5050 2.1 section 6.2 (and 3.0): order, instantActions and state use QoS 0."""
+    qos_used = []
+    monkeypatch.setattr(mqtt_bridge, "publish", lambda topic, payload, qos=0: qos_used.append(qos))
+
+    client.post("/api/missions", json=P1042)
+
+    assert qos_used == [0]

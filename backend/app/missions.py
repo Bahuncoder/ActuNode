@@ -46,7 +46,8 @@ def send_mission(mission: MissionRequest) -> dict:
 
     order = vda5050.build_order(mission.robot_id, order_id, stops)
     order_topic = vda5050.topic(mission.robot_id, "order")
-    mqtt_bridge.publish(order_topic, json.dumps(order), qos=1)
+    # VDA 5050 section 6.2: order is published with QoS 0.
+    mqtt_bridge.publish(order_topic, json.dumps(order), qos=0)
 
     return {"order_id": order_id, "topic": order_topic, "order": order}
 

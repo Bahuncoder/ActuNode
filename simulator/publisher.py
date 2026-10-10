@@ -90,7 +90,8 @@ class RobotConnection:
             log.warning("%s: MQTT connect failed: %s", self.robot.robot_id, reason_code)
             return
         log.info("%s: connected to %s:%s", self.robot.robot_id, self.host, self.port)
-        client.subscribe([(self.order_topic, 1), (self.inject_topic, 1)])
+        # VDA 5050 section 6.2: order at QoS 0. The inject topic is ActuNode's own; commands use QoS 1.
+        client.subscribe([(self.order_topic, 0), (self.inject_topic, 1)])
         self._publish(self.connection_topic, self.robot.connection_message("ONLINE"), qos=1, retain=True)
 
     def _on_message(self, client, userdata, message):

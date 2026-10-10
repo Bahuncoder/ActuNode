@@ -48,10 +48,14 @@ VDA 5050 layout: `interfaceName/majorVersion/manufacturer/serialNumber/topic`, c
 
 | Topic | Publisher | Subscriber | QoS | Retained | Content |
 |---|---|---|---|---|---|
-| `uagv/v2/ActuNode/<robot>/order` | backend | that robot | 1 | no | VDA 5050 order |
+| `uagv/v2/ActuNode/<robot>/order` | backend | that robot | 0 | no | VDA 5050 order |
 | `uagv/v2/ActuNode/<robot>/state` | robot | backend | 0 | no | VDA 5050 state + `actunode.missionStatus`; every 1 s and on every status change |
 | `uagv/v2/ActuNode/<robot>/connection` | robot (and broker, as last will) | backend | 1 | yes | `ONLINE` / `OFFLINE` / `CONNECTIONBROKEN` |
 | `actunode/v1/sim/<robot>/inject` | backend | that robot | 1 | no | Failure-injection command (ActuNode, not VDA 5050) |
+
+QoS follows VDA 5050 section 6.2: QoS 0 for `order`, `instantActions`, `state`, `factsheet`,
+`visualization`; QoS 1 for `connection`. The backend subscribes with QoS 1 (a ceiling, needed to receive
+`connection` at QoS 1). The ActuNode inject topic is not VDA 5050 and uses QoS 1 so test commands arrive.
 
 The backend subscribes to `uagv/#` and `actunode/#`, so it also sees its own orders and commands,
 which is what puts them in the message stream and in recordings.
