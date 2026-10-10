@@ -22,6 +22,9 @@ What changed, per commit, newest first. Status and plans are in [docs/PROGRESS.m
 - CI: the `compose` build job is replaced by the `e2e` job, which builds and runs the stack.
 
 ### Fixed
+- Security: all ports were published on every network interface, so anyone on the same network could
+  connect to the anonymous broker and the API. Ports are now published on 127.0.0.1 by default
+  (`ACTUNODE_BIND_ADDRESS` to change, D-18).
 - Orders were published (and subscribed) with MQTT QoS 1; VDA 5050 section 6.2 requires QoS 0.
 - A robot whose battery ran out mid-mission kept reporting MOVING and `driving: true`. It now stops
   exactly where the battery runs out, the mission becomes FAILED with a FATAL `batteryEmpty` error,

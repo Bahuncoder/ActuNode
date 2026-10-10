@@ -189,3 +189,15 @@ and the order. Orders are rejected while the battery is empty. `FAILED → ACCEP
 robot can drive again. Charging is not simulated yet.
 **Consequences.** The state machine gains one state; validator and UI updated. Week 6's low-battery
 failure builds on this (warning before empty, and a way to recharge).
+
+## D-18 · Publish ports on 127.0.0.1 by default
+10 Oct 2026 · Accepted
+
+**Context.** Compose published every port on all interfaces. From the LAN address, an anonymous MQTT
+client was accepted by the broker and the HTTP API answered: anyone on the same network (university or
+café Wi-Fi) could command the robots, inject messages or start recordings.
+**Decision.** Publish all ports on `127.0.0.1` unless `ACTUNODE_BIND_ADDRESS` says otherwise. Sharing
+the lab on a network is an explicit choice, documented with its risk in the README. End-to-end tests
+bind only to the address they connect to.
+**Consequences.** Safe by default for a laptop lab. Real authentication (broker credentials, API login,
+TLS) is still needed before any shared deployment (PROGRESS issue 12).

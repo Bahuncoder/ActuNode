@@ -189,6 +189,7 @@ can go first).
 | `ACTUNODE_VDA_INTERFACE`, `ACTUNODE_VDA_MAJOR_VERSION` | backend, simulator | `uagv`, `v2` |
 | `ACTUNODE_API_URL` | frontend dev server | `http://localhost:8000` |
 | `ACTUNODE_UID`, `ACTUNODE_GID` | Docker Compose (backend user) | `1000`, `1000` |
+| `ACTUNODE_BIND_ADDRESS` | Docker Compose (interface the ports are published on, D-18) | `127.0.0.1` |
 | `ACTUNODE_UI_HOST_PORT`, `ACTUNODE_API_HOST_PORT` | Docker Compose (host ports) | `8080`, `8000` |
 | `ACTUNODE_MQTT_HOST_PORT`, `ACTUNODE_MQTT_WS_HOST_PORT` | Docker Compose (host ports) | `1883`, `9001` |
 | `ACTUNODE_SESSIONS_HOST_DIR` | Docker Compose (recordings on the host) | `./sessions` |

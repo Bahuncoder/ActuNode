@@ -36,6 +36,11 @@ Recordings are written to `./sessions` as your user; if `id -u` / `id -g` are no
 
 Stop with `docker compose down`. Replay needs the simulator stopped: `docker compose stop simulator`.
 
+**Security:** the lab is reachable only from this computer (ports are published on `127.0.0.1`). The MQTT
+broker accepts anonymous clients and the API has no login, so do not expose it casually. To share it on
+a network you trust, start with `ACTUNODE_BIND_ADDRESS=0.0.0.0 docker compose up --build`; anyone on that
+network can then command the robots.
+
 ## Local development (without Docker)
 
 You still need an MQTT broker on `localhost:1883`

@@ -3,6 +3,10 @@
 # API:     http://localhost:8000/docs
 # MQTT:    localhost:1883 (ws: 9001)
 #
+# Ports are published on 127.0.0.1 only: the broker accepts anonymous clients and the API has no
+# login, so nothing should be reachable from the network by default. ACTUNODE_BIND_ADDRESS=0.0.0.0
+# shares the lab on your network: anyone on it can then command the robots (see README).
+#
 # Host ports and the sessions directory can be overridden with environment variables
 # (the end-to-end tests use this to run a second, isolated copy). Defaults are shown below.
 
@@ -10,8 +14,8 @@ services:
   mosquitto:
     image: eclipse-mosquitto:2
     ports:
-      - "${ACTUNODE_MQTT_HOST_PORT:-1883}:1883"
-      - "${ACTUNODE_MQTT_WS_HOST_PORT:-9001}:9001"
+      - "${ACTUNODE_BIND_ADDRESS:-127.0.0.1}:${ACTUNODE_MQTT_HOST_PORT:-1883}:1883"
+      - "${ACTUNODE_BIND_ADDRESS:-127.0.0.1}:${ACTUNODE_MQTT_WS_HOST_PORT:-9001}:9001"
     volumes:
       - ./mosquitto/config/mosquitto.conf:/mosquitto/config/mosquitto.conf:ro
     healthcheck:
@@ -30,7 +34,7 @@ services:
       ACTUNODE_MQTT_PORT: 1883
       ACTUNODE_SESSIONS_DIR: /app/sessions
     ports:
-      - "${ACTUNODE_API_HOST_PORT:-8000}:8000"
+      - "${ACTUNODE_BIND_ADDRESS:-127.0.0.1}:${ACTUNODE_API_HOST_PORT:-8000}:8000"
     volumes:
       - ${ACTUNODE_SESSIONS_HOST_DIR:-./sessions}:/app/sessions
     healthcheck:
@@ -57,7 +61,7 @@ services:
   frontend:
     build: ./frontend
     ports:
-      - "${ACTUNODE_UI_HOST_PORT:-8080}:80"
+      - "${ACTUNODE_BIND_ADDRESS:-127.0.0.1}:${ACTUNODE_UI_HOST_PORT:-8080}:80"
     healthcheck:
       test: ["CMD", "wget", "-qO", "/dev/null", "http://127.0.0.1/"]
       interval: 5s

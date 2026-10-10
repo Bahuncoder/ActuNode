@@ -157,6 +157,9 @@ def stack(tmp_path_factory):
     sessions_dir = tmp_path_factory.mktemp("sessions")
     env = {
         **os.environ,
+        # Publish ports only where the tests connect: loopback normally, the LAN address when
+        # ACTUNODE_E2E_HOST points there (issue 15). Never wider than needed.
+        "ACTUNODE_BIND_ADDRESS": "127.0.0.1" if HOST in ("localhost", "127.0.0.1") else HOST,
         "ACTUNODE_UI_HOST_PORT": str(UI_PORT),
         "ACTUNODE_API_HOST_PORT": "18000",
         "ACTUNODE_MQTT_HOST_PORT": str(MQTT_PORT),
