@@ -5,7 +5,7 @@ receiving -> storage -> pack/sort -> loading docks, with charging and a conveyor
 """
 
 LOCATIONS: dict[str, dict] = {
-    "CHARGING": {"x": 3.5, "y": 2.0, "zone": "charging"},
+    "CHARGING": {"x": 11.0, "y": 2.2, "zone": "charging"},
     "RECEIVING_DOOR_1": {"x": 2.0, "y": 18.0, "zone": "receiving"},
     "RECEIVING_DOOR_2": {"x": 2.0, "y": 14.0, "zone": "receiving"},
     "STORAGE_A17": {"x": 14.0, "y": 18.0, "zone": "storage"},

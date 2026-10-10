@@ -11,7 +11,7 @@ const ZONES = [
   { label: 'STORAGE RACKS', x: 9, y: 9, w: 12, h: 11 },
   { label: 'PACK / SORT', x: 25, y: 11, w: 6, h: 8 },
   { label: 'LOADING DOCKS', x: 35, y: 9, w: 5, h: 11 },
-  { label: 'CHARGING', x: 0, y: 0, w: 8, h: 4 },
+  { label: 'CHARGING', x: 0, y: 0, w: 12, h: 4 },
   { label: 'CONVEYOR', x: 14, y: 3, w: 20, h: 2 },
 ]
 
@@ -98,6 +98,11 @@ function RobotRoute({ robot }: { robot: Robot }) {
   )
 }
 
+// "robot_07" -> "07" keeps labels apart when robots park 2 m apart; the full id is in the tooltip.
+function shortLabel(robotId: string): string {
+  return robotId.replace(/^robot_/, '')
+}
+
 function RobotMarker({ robot }: { robot: Robot }) {
   const position = robot.state?.agvPosition
   if (!position) return null
@@ -112,7 +117,7 @@ function RobotMarker({ robot }: { robot: Robot }) {
       <title>{`${robot.robotId}: ${missionStatus(robot)}`}</title>
       <circle r={9} />
       <line x1={0} y1={0} x2={13} y2={0} transform={`rotate(${heading})`} />
-      <text y={-14}>{robot.robotId}</text>
+      <text y={-14}>{shortLabel(robot.robotId)}</text>
     </g>
   )
 }

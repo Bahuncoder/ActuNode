@@ -48,7 +48,7 @@ npm run dev        # http://localhost:5173
 # Simulator (third terminal, from repo root)
 python3 -m venv simulator/.venv
 simulator/.venv/bin/pip install -r simulator/requirements-dev.txt
-simulator/.venv/bin/python -m simulator --robots 3
+simulator/.venv/bin/python -m simulator --robots 3   # up to 50; 10 fill the charging area
 
 # Tests
 cd backend && .venv/bin/pytest
