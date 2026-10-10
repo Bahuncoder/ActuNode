@@ -37,6 +37,8 @@ What changed, per commit, newest first. Status and plans are in [docs/PROGRESS.m
   says (`manufacturer`, `vda_version`) or to the configured default; observed identities produce a
   `warning` and are offered in the UI's new Target select (D-21). At most 8 identities per robot and
   1,000 robots are kept.
+- Mission form: a spoofed manufacturer name containing `|` could make the Target show one identity and
+  send to another; nothing is preselected from observed (possibly spoofed) traffic.
 - Mission form could show one robot while sending to another (the default `robot_01` when it was not
   in the live list).
 - A write error (e.g. disk full) during recording logged a traceback for every message and silently

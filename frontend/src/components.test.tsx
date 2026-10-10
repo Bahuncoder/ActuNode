@@ -1,5 +1,5 @@
-import { cleanup, render, screen } from '@testing-library/react'
-import { afterEach, describe, expect, it } from 'vitest'
+import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
+import { afterEach, describe, expect, it, vi } from 'vitest'
 import type { Robot } from './live'
 import RobotTable from './RobotTable'
 import WarehouseMap from './WarehouseMap'
@@ -91,25 +91,46 @@ describe('WarehouseMap', () => {
 })
 
 describe('MissionSender target', () => {
-  it('preselects the single observed identity and makes a person choose when there are several', async () => {
+  const locations = { A: { x: 0, y: 0, zone: 'z' } }
+
+  async function sentBody(robot: Robot, chooseValue: string | null) {
     const { default: MissionSender } = await import('./MissionSender')
-    const several: Robot = {
-      ...healthy,
-      identities: [
-        { vdaMajor: 'v3', manufacturer: 'Spoofer', lastSeen: 'x' },
-        { vdaMajor: 'v2', manufacturer: 'ActuNode', lastSeen: 'x' },
-      ],
-    }
+    const fetchMock = vi.fn().mockResolvedValue({ ok: true, json: async () => ({ order_id: 'o', topic: 't' }) })
+    vi.stubGlobal('fetch', fetchMock)
+    render(<MissionSender robots={[robot]} locations={locations} />)
+    const target = screen.getByTitle(/Where the order is published/).querySelector('select') as HTMLSelectElement
+    if (chooseValue !== null) fireEvent.change(target, { target: { value: chooseValue } })
+    fireEvent.click(screen.getByText('Send mission'))
+    await waitFor(() => expect(fetchMock).toHaveBeenCalled())
+    vi.unstubAllGlobals()
+    return JSON.parse(fetchMock.mock.calls[0][1].body)
+  }
+
+  it('preselects nothing: observed identities are a choice, not a default (D-21)', async () => {
     const one: Robot = { ...v3robot, identities: [{ vdaMajor: 'v3', manufacturer: 'ActuNode', lastSeen: 'x' }] }
 
-    const { rerender } = render(<MissionSender robots={[one]} locations={{ A: { x: 0, y: 0, zone: 'z' } }} />)
-    expect((screen.getByTitle(/Where the order is published/).querySelector('select') as HTMLSelectElement).value).toBe(
-      'ActuNode|v3',
-    )
+    const body = await sentBody(one, null)
 
-    rerender(<MissionSender robots={[several]} locations={{ A: { x: 0, y: 0, zone: 'z' } }} />)
-    expect(screen.getByText(/seen under several identities/)).toBeTruthy()
-    expect((screen.getByText('Send mission') as HTMLButtonElement).disabled).toBe(true)
+    expect(body.manufacturer).toBeUndefined()
+    expect(body.vda_version).toBeUndefined()
+    expect(screen.getByText(/was seen as ActuNode · VDA 3/)).toBeTruthy()
+  })
+
+  it('sends exactly the identity that was chosen', async () => {
+    const one: Robot = { ...v3robot, identities: [{ vdaMajor: 'v3', manufacturer: 'ActuNode', lastSeen: 'x' }] }
+
+    const body = await sentBody(one, '0')
+
+    expect(body).toMatchObject({ manufacturer: 'ActuNode', vda_version: '3' })
+  })
+
+  it('cannot be tricked by a manufacturer name containing the old separator', async () => {
+    const tricky: Robot = { ...v3robot, identities: [{ vdaMajor: 'v2', manufacturer: 'Evil|v3', lastSeen: 'x' }] }
+    const { default: MissionSender } = await import('./MissionSender')
+    render(<MissionSender robots={[tricky]} locations={locations} />)
+
+    const option = screen.getByRole('option', { name: /Evil\|v3/ }) as HTMLOptionElement
+    expect(option.disabled).toBe(true)
   })
 })
 

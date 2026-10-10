@@ -140,6 +140,12 @@ Newest first. One entry per work session: what was done, what was learned, what 
 
 ### Sat 10 Oct 2026: working through open issues one by one
 
+- **Fourth security review (mission form, 2 findings), fixed with tests first.** (1) Shown ≠ sent: options
+  encoded `manufacturer|version` and the form split on `|`, so a spoofed manufacturer named `Evil|v3` would
+  display one target and send to another. Options now map to the identity object itself (not a parsed
+  string, and not just a list index, since the list reorders by recency); names the server would reject
+  are disabled. (2) Preselecting the single observed identity trusted possibly spoofed data: nothing is
+  preselected now; a hint names the observed identities. Frontend 18 tests.
 - **Third security review → redesign (D-21).** Two of three findings were visible (the third was cut off in
   the notification): a spoofer outlasting a silent robot still decided routing, and flooding the robot
   list erased the identity evidence. Each fix had opened a new hole because the premise was wrong: an

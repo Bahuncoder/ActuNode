@@ -6,10 +6,18 @@ import type { Robot } from './live'
 const DEFAULT_ROBOTS = ['robot_01', 'robot_02', 'robot_03']
 
 type Result = { ok: boolean; text: string; warning?: string }
+type Identity = { manufacturer: string; vdaMajor: string }
 
-// Value of the Target select: '' = server default, otherwise "<manufacturer>|<v2|v3>".
-function identityKey(identity: { manufacturer: string; vdaMajor: string }): string {
-  return `${identity.manufacturer}|${identity.vdaMajor}`
+// What the server accepts (missions.py). Observed names come from anyone on the broker, so anything
+// else is shown but cannot be chosen: it could not be sent as displayed.
+const SENDABLE_MANUFACTURER = /^[A-Za-z0-9_.-]{1,64}$/
+
+function sendable(identity: Identity): boolean {
+  return SENDABLE_MANUFACTURER.test(identity.manufacturer) && ['v2', 'v3'].includes(identity.vdaMajor)
+}
+
+function describe(identity: Identity): string {
+  return `${identity.manufacturer} · VDA ${identity.vdaMajor.slice(1)}`
 }
 
 // Defaults are the demo scenario: pallet P-1042, Receiving Door 2 -> Storage A17.
@@ -24,32 +32,39 @@ export default function MissionSender({
   const [chosenRobot, setChosenRobot] = useState(DEFAULT_ROBOTS[0])
   // What the select shows is what gets sent: fall back to the first listed robot if the chosen one is gone.
   const robotId = robotChoices.includes(chosenRobot) ? chosenRobot : robotChoices[0]
-  const [chosenTarget, setChosenTarget] = useState<string | null>(null)
+  // The identity itself is kept, not a list position: the list is ordered by recency and can change
+  // between choosing and sending. null = server default.
+  const [chosenTarget, setChosenTarget] = useState<Identity | null>(null)
   const [source, setSource] = useState('RECEIVING_DOOR_2')
   const [destination, setDestination] = useState('STORAGE_A17')
   const [loadId, setLoadId] = useState('P-1042')
   const [sending, setSending] = useState(false)
   const [result, setResult] = useState<Result | null>(null)
 
-  // Observed identities are shown so a person picks where the order goes; the server never guesses (D-21).
-  // Exactly one observed identity is preselected; with several, the person must choose.
+  // Observed identities are offered so a person picks where the order goes. Nothing is preselected:
+  // they come from anonymous traffic and may be spoofed (D-21).
   const identities = robots.find((robot) => robot.robotId === robotId)?.identities ?? []
-  const preselected = identities.length === 1 ? identityKey(identities[0]) : ''
-  const target = chosenTarget ?? preselected
-  const ambiguous = identities.length > 1 && target === ''
+  const targetIndex = chosenTarget
+    ? identities.findIndex((i) => i.manufacturer === chosenTarget.manufacturer && i.vdaMajor === chosenTarget.vdaMajor)
+    : -1
+  const target = targetIndex >= 0 ? identities[targetIndex] : null
+  const defaultSeen = identities.some((i) => i.manufacturer === 'ActuNode' && i.vdaMajor === 'v2')
+  const hint =
+    identities.length > 0 && !target && !defaultSeen
+      ? `${robotId} was seen as ${identities.map(describe).join(', ')}; choose a target to send there`
+      : null
 
   async function submit(event: FormEvent) {
     event.preventDefault()
     setSending(true)
     try {
-      const [manufacturer, major] = target ? target.split('|') : [undefined, undefined]
       const response = await sendMission({
         robot_id: robotId,
         destination,
         source: source || undefined,
         load_id: loadId.trim() || undefined,
-        manufacturer,
-        vda_version: major ? (major.slice(1) as '2' | '3') : undefined,
+        manufacturer: target?.manufacturer,
+        vda_version: target ? (target.vdaMajor.slice(1) as '2' | '3') : undefined,
       })
       setResult({ ok: true, text: `Sent ${response.order_id} → ${response.topic}`, warning: response.warning })
     } catch (error) {
@@ -83,11 +98,15 @@ export default function MissionSender({
         </label>
         <label title="Where the order is published. Observed from traffic, so check it: anyone can publish as a robot.">
           Target
-          <select value={target} onChange={(e) => setChosenTarget(e.target.value)}>
-            <option value="">{identities.length > 1 ? '— choose —' : 'default (ActuNode v2)'}</option>
-            {identities.map((identity) => (
-              <option key={identityKey(identity)} value={identityKey(identity)}>
-                {identity.manufacturer} · VDA {identity.vdaMajor.slice(1)}
+          <select
+            value={targetIndex >= 0 ? String(targetIndex) : ''}
+            onChange={(e) => setChosenTarget(e.target.value === '' ? null : identities[Number(e.target.value)])}
+          >
+            <option value="">default (ActuNode · VDA 2)</option>
+            {identities.map((identity, index) => (
+              <option key={index} value={String(index)} disabled={!sendable(identity)}>
+                {describe(identity)}
+                {sendable(identity) ? '' : ' (invalid name, cannot send)'}
               </option>
             ))}
           </select>
@@ -113,14 +132,12 @@ export default function MissionSender({
           Load
           <input value={loadId} onChange={(e) => setLoadId(e.target.value)} placeholder="P-1042" />
         </label>
-        <button type="submit" disabled={sending || names.length === 0 || ambiguous}>
+        <button type="submit" disabled={sending || names.length === 0}>
           {sending ? 'Sending…' : 'Send mission'}
         </button>
       </form>
 
-      {ambiguous && (
-        <p className="result mono error">{robotId} was seen under several identities; choose the target.</p>
-      )}
+      {hint && <p className="result mono error">{hint}</p>}
       {result && <p className={`result mono ${result.ok ? 'ok' : 'error'}`}>{result.text}</p>}
       {result?.warning && <p className="result mono error">⚠ {result.warning}</p>}
     </section>

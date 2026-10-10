@@ -243,7 +243,9 @@ observations can be steered by whoever produces them.
 request, or to the configured default (`ActuNode`, `ACTUNODE_VDA_MAJOR_VERSION`). Observed identities
 are kept (capped) for display and advice only: the mission response carries a `warning` when the
 robot was seen but never under the identity used, and the UI's Target select shows the observed
-identities so a person chooses (one is preselected; several force a choice).
+identities so a person chooses. *Amended after security review 4:* nothing is preselected (an observed
+identity may be spoofed); the form keeps the chosen identity itself, not a list position or an encoded
+string; names the server would reject are shown disabled.
 **Consequences.** Simple, deterministic and not spoofable through the backend; sending to a 3.0 robot
 needs `vda_version: "3"` (the UI fills it from what it sees). Authenticity of robots requires broker
 authentication with per-robot topic permissions (issue 12).
