@@ -89,3 +89,36 @@ describe('WarehouseMap', () => {
     expect(container.querySelectorAll('polyline.route')).toHaveLength(1)
   })
 })
+
+describe('MissionSender target', () => {
+  it('preselects the single observed identity and makes a person choose when there are several', async () => {
+    const { default: MissionSender } = await import('./MissionSender')
+    const several: Robot = {
+      ...healthy,
+      identities: [
+        { vdaMajor: 'v3', manufacturer: 'Spoofer', lastSeen: 'x' },
+        { vdaMajor: 'v2', manufacturer: 'ActuNode', lastSeen: 'x' },
+      ],
+    }
+    const one: Robot = { ...v3robot, identities: [{ vdaMajor: 'v3', manufacturer: 'ActuNode', lastSeen: 'x' }] }
+
+    const { rerender } = render(<MissionSender robots={[one]} locations={{ A: { x: 0, y: 0, zone: 'z' } }} />)
+    expect((screen.getByTitle(/Where the order is published/).querySelector('select') as HTMLSelectElement).value).toBe(
+      'ActuNode|v3',
+    )
+
+    rerender(<MissionSender robots={[several]} locations={{ A: { x: 0, y: 0, zone: 'z' } }} />)
+    expect(screen.getByText(/seen under several identities/)).toBeTruthy()
+    expect((screen.getByText('Send mission') as HTMLButtonElement).disabled).toBe(true)
+  })
+})
+
+describe('MissionSender robot', () => {
+  it('sends to the robot it shows, even if the default robot does not exist', async () => {
+    const { default: MissionSender } = await import('./MissionSender')
+    render(<MissionSender robots={[v3robot]} locations={{ A: { x: 0, y: 0, zone: 'z' } }} />)
+
+    const robotSelect = screen.getAllByRole('combobox')[0] as HTMLSelectElement
+    expect(robotSelect.value).toBe('robot_31')
+  })
+})

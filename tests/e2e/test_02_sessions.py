@@ -3,7 +3,7 @@
 import json
 import time
 
-from conftest import ORDER_TOPIC, STATE_TOPIC, wait_for
+from conftest import ORDER_TOPIC, STATE_TOPIC, VDA, wait_for
 
 
 def read_session(stack, session_id: str) -> list[dict]:
@@ -13,7 +13,7 @@ def read_session(stack, session_id: str) -> list[dict]:
 
 def test_record_a_mission_then_replay_it(stack):
     session_id = stack.post("/recording/start", {"name": "e2e"}, expect=201).json()["sessionId"]
-    stack.post("/missions", {"robot_id": "robot_03", "destination": "CHARGING"}, expect=202)
+    stack.post("/missions", {"vda_version": VDA, "robot_id": "robot_03", "destination": "CHARGING"}, expect=202)
     wait_for(lambda: stack.status("robot_03") == "COMPLETED", 30, "robot_03 COMPLETED")
     stack.post("/recording/stop", expect=200)
 

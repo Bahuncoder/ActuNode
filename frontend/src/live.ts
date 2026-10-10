@@ -38,6 +38,8 @@ export type Robot = {
   lastSeen: string | null
   vdaMajor?: string
   manufacturer?: string
+  // Observed (version, manufacturer) pairs, most recent first. Advice only: anyone can publish as a robot.
+  identities?: { vdaMajor: string; manufacturer: string; lastSeen: string }[]
 }
 
 export type Issue = {

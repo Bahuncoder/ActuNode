@@ -3,7 +3,7 @@
 import json
 import time
 
-from conftest import CONNECTION_BROKEN, ROBOTS, wait_for
+from conftest import CONNECTION_BROKEN, ROBOTS, VDA, wait_for
 
 
 def connections(stack) -> set[str]:
@@ -28,7 +28,7 @@ def test_robots_and_backend_recover_after_a_broker_restart(stack):
     wait_for(
         lambda: all(stack.robots()[r]["lastStateAt"] > before[r] for r in ROBOTS), 20, "fresh state from every robot"
     )
-    stack.post("/missions", {"robot_id": "robot_01", "destination": "STORAGE_B04"}, expect=202)
+    stack.post("/missions", {"vda_version": VDA, "robot_id": "robot_01", "destination": "STORAGE_B04"}, expect=202)
     wait_for(lambda: stack.status("robot_01") == "MOVING", 10, "missions work after reconnect")
 
 

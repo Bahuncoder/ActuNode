@@ -110,7 +110,7 @@ def _seen(topic: str, payload: dict) -> None:
     hub.handle_mqtt(topic, json.dumps(payload).encode())
 
 
-def test_order_to_a_3_0_robot_uses_its_version_and_passes_the_official_3_0_schema(client, published):
+def test_order_to_a_3_0_robot_uses_the_requested_version_and_passes_the_official_3_0_schema(client, published):
     from pathlib import Path
 
     from app.validator import Validator
@@ -118,9 +118,10 @@ def test_order_to_a_3_0_robot_uses_its_version_and_passes_the_official_3_0_schem
     fixture = json.loads((Path(__file__).parent / "fixtures" / "v3_state.json").read_text())
     _seen(fixture["topic"], fixture["payload"])
 
-    response = client.post("/api/missions", json={**P1042, "robot_id": "robot_31"})
+    response = client.post("/api/missions", json={**P1042, "robot_id": "robot_31", "vda_version": "3"})
 
     assert response.status_code == 202
+    assert "warning" not in response.json()
     [(topic, order)] = published
     assert topic == "uagv/v3/ActuNode/robot_31/order"
     assert order["version"] == "3.0.0"
@@ -128,49 +129,42 @@ def test_order_to_a_3_0_robot_uses_its_version_and_passes_the_official_3_0_schem
     assert Validator().check(topic, order, valid_json=True) == []
 
 
-def test_order_goes_to_the_robots_own_manufacturer_topic(client, published):
-    _seen("uagv/v2/VendorX/amr_1/state", {"serialNumber": "amr_1", "manufacturer": "VendorX"})
+def test_observed_traffic_never_decides_where_orders_go(client, published):
+    """Security reviews: anything inferred from anonymous MQTT traffic can be spoofed. Routing is the
+    configured default or exactly what the request names; observations only produce a warning."""
+    _seen("uagv/v3/Spoofer/robot_s/state", {"serialNumber": "robot_s"})
 
-    client.post("/api/missions", json={**P1042, "robot_id": "amr_1"})
+    response = client.post("/api/missions", json={**P1042, "robot_id": "robot_s"})
+
+    assert response.status_code == 202
+    assert published[0][0] == "uagv/v2/ActuNode/robot_s/order"
+    assert "Spoofer v3" in response.json()["warning"]
+
+
+def test_explicit_identity_is_used_exactly(client, published):
+    client.post("/api/missions", json={**P1042, "robot_id": "amr_1", "manufacturer": "VendorX", "vda_version": "2"})
 
     [(topic, order)] = published
     assert topic == "uagv/v2/VendorX/amr_1/order"
     assert order["manufacturer"] == "VendorX"
-    assert order["version"] == "2.1.0"
     assert "startNodeId" in order["edges"][0]
 
 
+def test_no_warning_when_the_robot_was_seen_with_the_identity_used(client, published):
+    _seen("uagv/v2/ActuNode/robot_ok/state", {"serialNumber": "robot_ok"})
+
+    response = client.post("/api/missions", json={**P1042, "robot_id": "robot_ok"})
+
+    assert "warning" not in response.json()
+
+
 def test_order_to_a_robot_never_seen_uses_the_configured_default(client, published):
-    client.post("/api/missions", json={**P1042, "robot_id": "robot_unseen"})
+    response = client.post("/api/missions", json={**P1042, "robot_id": "robot_unseen"})
 
     [(topic, order)] = published
     assert topic == "uagv/v2/ActuNode/robot_unseen/order"
     assert order["version"] == "2.1.0"
-
-
-def test_robot_seen_under_two_identities_is_not_silently_rerouted(client, published):
-    """Security review: routing by 'last seen' let any publisher redirect a robot's orders."""
-    _seen("uagv/v2/ActuNode/robot_dup/state", {"serialNumber": "robot_dup"})
-    _seen("uagv/v3/Spoofer/robot_dup/state", {"serialNumber": "robot_dup"})
-
-    response = client.post("/api/missions", json={**P1042, "robot_id": "robot_dup"})
-
-    assert response.status_code == 409
-    detail = response.json()["detail"]
-    assert "ActuNode" in detail and "Spoofer" in detail
-    assert published == []
-
-
-def test_explicit_identity_resolves_the_ambiguity(client, published):
-    _seen("uagv/v2/ActuNode/robot_dup2/state", {"serialNumber": "robot_dup2"})
-    _seen("uagv/v3/Spoofer/robot_dup2/state", {"serialNumber": "robot_dup2"})
-
-    response = client.post(
-        "/api/missions", json={**P1042, "robot_id": "robot_dup2", "manufacturer": "ActuNode", "vda_version": "2"}
-    )
-
-    assert response.status_code == 202
-    assert published[0][0] == "uagv/v2/ActuNode/robot_dup2/order"
+    assert "warning" not in response.json()
 
 
 @pytest.mark.parametrize("manufacturer", ["Evil/robot", "a#b", "+", ""])
@@ -181,53 +175,8 @@ def test_explicit_manufacturer_cannot_inject_topic_levels(client, published, man
     assert published == []
 
 
-def _age_identities(robot_id: str, seconds: float) -> None:
-    """Pretend every identity of a robot was last seen `seconds` ago."""
-    from datetime import UTC, datetime, timedelta
-
-    from app.live import hub
-
-    old = (datetime.now(UTC) - timedelta(seconds=seconds)).isoformat().replace("+00:00", "Z")
-    for identity in hub._robots[robot_id]["identities"]:
-        identity["lastSeen"] = old
-
-
-def test_one_explicit_field_narrows_the_choice_instead_of_bypassing_it(client, published):
-    """Review: naming only vda_version used to skip the ambiguity check and default the manufacturer."""
-    _seen("uagv/v2/ActuNode/robot_one/state", {"serialNumber": "robot_one"})
-    _seen("uagv/v2/Spoofer/robot_one/state", {"serialNumber": "robot_one"})
-
-    still_ambiguous = client.post("/api/missions", json={**P1042, "robot_id": "robot_one", "vda_version": "2"})
-    narrowed = client.post("/api/missions", json={**P1042, "robot_id": "robot_one", "manufacturer": "ActuNode"})
-
-    assert still_ambiguous.status_code == 409
-    assert narrowed.status_code == 202
-    assert published[0][0] == "uagv/v2/ActuNode/robot_one/order"
-
-
-def test_explicit_field_matching_no_known_identity_is_refused(client, published):
-    _seen("uagv/v2/ActuNode/robot_known/state", {"serialNumber": "robot_known"})
-
-    response = client.post("/api/missions", json={**P1042, "robot_id": "robot_known", "vda_version": "3"})
-
-    assert response.status_code == 409
-    assert published == []
-
-
-def test_a_single_spoofed_message_does_not_block_the_robot_forever(client, published):
-    """Review: one fake publish made the robot permanently ambiguous (missions refused until restart)."""
-    _seen("uagv/v2/Spoofer/robot_poison/state", {"serialNumber": "robot_poison"})
-    _age_identities("robot_poison", 60)  # the spoof was a minute ago ...
-    _seen("uagv/v2/ActuNode/robot_poison/state", {"serialNumber": "robot_poison"})  # ... the real robot is live
-
-    response = client.post("/api/missions", json={**P1042, "robot_id": "robot_poison"})
-
-    assert response.status_code == 202
-    assert published[0][0] == "uagv/v2/ActuNode/robot_poison/order"
-
-
 def test_identities_per_robot_are_capped():
-    """Review: a spoofer could grow the identity list without bound (and slow every message)."""
+    """Observed identities are display-only now, but still bounded."""
     from app.live import MAX_IDENTITIES, LiveHub
 
     live = LiveHub()
@@ -236,4 +185,4 @@ def test_identities_per_robot_are_capped():
 
     identities = live.robot("robot_cap")["identities"]
     assert len(identities) == MAX_IDENTITIES
-    assert identities[0]["manufacturer"] == "Vendor49"  # most recent kept first
+    assert identities[0]["manufacturer"] == "Vendor49"

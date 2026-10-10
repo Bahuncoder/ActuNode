@@ -32,10 +32,13 @@ What changed, per commit, newest first. Status and plans are in [docs/PROGRESS.m
 - CI: the `compose` build job is replaced by the `e2e` job, which builds and runs the stack.
 
 ### Fixed
-- Security review: orders were routed by the identity a robot was last seen with, so any MQTT client
-  could redirect them. A robot seen under several active identities now needs `manufacturer` and/or
-  `vda_version` in the mission request to pick one (409 otherwise). Identities expire after 10 s of
-  silence (one spoofed message cannot block a robot), at most 8 per robot and 1,000 robots are kept.
+- Security: orders were routed by the identity a robot was last seen with, so any MQTT client could
+  redirect them; two rounds of patches still left ways around it. Orders now go only where the request
+  says (`manufacturer`, `vda_version`) or to the configured default; observed identities produce a
+  `warning` and are offered in the UI's new Target select (D-21). At most 8 identities per robot and
+  1,000 robots are kept.
+- Mission form could show one robot while sending to another (the default `robot_01` when it was not
+  in the live list).
 - A write error (e.g. disk full) during recording logged a traceback for every message and silently
   dropped messages; recording now stops once with the reason.
 - Replay loaded the whole session into memory twice (90 MB peak for a 25 MB file); it now streams

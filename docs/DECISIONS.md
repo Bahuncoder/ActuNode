@@ -229,3 +229,21 @@ warnings, not `schema` errors: the 2.1.0 schema leaves `batteryCharge` unbounded
 as `value-range` (warning).
 **Consequences.** `schema` errors now mean "violates the official standard", nothing more; all six
 topics are covered (before: three). Groundwork for 3.0 (D-15): add the 3.0 set next to it.
+
+## D-21 · Never route commands from observed traffic
+10 Oct 2026 · Accepted
+
+**Context.** For 3.0 support, orders were first sent to the version/manufacturer a robot was last seen
+with. Three successive security reviews each found a way to abuse that: a spoofed state message
+redirected orders; then one spoofed message blocked a robot; then a spoofer outlasting a silent robot,
+or flooding the robot list, could again decide routing. The root cause is not a bug in any one rule:
+the broker is anonymous, so **no observation proves who sent it**, and any routing inferred from
+observations can be steered by whoever produces them.
+**Decision.** The backend routes an order exactly to the `manufacturer` / `vda_version` named in the
+request, or to the configured default (`ActuNode`, `ACTUNODE_VDA_MAJOR_VERSION`). Observed identities
+are kept (capped) for display and advice only: the mission response carries a `warning` when the
+robot was seen but never under the identity used, and the UI's Target select shows the observed
+identities so a person chooses (one is preselected; several force a choice).
+**Consequences.** Simple, deterministic and not spoofable through the backend; sending to a 3.0 robot
+needs `vda_version: "3"` (the UI fills it from what it sees). Authenticity of robots requires broker
+authentication with per-robot topic permissions (issue 12).

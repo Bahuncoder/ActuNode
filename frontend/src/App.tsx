@@ -100,7 +100,7 @@ export default function App() {
 
         <PanelBoundary title="Missions and failures">
           <div className="split">
-            <MissionSender robots={robots.map((robot) => robot.robotId)} locations={locations} />
+            <MissionSender robots={robots} locations={locations} />
             <FailurePanel robots={robots} failures={feed.failures} />
           </div>
         </PanelBoundary>

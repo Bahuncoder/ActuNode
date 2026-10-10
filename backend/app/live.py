@@ -104,10 +104,8 @@ class LiveHub:
         )
         robot["vdaMajor"] = parsed.major
         robot["manufacturer"] = parsed.manufacturer
-        # The (version, manufacturer) pairs this serial number has used, most recent first, with when
-        # each was last seen. More than one active pair means the serial alone does not identify a
-        # robot (a second vendor, or a spoofing client): see missions.py. Capped, so a publisher
-        # cannot grow it without bound.
+        # The (version, manufacturer) pairs this serial number has used, most recent first. Display and
+        # advice only: never used to route commands (D-21). Capped so a publisher cannot grow it.
         identities = [
             i
             for i in robot.get("identities", [])

@@ -25,9 +25,13 @@ export type MissionRequest = {
   destination: string
   source?: string
   load_id?: string
+  // Where the order goes. Omitted: the server's configured default (ActuNode, VDA 5050 2).
+  manufacturer?: string
+  vda_version?: '2' | '3'
 }
 
-export type MissionResponse = { order_id: string; topic: string }
+// `warning`: the robot has been seen, but never under the identity the order was sent to.
+export type MissionResponse = { order_id: string; topic: string; warning?: string }
 
 export async function fetchLocations(): Promise<Record<string, Location>> {
   const response = await fetch('/api/locations')

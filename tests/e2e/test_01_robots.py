@@ -37,7 +37,7 @@ def test_idle_robot_publishes_state_every_second(stack):
 
 def test_mission_runs_through_the_state_machine(stack):
     with stack.watch(STATE_TOPIC.format("robot_01")) as messages:
-        stack.post("/missions", {"robot_id": "robot_01", "destination": "CHARGING"}, expect=202)
+        stack.post("/missions", {"vda_version": VDA, "robot_id": "robot_01", "destination": "CHARGING"}, expect=202)
         wait_for(lambda: stack.status("robot_01") == "COMPLETED", 30, "robot_01 COMPLETED")
 
     statuses = []
@@ -51,7 +51,7 @@ def test_mission_runs_through_the_state_machine(stack):
 
 
 def test_blocked_path_stops_the_robot_until_cleared(stack):
-    stack.post("/missions", {"robot_id": "robot_02", "destination": "RECEIVING_DOOR_1"}, expect=202)
+    stack.post("/missions", {"vda_version": VDA, "robot_id": "robot_02", "destination": "RECEIVING_DOOR_1"}, expect=202)
     wait_for(lambda: stack.status("robot_02") == "MOVING", 10, "robot_02 MOVING")
     time.sleep(2)
 
