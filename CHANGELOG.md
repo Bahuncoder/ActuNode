@@ -5,6 +5,7 @@ What changed, per commit, newest first. Status and plans are in [docs/PROGRESS.m
 ## Unreleased
 
 ### Added
+- Customer discovery kit: [outreach messages](docs/discovery/OUTREACH.md) and [interview guide](docs/discovery/INTERVIEW_GUIDE.md).
 - [docs/research/VDA5050_3_0.md](docs/research/VDA5050_3_0.md): VDA 5050 3.0 vs 2.1 comparison and plan (D-15).
 - ruff lint and format for Python (`ruff.toml`, 120 columns) and a `lint` job in CI (D-14).
 - Project tracking and documentation: [docs/PROGRESS.md](docs/PROGRESS.md),

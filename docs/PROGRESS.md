@@ -63,6 +63,7 @@ Plan objective is done. Remaining work for this week is verification and documen
 - [ ] Confirm the Day 1–5 CI compose failures are understood (open issue 3)
 - [x] Read the VDA 5050 3.0 release notes and record what changes for us ([research note](research/VDA5050_3_0.md), D-15)
 - [x] Python linter and formatter (ruff, 120 columns) in CI (issue 16, D-14)
+- [x] Customer discovery kit: [outreach messages](discovery/OUTREACH.md), [interview guide](discovery/INTERVIEW_GUIDE.md), private tracker
 - [ ] Customer discovery: first outreach messages sent (plan: 30 conversations in 60 days)
 
 Proposed focus for the coming weeks (each week's plan objective + hardening of what was built early):
@@ -76,6 +77,19 @@ Proposed focus for the coming weeks (each week's plan objective + hardening of w
 | 6 | Remaining failures: low battery, disconnect, invalid payload, timeouts |
 | 7 | Session size limits and retention; upload a session someone sent you; streaming replay |
 | 8 | Record the demo video ([DEMO.md](DEMO.md)); polish README; publish |
+
+## Customer discovery
+
+Target from the plan: **30 conversations in 60 days** (by 8 Dec 2026), about 5 a week. Names and
+notes stay in the private tracker `docs/company/discovery_tracker.csv` (not in git); only counts and
+anonymised learnings go here.
+
+| Week | Messages sent | Replies | Conversations | Total conversations |
+|---|---|---|---|---|
+| 1 (9–15 Oct) | 0 | 0 | 0 | 0 / 30 |
+
+**Learnings so far:** none yet. After every 5 conversations, add a summary of repeated pain points
+to the session log.
 
 ## Verification status
 
@@ -119,6 +133,14 @@ Numbered so they can be referenced from commits. Remove an item only when it is 
 ## Session log
 
 Newest first. One entry per work session: what was done, what was learned, what is next.
+
+### Sat 10 Oct 2026 (night): customer discovery kit
+
+- Outreach messages for the plan's five segments, follow-up and thank-you
+  ([discovery/OUTREACH.md](discovery/OUTREACH.md)); 15-minute interview guide built on past behaviour,
+  with the new VDA 5050 version question ([discovery/INTERVIEW_GUIDE.md](discovery/INTERVIEW_GUIDE.md)).
+- Private contact tracker created in `docs/company/` (git-ignored; the repository is public).
+- Discovery counters added above. Sending the messages is the founders' job.
 
 ### Sat 10 Oct 2026 (night): VDA 5050 3.0 research
 
