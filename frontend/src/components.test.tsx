@@ -65,6 +65,18 @@ const v3robot: Robot = {
   } as unknown as Robot['state'],
 }
 
+describe('WarehouseMap near-misses', () => {
+  it('highlights robots that are too close and joins them with a line', () => {
+    const close: Robot = { ...v3robot, robotId: 'robot_02', state: { ...v3robot.state!, mobileRobotPosition: { x: 1.5, y: 2, theta: 0 } } }
+    const { container } = render(
+      <WarehouseMap robots={[healthy, close]} locations={{}} proximity={[{ robots: ['robot_01', 'robot_02'], distance: 0.25 }]} />,
+    )
+
+    expect(container.querySelectorAll('g.robot.near')).toHaveLength(2)
+    expect(container.querySelectorAll('line.proximity')).toHaveLength(1)
+  })
+})
+
 describe('mixed fleet (VDA 5050 2.1 and 3.0)', () => {
   it('shows each robot with its version, position and charge', () => {
     render(<RobotTable robots={[healthy, v3robot]} />)

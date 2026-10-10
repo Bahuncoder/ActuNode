@@ -249,3 +249,22 @@ string; names the server would reject are shown disabled.
 **Consequences.** Simple, deterministic and not spoofable through the backend; sending to a 3.0 robot
 needs `vda_version: "3"` (the UI fills it from what it sees). Authenticity of robots requires broker
 authentication with per-robot topic permissions (issue 12).
+
+## D-22 · Detect near-collisions; never avoid them
+10 Oct 2026 · Accepted
+
+**Context.** Simulated robots drive straight lines and pass through each other (issue 5). Avoiding
+collisions is traffic management: the job of the fleet manager under test (or Open-RMF), which the plan
+positions ActuNode to complement, not replace. Building it would make ActuNode a fleet manager and
+break the founder rule "do not start as a generic fleet dashboard; start at the debugging pain".
+**Decision.** Stage 1 (debugging lab) detects and records, it does not steer: the backend reports a
+`proximity` warning when two live robots on the same map come closer than `ACTUNODE_PROXIMITY_M`
+(default 1.0 m), once per incident (re-armed beyond 1.2×), attached to the state message so it lands in
+the stream, the Validation panel and recordings; current pairs are shown on the map and at
+`GET /api/proximity`. ActuNode's own mission sender is a **test driver, not a fleet manager**. Planned
+for Week 6: realistic safety stops in the simulator (robot halts and reports `safetyState.fieldViolation`
+when another robot is in its path), which produces the deadlocks a fleet manager must handle. Never:
+path planning or traffic control inside ActuNode.
+**Consequences.** Near-misses become evidence; later (stage 2, test infrastructure) a scenario can assert
+"no proximity warnings". The detector immediately found real near-misses in our own demo: robots leaving
+the parking grid for CHARGING pass within 0.5 m of parked neighbours.

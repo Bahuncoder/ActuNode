@@ -84,7 +84,7 @@ Proposed focus for the coming weeks (each week's plan objective + hardening of w
 | 3 | `instantActions` cancelOrder (the "cancel" in *cancel, reroute or escalate*); order updates (`orderUpdateId`) |
 | 4 | Load test 10/25/50 robots (CPU, message rate, UI frame rate); decide whether to model traffic/near-collisions |
 | 5 | Version-aware validation with the official 2.1.0 and 3.0.0 schemas, chosen by topic (D-15); offline validation of session files |
-| 6 | Remaining failures: low battery, disconnect, invalid payload, timeouts |
+| 6 | Remaining failures: low battery, disconnect, invalid payload, timeouts; simulator safety stops (`fieldViolation`) when a robot is in the path (D-22) |
 | 7 | Session size limits and retention; upload a session someone sent you; streaming replay |
 | 8 | Record the demo video ([DEMO.md](DEMO.md)); polish README; publish |
 
@@ -122,12 +122,11 @@ exercised by hand with a real browser and MQTT traffic.
 
 ## Open issues and technical debt
 
-Numbered so they can be referenced from commits. Remove an item only when it is fixed and verified; numbers are never reused (fixed: 1, 2, 4, 7, 8, 9, 10, 11, 13, 14, 16, 18).
+Numbered so they can be referenced from commits. Remove an item only when it is fixed and verified; numbers are never reused (fixed: 1, 2, 4, 5, 7, 8, 9, 10, 11, 13, 14, 16, 18).
 
 | # | Issue | Impact | Plan |
 |---|---|---|---|
 | 3 | CI `compose` job failed on Days 1–5, passes since Day 6. No build-relevant file changed in between; logs need a GitHub login | Probably transient (base image pulls), but unconfirmed | Check the job logs on GitHub Actions |
-| 5 | No collision avoidance or traffic management; robots drive through each other | Unrealistic with many robots | Decide in Week 4 whether to model it |
 | 6 | No real-browser tests (component and logic tests exist since D-19, but run in jsdom, not a browser) | Browser-only issues (layout, WebSocket in a real browser) are caught by hand | Add Playwright tests against the e2e stack |
 | 12 | No authentication: Mosquitto allows anonymous clients, the API has no login, no TLS | Since D-18 the lab is reachable only from the same computer by default; with `ACTUNODE_BIND_ADDRESS=0.0.0.0` anyone on the network can command robots | Broker credentials with per-robot topic ACLs (the only way to know a robot's messages are really from it, D-21) + API auth + TLS before any shared deployment |
 | 15 | From the dev machine, `127.0.0.1:8000` (backend published port) accepts connections but never answers, while the LAN address `192.168.1.151:8000`, port 8080 on loopback, and container-to-container calls all work. Seen from the assistant's sandboxed shell; not yet checked from a normal terminal | API docs at localhost:8000/docs may be unreachable; the UI is unaffected (it uses 8080) | Seen again on 10 Oct for MQTT ports 1883/11883 from the same shell while the LAN address worked, so most likely the assistant's sandbox; on GitHub's CI machine the same e2e tests reach the stack via plain `localhost`. E2E tests take `ACTUNODE_E2E_HOST` for this. Still: run `curl -m 5 localhost:8000/api/health` in a normal terminal; if it hangs there too, investigate Docker's port forwarding |
@@ -140,6 +139,15 @@ Newest first. One entry per work session: what was done, what was learned, what 
 
 ### Sat 10 Oct 2026: working through open issues one by one
 
+- **#5 closed by decision D-22: detect near-collisions, never avoid them.** Agreed with the founder:
+  stage 1 is the debugging lab; traffic control belongs to the fleet manager under test. Built a
+  `ProximityMonitor` (2.1 and 3.0 positions, same map, live robots only, once per incident with 1.2×
+  re-arm, offline robots forgotten), wired into the hub as a `proximity` warning, map highlight,
+  `GET /api/proximity`, WebSocket event. It immediately found real near-misses in our own e2e scenario
+  (robots leaving the parking grid pass within 0.5 m of parked ones), so the "traffic is clean" e2e
+  test now means "no protocol issues". Also found a latent **e2e race**: waiting for COMPLETED could
+  match a robot's *previous* order; added `run_mission()` that waits for completion of the specific
+  order. Backend 108, frontend 20, e2e 11/11 for both 2.1 and 3.0. Week 6 gets simulator safety stops.
 - **Fourth security review (mission form, 2 findings), fixed with tests first.** (1) Shown ≠ sent: options
   encoded `manufacturer|version` and the form split on `|`, so a spoofed manufacturer named `Evil|v3` would
   display one target and send to another. Options now map to the identity object itself (not a parsed

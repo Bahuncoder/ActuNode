@@ -168,6 +168,12 @@ curl -X POST localhost:8000/api/validation/reset
 
 See [docs/VDA5050_NOTES.md](docs/VDA5050_NOTES.md) for the rules and the protocol notes behind them.
 
+### Near-collisions
+
+ActuNode does not steer robots apart (that is the fleet manager's job); it **reports** when two live
+robots come closer than 1.0 m (`ACTUNODE_PROXIMITY_M`): a `proximity` warning in the stream, the
+Validation panel and recordings, a red line between the robots on the map, and `GET /api/proximity`.
+
 ### Recording sessions
 
 Recording captures every MQTT message the backend sees (orders, states, connections, failure

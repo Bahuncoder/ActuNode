@@ -13,6 +13,8 @@ from collections.abc import Callable
 from datetime import UTC, datetime
 
 from app import vda5050
+from app.config import settings
+from app.proximity import ProximityMonitor
 from app.validator import RULES, Validator
 
 log = logging.getLogger(__name__)
@@ -41,6 +43,7 @@ class LiveHub:
         self._messages: deque[dict] = deque(maxlen=MESSAGE_BUFFER)
         self._failures: deque[dict] = deque(maxlen=FAILURE_BUFFER)
         self._validator = Validator()
+        self._proximity = ProximityMonitor(min_distance=settings.proximity_m)
         self._validation = _empty_validation()
         self._next_id = 1
         self._clients: set[asyncio.Queue] = set()
@@ -66,6 +69,10 @@ class LiveHub:
 
         with self._lock:
             issues = self._validator.check(topic, body, valid_json, retained)
+            pairs_before = self._proximity.active_pairs()
+            if valid_json and not retained:
+                issues += self._observe_proximity(topic, body)
+            pairs_after = self._proximity.active_pairs()
             message = {
                 "id": self._next_id,
                 "receivedAt": _now(),
@@ -86,6 +93,18 @@ class LiveHub:
             except Exception:
                 log.exception("Message listener failed")
         self.broadcast({"type": "message", "message": message, "robot": robot})
+        if pairs_after != pairs_before:
+            self.broadcast({"type": "proximity", "pairs": pairs_after})
+
+    def _observe_proximity(self, topic: str, body) -> list[dict]:
+        parts = vda5050.topic_parts(topic)
+        if parts is None or not isinstance(body, dict):
+            return []
+        if parts.name == "state":
+            return self._proximity.observe(parts.serial_number, body)
+        if parts.name == "connection" and body.get("connectionState") != "ONLINE":
+            self._proximity.forget(parts.serial_number)
+        return []
 
     def _update_robot(self, topic: str, body, received_at: str) -> dict | None:
         parsed = vda5050.topic_parts(topic)
@@ -172,6 +191,7 @@ class LiveHub:
                 "robots": sorted((dict(r) for r in self._robots.values()), key=lambda r: r["robotId"]),
                 "messages": list(self._messages)[-SNAPSHOT_MESSAGES:],
                 "failures": list(self._failures),
+                "proximity": self._proximity.active_pairs(),
             }
 
     # --- WebSocket side (asyncio loop) ---------------------------------------

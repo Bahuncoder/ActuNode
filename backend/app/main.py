@@ -56,6 +56,12 @@ def list_robots() -> list[dict]:
     return hub.snapshot()["robots"]
 
 
+@app.get("/api/proximity")
+def proximity() -> list[dict]:
+    """Pairs of live robots currently closer than ACTUNODE_PROXIMITY_M (near-collisions)."""
+    return hub.snapshot()["proximity"]
+
+
 @app.get("/api/validation")
 def validation_summary() -> dict:
     return hub.validation()

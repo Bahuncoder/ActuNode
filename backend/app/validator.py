@@ -42,6 +42,7 @@ RULES = {
     "driving-consistency": "driving flag disagrees with the mission status",
     "last-node-regression": "lastNodeSequenceId went backwards within the same order",
     "value-range": "Value outside its physical range (ActuNode plausibility check, not in the official schema)",
+    "proximity": "Two live robots closer than the minimum distance (near-collision; ACTUNODE_PROXIMITY_M)",
 }
 
 

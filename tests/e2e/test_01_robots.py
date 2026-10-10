@@ -37,8 +37,7 @@ def test_idle_robot_publishes_state_every_second(stack):
 
 def test_mission_runs_through_the_state_machine(stack):
     with stack.watch(STATE_TOPIC.format("robot_01")) as messages:
-        stack.post("/missions", {"vda_version": VDA, "robot_id": "robot_01", "destination": "CHARGING"}, expect=202)
-        wait_for(lambda: stack.status("robot_01") == "COMPLETED", 30, "robot_01 COMPLETED")
+        stack.run_mission("robot_01", "CHARGING")
 
     statuses = []
     for _, _, payload, _ in messages:
@@ -78,8 +77,23 @@ def test_failure_on_idle_robot_is_refused(stack):
 
 
 def test_all_traffic_so_far_passes_validation(stack):
-    """Before the resilience tests: restarts legitimately produce header-id warnings."""
+    """No protocol issues before the resilience tests (restarts legitimately produce header-id warnings).
+    Proximity warnings are expected: the simulator has no collision avoidance, and robots driving out of
+    the parking grid pass close to parked neighbours (D-22)."""
     validation = stack.api.get("/validation").json()
 
     assert validation["checked"] > 0
-    assert validation["withIssues"] == 0, validation["byRule"]
+    protocol_issues = [rule for rule in validation["byRule"] if rule["rule"] != "proximity"]
+    assert protocol_issues == [], protocol_issues
+
+
+def test_two_robots_at_the_same_spot_raise_a_near_collision_warning(stack):
+    """ActuNode does not steer robots apart (that is the fleet manager's job, D-22); it reports when they
+    get too close. robot_01 is parked at CHARGING after the mission test; send robot_02 there too."""
+    stack.run_mission("robot_02", "CHARGING")
+
+    pairs = wait_for(lambda: stack.api.get("/proximity").json(), 5, "an active near-miss pair")
+    assert ["robot_01", "robot_02"] in [pair["robots"] for pair in pairs]
+    rules = {rule["rule"]: rule for rule in stack.api.get("/validation").json()["byRule"]}
+    assert rules["proximity"]["severity"] == "warning"
+    assert "robot_0" in rules["proximity"]["last"]["message"]

@@ -23,6 +23,7 @@ const empty: Feed = {
   recordingStopped: null,
   replay: null,
   validation: { since: 'x', checked: 0, withIssues: 0, byRule: [] },
+  proximity: [],
 }
 
 function message(id: number, issues: MqttMessage['issues'] = []): MqttMessage {
@@ -139,5 +140,19 @@ describe('VDA 5050 3.0 robots', () => {
     const bare = robotWith({ version: '3.0.0' })
     expect(robotPose(bare)).toBeUndefined()
     expect(batteryCharge(bare)).toBeUndefined()
+  })
+})
+
+describe('proximity', () => {
+  it('takes the current near-miss pairs from snapshot and updates', () => {
+    const pairs = [{ robots: ['r1', 'r2'], distance: 0.5 }]
+    let feed = reducer(empty, {
+      type: 'event',
+      event: { ...empty, type: 'snapshot', robots: [], messages: [], validation: empty.validation!, proximity: pairs },
+    })
+    expect(feed.proximity).toEqual(pairs)
+
+    feed = reducer(feed, { type: 'event', event: { type: 'proximity', pairs: [] } })
+    expect(feed.proximity).toEqual([])
   })
 })

@@ -93,6 +93,9 @@ export type RecordingStatus = {
   maxBytes?: number
 }
 
+/** Two live robots currently closer than the minimum distance (near-collision, reported by the backend). */
+export type ProximityPair = { robots: string[]; distance: number }
+
 /** Set when the server stopped a recording by itself (size limit or write error). */
 export type RecordingStopped = { sessionId: string; reason: string }
 
@@ -116,7 +119,9 @@ type LiveEvent =
       recording: RecordingStatus | null
       replay: ReplayStatus | null
       validation: ValidationSummary
+      proximity?: ProximityPair[]
     }
+  | { type: 'proximity'; pairs: ProximityPair[] }
   | { type: 'validation'; validation: ValidationSummary }
   | { type: 'recording'; recording: RecordingStatus | null; stoppedReason?: string; stopped?: RecordingStatus }
   | { type: 'replay'; replay: ReplayStatus | null }
@@ -132,6 +137,7 @@ export type Feed = {
   recordingStopped: RecordingStopped | null
   replay: ReplayStatus | null
   validation: ValidationSummary | null
+  proximity: ProximityPair[]
 }
 
 type Action = { type: 'connected' | 'disconnected' } | { type: 'event'; event: LiveEvent }
@@ -158,7 +164,11 @@ function applyEvent(feed: Feed, event: LiveEvent): Feed {
       recording: event.recording,
       replay: event.replay,
       validation: event.validation,
+      proximity: event.proximity ?? [],
     }
+  }
+  if (event.type === 'proximity') {
+    return { ...feed, proximity: event.pairs }
   }
   if (event.type === 'validation') {
     return { ...feed, validation: event.validation }
@@ -226,6 +236,7 @@ export function useLiveFeed(): Feed {
     recordingStopped: null,
     replay: null,
     validation: null,
+    proximity: [],
   })
 
   useEffect(() => {

@@ -1,5 +1,5 @@
 import type { Location } from './api'
-import { isOnline, missionStatus, robotPose, routePoints, type Robot } from './live'
+import { isOnline, missionStatus, robotPose, routePoints, type ProximityPair, type Robot } from './live'
 
 // Warehouse floor in meters, origin bottom-left (same frame as the simulator).
 const WIDTH_M = 40
@@ -26,10 +26,14 @@ const py = (y: number) => (HEIGHT_M - y) * PX_PER_M
 export default function WarehouseMap({
   robots,
   locations,
+  proximity = [],
 }: {
   robots: Robot[]
   locations: Record<string, Location>
+  proximity?: ProximityPair[]
 }) {
+  const near = new Set(proximity.flatMap((pair) => pair.robots))
+  const poses = new Map(robots.map((robot) => [robot.robotId, robotPose(robot)]))
   return (
     <svg
       className="warehouse-map"
@@ -76,8 +80,17 @@ export default function WarehouseMap({
       {robots.map((robot) => (
         <RobotRoute key={`route-${robot.robotId}`} robot={robot} />
       ))}
+      {proximity.map((pair) => {
+        const [a, b] = pair.robots.map((id) => poses.get(id))
+        if (!a || !b) return null
+        return (
+          <line key={pair.robots.join('-')} className="proximity" x1={px(a.x)} y1={py(a.y)} x2={px(b.x)} y2={py(b.y)}>
+            <title>{`${pair.robots.join(' and ')}: ${pair.distance} m apart`}</title>
+          </line>
+        )
+      })}
       {robots.map((robot) => (
-        <RobotMarker key={robot.robotId} robot={robot} />
+        <RobotMarker key={robot.robotId} robot={robot} near={near.has(robot.robotId)} />
       ))}
     </svg>
   )
@@ -104,7 +117,7 @@ function shortLabel(robotId: string): string {
   return robotId.replace(/^robot_/, '')
 }
 
-function RobotMarker({ robot }: { robot: Robot }) {
+function RobotMarker({ robot, near }: { robot: Robot; near: boolean }) {
   const position = robotPose(robot)
   if (!position) return null
 
@@ -112,7 +125,7 @@ function RobotMarker({ robot }: { robot: Robot }) {
   const heading = -position.theta * (180 / Math.PI)
   return (
     <g
-      className={`robot status-${status} ${isOnline(robot) ? '' : 'offline'}`}
+      className={`robot status-${status} ${isOnline(robot) ? '' : 'offline'} ${near ? 'near' : ''}`}
       style={{ transform: `translate(${px(position.x)}px, ${py(position.y)}px)` }}
     >
       <title>{`${robot.robotId}: ${missionStatus(robot)}`}</title>

@@ -461,6 +461,18 @@ code,
   fill: var(--danger);
 }
 
+/* Near-collision (backend `proximity` warning): red halo and a line between the two robots. */
+.warehouse-map .robot.near circle {
+  stroke: var(--danger);
+  stroke-width: 4;
+}
+
+.warehouse-map line.proximity {
+  stroke: var(--danger);
+  stroke-width: 2;
+  stroke-dasharray: 3 3;
+}
+
 .warehouse-map .robot.offline {
   opacity: 0.35;
 }

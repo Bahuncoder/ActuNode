@@ -101,6 +101,7 @@ plus ActuNode's own schemas for its extension and inject command. Rules: `backen
 | `driving-consistency` | warning | `driving` is true exactly when MOVING |
 | `last-node-regression` | warning | `lastNodeSequenceId` never goes backwards within an order |
 | `value-range` | warning | Plausibility the official schema does not check: `batteryCharge` within 0–100 % |
+| `proximity` | warning | Two live robots on the same map closer than `ACTUNODE_PROXIMITY_M` (1.0 m); once per incident (D-22) |
 
 ## Open questions to research
 

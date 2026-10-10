@@ -11,6 +11,8 @@ class Settings:
     mqtt_host: str = os.getenv("ACTUNODE_MQTT_HOST", "localhost")
     mqtt_port: int = int(os.getenv("ACTUNODE_MQTT_PORT", "1883"))
     mqtt_client_id: str = os.getenv("ACTUNODE_MQTT_CLIENT_ID", "actunode-backend")
+    # Two live robots closer than this (metres) raise a `proximity` warning (D-22).
+    proximity_m: float = float(os.getenv("ACTUNODE_PROXIMITY_M", "1.0"))
     # A recording stops itself at this size. Fractions allowed (useful for testing the limit).
     max_session_mb: float = float(os.getenv("ACTUNODE_MAX_SESSION_MB", "200"))
     sessions_dir: Path = field(

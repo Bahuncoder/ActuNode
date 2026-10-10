@@ -100,6 +100,7 @@ IDLE ──order──▶ ACCEPTED ──next tick──▶ MOVING ──last no
 | [mqtt.py](../backend/app/mqtt.py), [mqtt_state.py](../backend/app/mqtt_state.py) | `MqttBridge`: one shared paho client, auto-reconnect, subscriptions, message callback |
 | [live.py](../backend/app/live.py) | `LiveHub`: latest state per robot, last 500 messages, failure log, validation counters; hands events from the MQTT thread to WebSocket clients on the asyncio loop |
 | [validator.py](../backend/app/validator.py) + [schemas/](../backend/app/schemas) | JSON Schema checks + sequence rules; attaches `issues` to every message |
+| [proximity.py](../backend/app/proximity.py) | `ProximityMonitor`: near-collision detection between live robots (`proximity` warning) |
 | [vda5050.py](../backend/app/vda5050.py) | Topic names, headers, order building |
 | [missions.py](../backend/app/missions.py) | `POST /api/missions` → VDA 5050 order |
 | [failures.py](../backend/app/failures.py) | `POST /api/failures` → inject command; failure log |
@@ -121,6 +122,7 @@ WebSocket client's queue → `send_json`.
 | GET | `/api/locations` | Named warehouse locations |
 | POST | `/api/missions` | Send a mission (robot, source, destination, load; optional `manufacturer`, `vda_version`) |
 | GET | `/api/robots` | Latest connection + state per robot |
+| GET | `/api/proximity` | Pairs of live robots currently closer than `ACTUNODE_PROXIMITY_M` (D-22) |
 | GET | `/api/messages` | Recent MQTT messages with validation issues |
 | GET / POST | `/api/failures` | Failure log / inject or clear `BLOCKED_PATH` |
 | GET | `/api/validation` | Validation counters per rule |
@@ -146,6 +148,7 @@ Interactive docs: http://localhost:8000/docs.
 | `failure` | Failure injected/cleared | `failure` |
 | `recording` | Recording started/stopped | `recording` or null |
 | `replay` | Replay progress (≈2/s) and end | `replay` |
+| `proximity` | Near-miss pairs changed | `pairs` |
 | `validation` | Counters reset | `validation` |
 
 ### Session file format (v1)
@@ -198,6 +201,7 @@ can go first).
 | `ACTUNODE_MQTT_CLIENT_ID` | backend | `actunode-backend` |
 | `ACTUNODE_SESSIONS_DIR` | backend | `<repo>/sessions` |
 | `ACTUNODE_MAX_SESSION_MB` | backend (recording stops itself at this size; fractions allowed) | `200` |
+| `ACTUNODE_PROXIMITY_M` | backend (near-collision distance in metres, D-22) | `1.0` |
 | `ACTUNODE_SIM_ROBOTS` | simulator | `3` (1–50) |
 | `ACTUNODE_VDA_INTERFACE` | backend, simulator | `uagv` |
 | `ACTUNODE_VDA_MAJOR_VERSION` | backend (topic version of orders it sends) | `v2` |

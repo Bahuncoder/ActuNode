@@ -87,7 +87,7 @@ export default function App() {
         <PanelBoundary title="Warehouse">
           <section className="panel panel-wide">
             <h2>Warehouse</h2>
-            <WarehouseMap robots={robots} locations={locations} />
+            <WarehouseMap robots={robots} locations={locations} proximity={feed.proximity} />
           </section>
         </PanelBoundary>
 

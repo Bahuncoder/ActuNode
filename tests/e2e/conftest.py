@@ -78,6 +78,19 @@ class Stack:
             assert response.status_code == expect, f"POST {path}: {response.status_code} {response.text}"
         return response
 
+    def run_mission(self, robot_id: str, destination: str, timeout: float = 40, **extra) -> str:
+        """Send a mission and wait until the robot completes *that* order (not an earlier one that
+        is still shown as COMPLETED). Returns the order id."""
+        body = {"vda_version": VDA, "robot_id": robot_id, "destination": destination, **extra}
+        order_id = self.post("/missions", body, expect=202).json()["order_id"]
+
+        def done() -> bool:
+            state = self.robots()[robot_id]["state"]
+            return state["orderId"] == order_id and state["actunode"]["missionStatus"] == "COMPLETED"
+
+        wait_for(done, timeout, f"{robot_id} completed {order_id} to {destination}")
+        return order_id
+
     def all_online(self) -> bool:
         """ONLINE *and* a state message in the last 3 s. The connection flag alone is not proof:
         a replay republishes recorded ONLINE messages for robots that are not running (D-7)."""
