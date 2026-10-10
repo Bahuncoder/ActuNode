@@ -109,3 +109,84 @@ def test_record_via_api_then_list_and_download(client):
 @pytest.mark.parametrize("session_id", ["..%2F..%2Fetc%2Fpasswd", "nope", "20261009-120000_../x"])
 def test_download_rejects_unknown_and_unsafe_ids(client, session_id):
     assert client.get(f"/api/sessions/{session_id}/download").status_code == 404
+
+
+def message(i=0):
+    return {
+        "receivedAt": "x",
+        "topic": "uagv/v2/ActuNode/r/state",
+        "retained": False,
+        "validJson": True,
+        "payload": {"i": i, "pad": "x" * 200},
+    }
+
+
+def test_recording_stops_itself_at_the_size_limit(tmp_path):
+    stopped = []
+    recorder = SessionRecorder(tmp_path, max_bytes=5_000, on_stopped=lambda status, reason: stopped.append(reason))
+    session_id = recorder.start("big", [])["sessionId"]
+
+    for i in range(100):  # ~25 KB of messages, far over the limit
+        recorder.record(message(i))
+
+    assert recorder.status() is None
+    assert stopped == ["sizeLimit"]
+    path = tmp_path / f"{session_id}.jsonl"
+    assert path.stat().st_size <= 5_000 + 500  # header + end record may follow the last message
+    end = read_jsonl(path)[-1]
+    assert end["type"] == "end" and end["reason"] == "sizeLimit"
+    assert end["messageCount"] == sum(1 for r in read_jsonl(path) if r["type"] == "message")
+
+
+def test_write_error_stops_recording_once_instead_of_failing_every_message(tmp_path):
+    stopped = []
+    recorder = SessionRecorder(tmp_path, on_stopped=lambda status, reason: stopped.append(reason))
+    recorder.start("disk", [])
+
+    class FullDisk:
+        def write(self, _):
+            raise OSError(28, "No space left on device")
+
+        def flush(self):
+            pass
+
+        def close(self):
+            pass
+
+    recorder._file = FullDisk()
+    for i in range(5):
+        recorder.record(message(i))  # must not raise
+
+    assert recorder.status() is None
+    assert len(stopped) == 1 and stopped[0].startswith("writeError")
+
+
+def test_normal_stop_records_the_reason(tmp_path):
+    recorder = SessionRecorder(tmp_path)
+    session_id = recorder.start(None, [])["sessionId"]
+    recorder.stop()
+
+    assert read_jsonl(tmp_path / f"{session_id}.jsonl")[-1]["reason"] == "stopped"
+
+
+def test_summary_of_complete_session_reads_only_header_and_end(tmp_path, monkeypatch):
+    path = tmp_path / "20261009-120000_fast.jsonl"
+    lines = [
+        '{"type":"session","formatVersion":1,"name":"fast","startedAt":"2026-10-09T12:00:00Z"}',
+        '{"type":"snapshot","robots":[]}',
+    ]
+    lines += [f'{{"type":"message","t":{i},"topic":"a","payload":{{}}}}' for i in range(5000)]
+    lines.append('{"type":"end","endedAt":"2026-10-09T12:10:00Z","messageCount":5000,"reason":"stopped"}')
+    path.write_text("\n".join(lines) + "\n")
+
+    import json as json_module
+
+    calls = []
+    real_loads = json_module.loads
+    monkeypatch.setattr("app.recorder.json.loads", lambda s: calls.append(1) or real_loads(s))
+    summary = summarize(path)
+
+    assert summary["messageCount"] == 5000
+    assert summary["complete"] is True
+    assert summary["endedAt"] == "2026-10-09T12:10:00Z"
+    assert len(calls) <= 3, f"parsed {len(calls)} lines for a complete file"

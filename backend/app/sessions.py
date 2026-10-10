@@ -13,7 +13,17 @@ from app.replay import Replayer, ReplayError, load_session, robot_ids
 
 router = APIRouter(prefix="/api")
 
-recorder = SessionRecorder(settings.sessions_dir)
+
+def _recording_stopped(status: dict, reason: str) -> None:
+    """The recorder stopped by itself (size limit or write error): tell the UI."""
+    hub.broadcast({"type": "recording", "recording": None, "stoppedReason": reason, "stopped": status})
+
+
+recorder = SessionRecorder(
+    settings.sessions_dir,
+    max_bytes=settings.max_session_mb * 1024 * 1024,
+    on_stopped=_recording_stopped,
+)
 hub.add_listener(recorder.record)
 
 replayer = Replayer(

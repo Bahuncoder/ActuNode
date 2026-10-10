@@ -5,21 +5,30 @@ File layout, one JSON object per line:
     {"type": "session",  "formatVersion": 1, "sessionId", "name", "startedAt"}
     {"type": "snapshot", "robots": [...]}            latest robot states at start
     {"type": "message",  "t", "receivedAt", "topic", "retained", "payload", "issues"?}   (many)
-    {"type": "end",      "endedAt", "messageCount"}  missing if the backend crashed
+    {"type": "end",      "endedAt", "messageCount", "reason"}  missing if the backend crashed
 
 `t` is seconds since recording started. `payload` is the parsed JSON; a message
 that was not valid JSON is stored as the raw string in `payloadRaw` instead.
 `issues` (validator findings) is present only when the message had any.
+`reason` says why recording ended: "stopped" (by the user or at shutdown), "sizeLimit", or
+"writeError: ..." (e.g. disk full). Older files may lack it.
 """
 
 import json
+import logging
 import re
 import threading
 import time
+from collections.abc import Callable
 from datetime import UTC, datetime
 from pathlib import Path
 
+log = logging.getLogger("actunode.recorder")
+
 FORMAT_VERSION = 1
+DEFAULT_MAX_BYTES = 200 * 1024 * 1024
+# Read at most this much from the end of a file to find its end record.
+TAIL_BYTES = 64 * 1024
 SESSION_ID = re.compile(r"^[0-9]{8}-[0-9]{6}(_[A-Za-z0-9_-]{1,40})?$")
 
 
@@ -32,12 +41,22 @@ class RecorderError(Exception):
 
 
 class SessionRecorder:
-    def __init__(self, directory: Path):
+    def __init__(
+        self,
+        directory: Path,
+        max_bytes: int = DEFAULT_MAX_BYTES,
+        on_stopped: Callable[[dict, str], None] | None = None,
+    ):
+        """`on_stopped(status, reason)` is called when recording stops by itself (size limit or write
+        error), from the thread that recorded the last message."""
         self.directory = Path(directory)
+        self.max_bytes = max_bytes
+        self._on_stopped = on_stopped
         self._lock = threading.Lock()
         self._file = None
         self._current: dict | None = None
         self._started_monotonic = 0.0
+        self._bytes = 0
 
     # --- Recording -------------------------------------------------------------
 
@@ -54,6 +73,7 @@ class SessionRecorder:
                 raise RecorderError(f"Session {session_id} already exists")
 
             self._file = path.open("w", encoding="utf-8")
+            self._bytes = 0
             self._started_monotonic = time.monotonic()
             self._current = {
                 "sessionId": session_id,
@@ -69,12 +89,24 @@ class SessionRecorder:
         with self._lock:
             if self._current is None:
                 raise RecorderError("Not recording")
-            self._write({"type": "end", "endedAt": _now(), "messageCount": self._current["messageCount"]})
+            return self._finish("stopped")
+
+    def _finish(self, reason: str) -> dict:
+        """Write the end record (if the file still accepts writes) and close. Caller holds the lock."""
+        status = self._status()
+        try:
+            self._write(
+                {"type": "end", "endedAt": _now(), "messageCount": self._current["messageCount"], "reason": reason}
+            )
+        except OSError as error:
+            log.error("Could not write end record of %s: %s", self._current["sessionId"], error)
+        try:
             self._file.close()
-            status = self._status()
-            self._file = None
-            self._current = None
-            return status
+        except OSError:
+            pass
+        self._file = None
+        self._current = None
+        return status
 
     def record(self, message: dict) -> None:
         """Hub listener: append one MQTT message (called from the MQTT thread)."""
@@ -94,8 +126,21 @@ class SessionRecorder:
                 line["payloadRaw"] = message["payload"]
             if message.get("issues"):
                 line["issues"] = message["issues"]
-            self._write(line)
-            self._current["messageCount"] += 1
+            encoded = json.dumps(line, separators=(",", ":")) + "\n"
+            if self._bytes + len(encoded.encode()) > self.max_bytes:
+                reason = "sizeLimit"
+                log.warning("Recording %s reached %d bytes; stopping", self._current["sessionId"], self.max_bytes)
+            else:
+                try:
+                    self._write_encoded(encoded)
+                    self._current["messageCount"] += 1
+                    return
+                except OSError as error:
+                    reason = f"writeError: {error}"
+                    log.error("Recording %s failed (%s); stopping", self._current["sessionId"], error)
+            status = self._finish(reason)
+        if self._on_stopped:
+            self._on_stopped(status, reason)
 
     def status(self) -> dict | None:
         with self._lock:
@@ -108,14 +153,20 @@ class SessionRecorder:
             **self._current,
             "recording": True,
             "duration": round(time.monotonic() - self._started_monotonic, 1),
+            "sizeBytes": self._bytes,
+            "maxBytes": self.max_bytes,
         }
 
     def _session_fields(self) -> dict:
         return {key: self._current[key] for key in ("sessionId", "name", "startedAt")}
 
     def _write(self, record: dict) -> None:
-        self._file.write(json.dumps(record, separators=(",", ":")) + "\n")
+        self._write_encoded(json.dumps(record, separators=(",", ":")) + "\n")
+
+    def _write_encoded(self, line: str) -> None:
+        self._file.write(line)
         self._file.flush()
+        self._bytes += len(line.encode())
 
     # --- Stored sessions -------------------------------------------------------
 
@@ -141,7 +192,8 @@ class SessionRecorder:
 
 
 def summarize(path: Path) -> dict:
-    """Read a session file's header and footer without loading every message."""
+    """Summary from the header (first line) and end record (last line). Only a file without an end
+    record (cut off by a crash) is scanned to count its messages."""
     summary = {
         "sessionId": path.stem,
         "name": None,
@@ -150,21 +202,37 @@ def summarize(path: Path) -> dict:
         "messageCount": 0,
         "recording": False,
         "complete": False,
+        "reason": None,
         "sizeBytes": path.stat().st_size,
     }
-    with path.open(encoding="utf-8") as file:
-        for line in file:
-            try:
-                record = json.loads(line)
-            except json.JSONDecodeError:
-                continue  # a crash can leave a half-written last line
-            kind = record.get("type")
-            if kind == "session":
-                summary["name"] = record.get("name")
-                summary["startedAt"] = record.get("startedAt")
-            elif kind == "message":
-                summary["messageCount"] += 1
-            elif kind == "end":
-                summary["endedAt"] = record.get("endedAt")
-                summary["complete"] = True
+    with path.open("rb") as file:
+        header = _parse(file.readline())
+        if header and header.get("type") == "session":
+            summary["name"] = header.get("name")
+            summary["startedAt"] = header.get("startedAt")
+
+        file.seek(max(0, summary["sizeBytes"] - TAIL_BYTES))
+        tail = [line for line in file.read().splitlines() if line.strip()]
+        end = _parse(tail[-1]) if tail else None
+        if end and end.get("type") == "end":
+            summary.update(
+                endedAt=end.get("endedAt"),
+                messageCount=end.get("messageCount", 0),
+                complete=True,
+                reason=end.get("reason"),
+            )
+            return summary
+
+        # No end record: the recording was cut off. Rare, so parse every line rather than guess,
+        # which also skips a half-written last line.
+        file.seek(0)
+        summary["messageCount"] = sum(1 for line in file if (_parse(line) or {}).get("type") == "message")
     return summary
+
+
+def _parse(line: bytes) -> dict | None:
+    try:
+        record = json.loads(line)
+    except (json.JSONDecodeError, UnicodeDecodeError):
+        return None  # a crash can leave a half-written line
+    return record if isinstance(record, dict) else None
