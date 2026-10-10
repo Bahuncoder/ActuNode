@@ -81,3 +81,23 @@ def test_websocket_sends_snapshot_then_live_messages(client):
 
     assert event["type"] == "message"
     assert event["robot"]["state"]["actunode"]["missionStatus"] == "MOVING"
+
+
+def test_robot_list_is_capped_by_evicting_the_longest_silent():
+    from app import live as live_module
+
+    hub_ = LiveHub()
+    original = live_module.MAX_ROBOTS
+    live_module.MAX_ROBOTS = 5
+    try:
+        for i in range(8):
+            hub_.handle_mqtt(f"uagv/v2/ActuNode/flood_{i}/state", json.dumps({"serialNumber": f"flood_{i}"}).encode())
+        hub_.handle_mqtt("uagv/v2/ActuNode/flood_3/state", b'{"serialNumber": "flood_3"}')  # heard again
+        hub_.handle_mqtt("uagv/v2/ActuNode/flood_8/state", b'{"serialNumber": "flood_8"}')
+    finally:
+        live_module.MAX_ROBOTS = original
+
+    ids = {robot["robotId"] for robot in hub_.snapshot()["robots"]}
+    assert len(ids) == 5
+    assert "flood_8" in ids and "flood_3" in ids  # newest and recently re-heard survive
+    assert "flood_0" not in ids  # longest silent was evicted

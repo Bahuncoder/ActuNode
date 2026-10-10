@@ -33,8 +33,9 @@ What changed, per commit, newest first. Status and plans are in [docs/PROGRESS.m
 
 ### Fixed
 - Security review: orders were routed by the identity a robot was last seen with, so any MQTT client
-  could redirect them. A robot seen under several identities now needs an explicit `manufacturer` and
-  `vda_version` in the mission request (409 otherwise).
+  could redirect them. A robot seen under several active identities now needs `manufacturer` and/or
+  `vda_version` in the mission request to pick one (409 otherwise). Identities expire after 10 s of
+  silence (one spoofed message cannot block a robot), at most 8 per robot and 1,000 robots are kept.
 - A write error (e.g. disk full) during recording logged a traceback for every message and silently
   dropped messages; recording now stops once with the reason.
 - Replay loaded the whole session into memory twice (90 MB peak for a 25 MB file); it now streams

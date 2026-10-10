@@ -140,6 +140,14 @@ Newest first. One entry per work session: what was done, what was learned, what 
 
 ### Sat 10 Oct 2026: working through open issues one by one
 
+- **Second security review (3 findings on the fix itself), all fixed with tests first.** (1) Naming only
+  one of `manufacturer`/`vda_version` bypassed the ambiguity check and defaulted the other: a single
+  field now narrows the candidates; 0 or several matches → 409. (2) One spoofed message made a robot
+  ambiguous forever (missions refused until restart): identities now carry `lastSeen` and only those
+  active in the last 10 s count. (3) No cap: at most 8 identities per robot; the robot list is capped at
+  1,000 too. A first version of that cap picked the "longest silent" robot by millisecond timestamps,
+  which tie, and evicted the wrong robot in a test; replaced by keeping robots in recency order (O(1),
+  deterministic). 104 backend tests, stable over 3 runs.
 - **Security review of the #8 commit (2 findings).** (1) Orders were routed by the version/manufacturer a
   serial was *last seen* with, so any MQTT client publishing as `uagv/v3/X/robot_01/state` could silently
   redirect robot_01's orders. Impact limited (broker local-only since D-18; a publisher could command

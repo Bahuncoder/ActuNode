@@ -48,8 +48,10 @@ VDA 5050 layout: `interfaceName/majorVersion/manufacturer/serialNumber/topic`, e
 validator picks the official schema set by the topic, and orders/replay address each robot with the
 version and manufacturer it last used. Robots never seen get `ACTUNODE_VDA_MAJOR_VERSION` (default `v2`). If a serial number has been seen
 under more than one version/manufacturer (a second vendor, or any client publishing as that robot),
-the mission is refused (409) until the request names `manufacturer` and `vda_version`: commands are
-never routed by "last seen".
+the mission is refused (409) until the request narrows it with `manufacturer` and/or `vda_version`:
+commands are never routed by "last seen". Only identities active in the last 10 s count (a one-off
+spoofed message stops blocking a robot quickly); at most 8 identities per robot and 1,000 robots are
+kept (the robot heard from longest ago is dropped first).
 
 | Topic | Publisher | Subscriber | QoS | Retained | Content |
 |---|---|---|---|---|---|

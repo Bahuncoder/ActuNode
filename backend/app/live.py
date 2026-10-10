@@ -18,6 +18,9 @@ from app.validator import RULES, Validator
 log = logging.getLogger(__name__)
 
 MESSAGE_BUFFER = 500
+MAX_IDENTITIES = 8
+# Far above any real fleet; stops a flood of fake serial numbers from growing memory and the snapshot.
+MAX_ROBOTS = 1000
 FAILURE_BUFFER = 200
 SNAPSHOT_MESSAGES = 200
 CLIENT_QUEUE = 1000
@@ -89,18 +92,29 @@ class LiveHub:
         if parsed is None or not isinstance(body, dict):
             return None
         serial_number, name = parsed.serial_number, parsed.name
+        # _robots is kept in order of the last message (dicts keep insertion order): re-insert on every
+        # message, so the first key is always the robot heard from longest ago. O(1), no timestamp ties.
+        if serial_number in self._robots:
+            self._robots[serial_number] = self._robots.pop(serial_number)
+        elif len(self._robots) >= MAX_ROBOTS:
+            del self._robots[next(iter(self._robots))]
         robot = self._robots.setdefault(
             serial_number,
             {"robotId": serial_number, "connection": None, "state": None, "lastSeen": None, "lastStateAt": None},
         )
         robot["vdaMajor"] = parsed.major
         robot["manufacturer"] = parsed.manufacturer
-        # Every (version, manufacturer) this serial number has used. More than one means the serial
-        # alone does not identify a robot (a second vendor, or a spoofing client): see missions.py.
-        identity = {"vdaMajor": parsed.major, "manufacturer": parsed.manufacturer}
-        identities = robot.setdefault("identities", [])
-        if identity not in identities:
-            identities.append(identity)
+        # The (version, manufacturer) pairs this serial number has used, most recent first, with when
+        # each was last seen. More than one active pair means the serial alone does not identify a
+        # robot (a second vendor, or a spoofing client): see missions.py. Capped, so a publisher
+        # cannot grow it without bound.
+        identities = [
+            i
+            for i in robot.get("identities", [])
+            if (i["vdaMajor"], i["manufacturer"]) != (parsed.major, parsed.manufacturer)
+        ]
+        identities.insert(0, {"vdaMajor": parsed.major, "manufacturer": parsed.manufacturer, "lastSeen": received_at})
+        robot["identities"] = identities[:MAX_IDENTITIES]
         if name == "state":
             robot["state"] = body
             robot["lastStateAt"] = received_at

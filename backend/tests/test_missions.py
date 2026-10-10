@@ -179,3 +179,61 @@ def test_explicit_manufacturer_cannot_inject_topic_levels(client, published, man
 
     assert response.status_code == 422
     assert published == []
+
+
+def _age_identities(robot_id: str, seconds: float) -> None:
+    """Pretend every identity of a robot was last seen `seconds` ago."""
+    from datetime import UTC, datetime, timedelta
+
+    from app.live import hub
+
+    old = (datetime.now(UTC) - timedelta(seconds=seconds)).isoformat().replace("+00:00", "Z")
+    for identity in hub._robots[robot_id]["identities"]:
+        identity["lastSeen"] = old
+
+
+def test_one_explicit_field_narrows_the_choice_instead_of_bypassing_it(client, published):
+    """Review: naming only vda_version used to skip the ambiguity check and default the manufacturer."""
+    _seen("uagv/v2/ActuNode/robot_one/state", {"serialNumber": "robot_one"})
+    _seen("uagv/v2/Spoofer/robot_one/state", {"serialNumber": "robot_one"})
+
+    still_ambiguous = client.post("/api/missions", json={**P1042, "robot_id": "robot_one", "vda_version": "2"})
+    narrowed = client.post("/api/missions", json={**P1042, "robot_id": "robot_one", "manufacturer": "ActuNode"})
+
+    assert still_ambiguous.status_code == 409
+    assert narrowed.status_code == 202
+    assert published[0][0] == "uagv/v2/ActuNode/robot_one/order"
+
+
+def test_explicit_field_matching_no_known_identity_is_refused(client, published):
+    _seen("uagv/v2/ActuNode/robot_known/state", {"serialNumber": "robot_known"})
+
+    response = client.post("/api/missions", json={**P1042, "robot_id": "robot_known", "vda_version": "3"})
+
+    assert response.status_code == 409
+    assert published == []
+
+
+def test_a_single_spoofed_message_does_not_block_the_robot_forever(client, published):
+    """Review: one fake publish made the robot permanently ambiguous (missions refused until restart)."""
+    _seen("uagv/v2/Spoofer/robot_poison/state", {"serialNumber": "robot_poison"})
+    _age_identities("robot_poison", 60)  # the spoof was a minute ago ...
+    _seen("uagv/v2/ActuNode/robot_poison/state", {"serialNumber": "robot_poison"})  # ... the real robot is live
+
+    response = client.post("/api/missions", json={**P1042, "robot_id": "robot_poison"})
+
+    assert response.status_code == 202
+    assert published[0][0] == "uagv/v2/ActuNode/robot_poison/order"
+
+
+def test_identities_per_robot_are_capped():
+    """Review: a spoofer could grow the identity list without bound (and slow every message)."""
+    from app.live import MAX_IDENTITIES, LiveHub
+
+    live = LiveHub()
+    for i in range(50):
+        live.handle_mqtt(f"uagv/v2/Vendor{i}/robot_cap/state", b'{"serialNumber": "robot_cap"}')
+
+    identities = live.robot("robot_cap")["identities"]
+    assert len(identities) == MAX_IDENTITIES
+    assert identities[0]["manufacturer"] == "Vendor49"  # most recent kept first

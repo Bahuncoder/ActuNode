@@ -1,4 +1,5 @@
 import json
+from datetime import UTC, datetime, timedelta
 from typing import Literal
 from uuid import uuid4
 
@@ -59,27 +60,40 @@ def send_mission(mission: MissionRequest) -> dict:
     return {"order_id": order_id, "topic": order_topic, "order": order}
 
 
-def _address(mission: MissionRequest) -> tuple[str, str]:
-    """Topic version and manufacturer to send the order to.
+# Identities seen this recently count as active (robots publish state every second). A one-off
+# spoofed message stops affecting routing after this; a continuing conflict keeps missions refused.
+IDENTITY_WINDOW = timedelta(seconds=10)
 
-    Explicit fields win. Otherwise use the one identity the robot has been seen with; refuse rather
-    than guess when a serial number appeared under several (any MQTT client can publish as a robot,
-    so 'last seen' must not decide where commands go). A robot never seen gets the configured defaults.
+
+def _address(mission: MissionRequest) -> tuple[str, str]:
+    """Topic version and manufacturer to send the order to. Never routes by "last seen" alone.
+
+    Candidates are the robot's identities active in the last IDENTITY_WINDOW (or, if none is active,
+    all it was ever seen with). Explicit fields narrow the candidates; both fields given address the
+    robot explicitly. Zero or several remaining candidates are refused (409), never guessed. A robot
+    never seen gets the configured defaults, overridden by any explicit field.
     """
     seen = (hub.robot(mission.robot_id) or {}).get("identities", [])
-    if mission.manufacturer or mission.vda_version:
-        known = seen[0] if len(seen) == 1 else {}
-        major = f"v{mission.vda_version}" if mission.vda_version else known.get("vdaMajor", vda5050.MAJOR_VERSION)
-        return major, mission.manufacturer or known.get("manufacturer", vda5050.MANUFACTURER)
-    if len(seen) > 1:
-        options = ", ".join(f"{i['manufacturer']} {i['vdaMajor']}" for i in seen)
-        raise HTTPException(
-            409,
-            f"{mission.robot_id} has been seen as {options}; specify manufacturer and vda_version for this mission",
-        )
-    if seen:
-        return seen[0]["vdaMajor"], seen[0]["manufacturer"]
-    return vda5050.MAJOR_VERSION, vda5050.MANUFACTURER
+    now = datetime.now(UTC)
+    active = [i for i in seen if now - datetime.fromisoformat(i["lastSeen"]) <= IDENTITY_WINDOW]
+    candidates = active or seen
+    major = f"v{mission.vda_version}" if mission.vda_version else None
+
+    if mission.manufacturer and major:
+        return major, mission.manufacturer
+    if not candidates:
+        return major or vda5050.MAJOR_VERSION, mission.manufacturer or vda5050.MANUFACTURER
+
+    matching = [
+        i
+        for i in candidates
+        if (major is None or i["vdaMajor"] == major) and mission.manufacturer in (None, i["manufacturer"])
+    ]
+    if len(matching) == 1:
+        return matching[0]["vdaMajor"], matching[0]["manufacturer"]
+    options = ", ".join(f"{i['manufacturer']} {i['vdaMajor']}" for i in candidates)
+    reason = "none of them matches the request" if not matching else "specify manufacturer and vda_version"
+    raise HTTPException(409, f"{mission.robot_id} has been seen as {options}; {reason}")
 
 
 def _stop(location: str, action: dict | None) -> dict:
