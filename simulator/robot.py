@@ -1,6 +1,6 @@
 import json
 import math
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 MANUFACTURER = "ActuNode"
 VDA5050_VERSION = "2.1.0"
@@ -21,7 +21,7 @@ BLOCKED_PATH = "BLOCKED_PATH"
 
 
 def utc_timestamp() -> str:
-    return datetime.now(timezone.utc).isoformat(timespec="milliseconds").replace("+00:00", "Z")
+    return datetime.now(UTC).isoformat(timespec="milliseconds").replace("+00:00", "Z")
 
 
 class Robot:
@@ -92,8 +92,7 @@ class Robot:
             for node in nodes
         ]
         self.edge_states = [
-            {"edgeId": edge["edgeId"], "sequenceId": edge["sequenceId"], "released": True}
-            for edge in edges
+            {"edgeId": edge["edgeId"], "sequenceId": edge["sequenceId"], "released": True} for edge in edges
         ]
         self._node_positions = {
             node["nodeId"]: (node["nodePosition"]["x"], node["nodePosition"]["y"]) for node in nodes
@@ -131,12 +130,14 @@ class Robot:
     def _reject(self, order_id: str, description: str) -> None:
         # Replace an earlier rejection, but keep other errors (e.g. pathBlocked).
         self._drop_errors("orderError")
-        self.errors.append({
-            "errorType": "orderError",
-            "errorLevel": "WARNING",
-            "errorDescription": description,
-            "errorReferences": [{"referenceKey": "orderId", "referenceValue": order_id}] if order_id else [],
-        })
+        self.errors.append(
+            {
+                "errorType": "orderError",
+                "errorLevel": "WARNING",
+                "errorDescription": description,
+                "errorReferences": [{"referenceKey": "orderId", "referenceValue": order_id}] if order_id else [],
+            }
+        )
 
     def stop(self) -> None:
         """Abandon the current mission and stand still."""
@@ -169,7 +170,11 @@ class Robot:
         if self.mission_status not in (ACCEPTED, MOVING):
             return False
 
-        on_edge = self.edge_states and self.node_states and self.edge_states[0]["sequenceId"] < self.node_states[0]["sequenceId"]
+        on_edge = (
+            self.edge_states
+            and self.node_states
+            and self.edge_states[0]["sequenceId"] < self.node_states[0]["sequenceId"]
+        )
         if on_edge:
             reference = {"referenceKey": "edgeId", "referenceValue": self.edge_states[0]["edgeId"]}
             description = f"Path blocked on edge {self.edge_states[0]['edgeId']}"
@@ -178,12 +183,14 @@ class Robot:
             description = f"Path blocked on the way to {self.node_states[0]['nodeId']}"
 
         self._drop_errors("pathBlocked")
-        self.errors.append({
-            "errorType": "pathBlocked",
-            "errorLevel": "WARNING",
-            "errorDescription": description,
-            "errorReferences": [reference, {"referenceKey": "orderId", "referenceValue": self.order_id}],
-        })
+        self.errors.append(
+            {
+                "errorType": "pathBlocked",
+                "errorLevel": "WARNING",
+                "errorDescription": description,
+                "errorReferences": [reference, {"referenceKey": "orderId", "referenceValue": self.order_id}],
+            }
+        )
         self.mission_status = BLOCKED
         return True
 
@@ -250,12 +257,7 @@ class Robot:
         self.battery = max(0.0, self.battery - meters * BATTERY_PER_METER)
 
     def status(self) -> None:
-        print(
-            f"{self.robot_id} | "
-            f"{self.mission_status} | "
-            f"x={self.x:.1f} y={self.y:.1f} | "
-            f"battery={self.battery:.1f}%"
-        )
+        print(f"{self.robot_id} | {self.mission_status} | x={self.x:.1f} y={self.y:.1f} | battery={self.battery:.1f}%")
 
     # --- Messages ---------------------------------------------------------
 

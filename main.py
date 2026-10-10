@@ -1,6 +1,6 @@
 """Offline playground: run one mission through the robot state machine, no MQTT needed.
 
-    python3 main.py
+python3 main.py
 """
 
 from simulator.robot import COMPLETED, Robot
@@ -13,10 +13,18 @@ order = {
     "serialNumber": "robot_01",
     "orderId": "order-demo",
     "nodes": [
-        {"nodeId": "RECEIVING_DOOR_2", "sequenceId": 0, "nodePosition": {"x": 2.0, "y": 14.0},
-         "actions": [{"actionId": "pick-1", "actionType": "pick"}]},
-        {"nodeId": "STORAGE_A17", "sequenceId": 2, "nodePosition": {"x": 14.0, "y": 18.0},
-         "actions": [{"actionId": "drop-1", "actionType": "drop"}]},
+        {
+            "nodeId": "RECEIVING_DOOR_2",
+            "sequenceId": 0,
+            "nodePosition": {"x": 2.0, "y": 14.0},
+            "actions": [{"actionId": "pick-1", "actionType": "pick"}],
+        },
+        {
+            "nodeId": "STORAGE_A17",
+            "sequenceId": 2,
+            "nodePosition": {"x": 14.0, "y": 18.0},
+            "actions": [{"actionId": "drop-1", "actionType": "drop"}],
+        },
     ],
     "edges": [{"edgeId": "RECEIVING_DOOR_2->STORAGE_A17", "sequenceId": 1}],
 }

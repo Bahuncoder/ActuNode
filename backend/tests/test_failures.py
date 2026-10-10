@@ -23,7 +23,8 @@ def published(monkeypatch):
     monkeypatch.setattr(mqtt_bridge, "stop", lambda: None)
     monkeypatch.setattr(mqtt_bridge, "connected", True)
     monkeypatch.setattr(
-        mqtt_bridge, "publish",
+        mqtt_bridge,
+        "publish",
         lambda topic, payload, qos=0: messages.append((topic, json.loads(payload))),
     )
     return messages

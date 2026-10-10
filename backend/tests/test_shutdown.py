@@ -50,7 +50,7 @@ def test_shutdown_is_not_blocked_by_an_idle_live_feed(server):
             uvicorn_server.should_exit = True
             try:
                 await asyncio.wait_for(ws.wait_closed(), timeout=5)
-            except asyncio.TimeoutError:
+            except TimeoutError:
                 pass
 
     asyncio.run(hold_feed_open())

@@ -186,6 +186,7 @@ can go first).
 
 | Suite | Command | In CI |
 |---|---|---|
+| Python lint/format | `ruff check . && ruff format --check .` (repo root) | ✅ |
 | Backend | `cd backend && .venv/bin/pytest` | ✅ |
 | Simulator | `simulator/.venv/bin/pytest simulator` | ✅ |
 | Frontend | `cd frontend && npm run lint && npm run build` | ✅ |

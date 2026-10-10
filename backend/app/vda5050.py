@@ -1,7 +1,7 @@
 """VDA 5050 message building for the backend (master control side)."""
 
 import os
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from itertools import count
 
 MANUFACTURER = "ActuNode"
@@ -28,7 +28,7 @@ def parse_topic(topic_name: str) -> tuple[str, str] | None:
 
 
 def utc_timestamp() -> str:
-    return datetime.now(timezone.utc).isoformat(timespec="milliseconds").replace("+00:00", "Z")
+    return datetime.now(UTC).isoformat(timespec="milliseconds").replace("+00:00", "Z")
 
 
 def header(serial_number: str, topic_name: str) -> dict:
@@ -52,23 +52,27 @@ def build_order(serial_number: str, order_id: str, stops: list[dict]) -> dict:
     nodes = []
     edges = []
     for index, stop in enumerate(stops):
-        nodes.append({
-            "nodeId": stop["nodeId"],
-            "sequenceId": index * 2,
-            "released": True,
-            "nodePosition": {"x": stop["x"], "y": stop["y"], "mapId": MAP_ID},
-            "actions": stop.get("actions", []),
-        })
+        nodes.append(
+            {
+                "nodeId": stop["nodeId"],
+                "sequenceId": index * 2,
+                "released": True,
+                "nodePosition": {"x": stop["x"], "y": stop["y"], "mapId": MAP_ID},
+                "actions": stop.get("actions", []),
+            }
+        )
         if index > 0:
             previous = stops[index - 1]["nodeId"]
-            edges.append({
-                "edgeId": f"{previous}->{stop['nodeId']}",
-                "sequenceId": index * 2 - 1,
-                "released": True,
-                "startNodeId": previous,
-                "endNodeId": stop["nodeId"],
-                "actions": [],
-            })
+            edges.append(
+                {
+                    "edgeId": f"{previous}->{stop['nodeId']}",
+                    "sequenceId": index * 2 - 1,
+                    "released": True,
+                    "startNodeId": previous,
+                    "endNodeId": stop["nodeId"],
+                    "actions": [],
+                }
+            )
 
     return {
         **header(serial_number, "order"),

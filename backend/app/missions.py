@@ -37,10 +37,12 @@ def send_mission(mission: MissionRequest) -> dict:
     stops = []
     if mission.source:
         stops.append(_stop(mission.source, vda5050.load_action("pick", f"{order_id}-pick", mission.load_id)))
-    stops.append(_stop(
-        mission.destination,
-        vda5050.load_action("drop", f"{order_id}-drop", mission.load_id) if mission.source else None,
-    ))
+    stops.append(
+        _stop(
+            mission.destination,
+            vda5050.load_action("drop", f"{order_id}-drop", mission.load_id) if mission.source else None,
+        )
+    )
 
     order = vda5050.build_order(mission.robot_id, order_id, stops)
     order_topic = vda5050.topic(mission.robot_id, "order")

@@ -1,0 +1,5 @@
+# Keeps editor linters (flake8/pycodestyle) in line with ruff.toml. ruff is the source of truth.
+[flake8]
+max-line-length = 120
+extend-ignore = E203
+exclude = .venv,frontend,node_modules,sessions

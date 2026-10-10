@@ -4,7 +4,11 @@ What changed, per commit, newest first. Status and plans are in [docs/PROGRESS.m
 
 ## Unreleased
 
+### Added
+- ruff lint and format for Python (`ruff.toml`, 120 columns) and a `lint` job in CI (D-14).
+
 ### Fixed
+- HTTP errors raised from recorder/replay errors now keep the original error as their cause.
 - Backend hung on shutdown when no MQTT traffic flowed (idle WebSocket handler), so Docker killed it
   and an open recording lost its end line. Handler now watches for the close; uvicorn has a 5 s
   graceful-shutdown limit.

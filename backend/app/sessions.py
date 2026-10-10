@@ -1,5 +1,5 @@
 import re
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 
 from fastapi import APIRouter, HTTPException
 from fastapi.responses import FileResponse
@@ -60,7 +60,7 @@ def start_recording(request: StartRequest | None = None) -> dict:
     try:
         status = recorder.start(name, hub.snapshot()["robots"])
     except RecorderError as error:
-        raise HTTPException(409, str(error))
+        raise HTTPException(409, str(error)) from error
     hub.broadcast({"type": "recording", "recording": status})
     return status
 
@@ -70,7 +70,7 @@ def stop_recording() -> dict:
     try:
         status = recorder.stop()
     except RecorderError as error:
-        raise HTTPException(409, str(error))
+        raise HTTPException(409, str(error)) from error
     hub.broadcast({"type": "recording", "recording": None})
     return status
 
@@ -103,7 +103,7 @@ async def start_replay(session_id: str, request: ReplayRequest | None = None) ->
     try:
         session = load_session(path)
     except ReplayError as error:
-        raise HTTPException(422, str(error))
+        raise HTTPException(422, str(error)) from error
 
     live = sorted(robot_id for robot_id in robot_ids(session) if _is_live(robot_id))
     if live:
@@ -116,7 +116,7 @@ async def start_replay(session_id: str, request: ReplayRequest | None = None) ->
     try:
         return replayer.start(session_id, session, request.speed, request.include_commands)
     except ReplayError as error:
-        raise HTTPException(409, str(error))
+        raise HTTPException(409, str(error)) from error
 
 
 @router.post("/replay/stop")
@@ -124,7 +124,7 @@ def stop_replay() -> dict:
     try:
         replayer.stop()
     except ReplayError as error:
-        raise HTTPException(409, str(error))
+        raise HTTPException(409, str(error)) from error
     return {"stopping": True}
 
 
@@ -137,4 +137,4 @@ def _is_live(robot_id: str) -> bool:
     last_seen = datetime.fromisoformat(robot["lastStateAt"])
     if replayer.ended_at and last_seen <= replayer.ended_at + REPLAY_ECHO:
         return False  # the last thing we heard came from a replay
-    return datetime.now(timezone.utc) - last_seen < LIVE_WINDOW
+    return datetime.now(UTC) - last_seen < LIVE_WINDOW

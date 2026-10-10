@@ -18,9 +18,16 @@ def write_session(path, messages, robots=None, header=True):
     lines = []
     if header:
         lines.append({"type": "session", "formatVersion": 1, "sessionId": path.stem, "name": None, "startedAt": "x"})
-    lines.append({"type": "snapshot", "robots": robots if robots is not None else [
-        {"robotId": "rp_01", "connection": "ONLINE", "state": STATE, "lastSeen": "x"},
-    ]})
+    lines.append(
+        {
+            "type": "snapshot",
+            "robots": robots
+            if robots is not None
+            else [
+                {"robotId": "rp_01", "connection": "ONLINE", "state": STATE, "lastSeen": "x"},
+            ],
+        }
+    )
     lines += [{"type": "message", "receivedAt": "x", "retained": False, **m} for m in messages]
     lines.append({"type": "end", "endedAt": "x", "messageCount": len(messages)})
     path.write_text("\n".join(json.dumps(line) for line in lines) + "\n")
@@ -80,10 +87,16 @@ def run(coro):
 
 
 def test_replayer_keeps_timing_scaled_by_speed(tmp_path):
-    session = load_session(write_session(tmp_path / "20261009-120000.jsonl", [
-        {"t": 0.0, "topic": "uagv/v2/ActuNode/rp_01/state", "payload": {}},
-        {"t": 0.4, "topic": "uagv/v2/ActuNode/rp_01/state", "payload": {}},
-    ], robots=[]))
+    session = load_session(
+        write_session(
+            tmp_path / "20261009-120000.jsonl",
+            [
+                {"t": 0.0, "topic": "uagv/v2/ActuNode/rp_01/state", "payload": {}},
+                {"t": 0.4, "topic": "uagv/v2/ActuNode/rp_01/state", "payload": {}},
+            ],
+            robots=[],
+        )
+    )
     sent = []
     statuses = []
 
@@ -102,10 +115,16 @@ def test_replayer_keeps_timing_scaled_by_speed(tmp_path):
 
 
 def test_replayer_can_be_stopped(tmp_path):
-    session = load_session(write_session(tmp_path / "20261009-120000.jsonl", [
-        {"t": 0.0, "topic": "uagv/v2/ActuNode/rp_01/state", "payload": {}},
-        {"t": 30.0, "topic": "uagv/v2/ActuNode/rp_01/state", "payload": {}},
-    ], robots=[]))
+    session = load_session(
+        write_session(
+            tmp_path / "20261009-120000.jsonl",
+            [
+                {"t": 0.0, "topic": "uagv/v2/ActuNode/rp_01/state", "payload": {}},
+                {"t": 30.0, "topic": "uagv/v2/ActuNode/rp_01/state", "payload": {}},
+            ],
+            robots=[],
+        )
+    )
     sent = []
 
     async def main():

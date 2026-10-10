@@ -10,7 +10,7 @@ import json
 import logging
 import time
 from collections.abc import Callable
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
 
 log = logging.getLogger("actunode.replay")
@@ -72,10 +72,22 @@ def build_plan(session: dict, include_commands: bool) -> list[tuple[float, str, 
             continue
         prefix = f"uagv/v2/{state.get('manufacturer', 'ActuNode')}/{robot['robotId']}"
         if robot.get("connection"):
-            plan.append((0.0, f"{prefix}/connection", json.dumps({
-                **{k: state[k] for k in ("headerId", "timestamp", "version", "manufacturer", "serialNumber") if k in state},
-                "connectionState": robot["connection"],
-            })))
+            plan.append(
+                (
+                    0.0,
+                    f"{prefix}/connection",
+                    json.dumps(
+                        {
+                            **{
+                                k: state[k]
+                                for k in ("headerId", "timestamp", "version", "manufacturer", "serialNumber")
+                                if k in state
+                            },
+                            "connectionState": robot["connection"],
+                        }
+                    ),
+                )
+            )
         plan.append((0.0, f"{prefix}/state", json.dumps(state)))
 
     for message in session["messages"]:
@@ -151,6 +163,8 @@ class Replayer:
             log.exception("Replay failed")
             self._status["state"] = "failed"
         finally:
-            self.ended_at = datetime.now(timezone.utc)
-            log.info("Replay %s %s after %d messages", self._status["sessionId"], self._status["state"], self._status["sent"])
+            self.ended_at = datetime.now(UTC)
+            log.info(
+                "Replay %s %s after %d messages", self._status["sessionId"], self._status["state"], self._status["sent"]
+            )
             self._on_status(self.status())

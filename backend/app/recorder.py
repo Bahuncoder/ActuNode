@@ -16,7 +16,7 @@ import json
 import re
 import threading
 import time
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
 
 FORMAT_VERSION = 1
@@ -24,7 +24,7 @@ SESSION_ID = re.compile(r"^[0-9]{8}-[0-9]{6}(_[A-Za-z0-9_-]{1,40})?$")
 
 
 def _now() -> str:
-    return datetime.now(timezone.utc).isoformat(timespec="milliseconds").replace("+00:00", "Z")
+    return datetime.now(UTC).isoformat(timespec="milliseconds").replace("+00:00", "Z")
 
 
 class RecorderError(Exception):
@@ -47,7 +47,7 @@ class SessionRecorder:
                 raise RecorderError(f"Already recording {self._current['sessionId']}")
 
             self.directory.mkdir(parents=True, exist_ok=True)
-            stamp = datetime.now(timezone.utc).strftime("%Y%m%d-%H%M%S")
+            stamp = datetime.now(UTC).strftime("%Y%m%d-%H%M%S")
             session_id = f"{stamp}_{name}" if name else stamp
             path = self.directory / f"{session_id}.jsonl"
             if path.exists():

@@ -1,6 +1,6 @@
 """Run simulated AMRs that publish VDA 5050 state over MQTT.
 
-    python -m simulator --robots 3
+python -m simulator --robots 3
 """
 
 import argparse
@@ -51,10 +51,7 @@ def main() -> None:
     args = parse_args()
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
 
-    robots = [
-        Robot(f"robot_{i + 1:02d}", *parking_spot(i))
-        for i in range(args.robots)
-    ]
+    robots = [Robot(f"robot_{i + 1:02d}", *parking_spot(i)) for i in range(args.robots)]
     connections = [RobotConnection(robot, args.host, args.port) for robot in robots]
 
     running = True

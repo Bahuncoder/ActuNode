@@ -1,0 +1,12 @@
+# Python lint and format settings for backend/ and simulator/.
+# Run from the repo root:  ruff check .  &&  ruff format --check .
+line-length = 120
+target-version = "py312"
+extend-exclude = ["frontend", "docs", "sessions"]
+
+[lint]
+# E/W pycodestyle, F pyflakes, I import order, B bugbear (likely bugs), UP modern syntax.
+select = ["E", "W", "F", "I", "B", "UP"]
+
+[lint.isort]
+known-first-party = ["app", "simulator"]

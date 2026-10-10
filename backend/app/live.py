@@ -10,7 +10,7 @@ import logging
 import threading
 from collections import deque
 from collections.abc import Callable
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 from app import vda5050
 from app.validator import RULES, Validator
@@ -24,7 +24,7 @@ CLIENT_QUEUE = 1000
 
 
 def _now() -> str:
-    return datetime.now(timezone.utc).isoformat(timespec="milliseconds").replace("+00:00", "Z")
+    return datetime.now(UTC).isoformat(timespec="milliseconds").replace("+00:00", "Z")
 
 
 def _empty_validation() -> dict:
@@ -110,12 +110,15 @@ class LiveHub:
             return
         stats["withIssues"] += 1
         for found in message["issues"]:
-            rule = stats["byRule"].setdefault(found["rule"], {
-                "rule": found["rule"],
-                "description": RULES.get(found["rule"], ""),
-                "severity": found["severity"],
-                "count": 0,
-            })
+            rule = stats["byRule"].setdefault(
+                found["rule"],
+                {
+                    "rule": found["rule"],
+                    "description": RULES.get(found["rule"], ""),
+                    "severity": found["severity"],
+                    "count": 0,
+                },
+            )
             rule["count"] += 1
             rule["last"] = {"message": found["message"], "topic": message["topic"], "at": message["receivedAt"]}
 
@@ -179,4 +182,3 @@ class LiveHub:
 
 
 hub = LiveHub()
-

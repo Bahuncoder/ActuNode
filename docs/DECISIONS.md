@@ -136,3 +136,14 @@ with a new IP, every `/api` request failed with 502 until nginx was restarted.
 **Decision.** Use Docker's embedded DNS (`resolver 127.0.0.11 valid=10s`) and a variable in
 `proxy_pass`, so the name is re-resolved.
 **Consequences.** Restarting or rebuilding the backend alone no longer breaks the UI.
+
+## D-14 · ruff for Python lint and format, 120 columns
+10 Oct 2026 · Accepted
+
+**Context.** No style rules existed; editors flagged lines against pycodestyle's default of 79
+columns while the code used up to ~120.
+**Decision.** ruff (pinned) checks pycodestyle, pyflakes, import order, bugbear and pyupgrade rules
+and formats the code; line length 120. CI fails on any finding. `.flake8` mirrors the line length for
+editors; `ruff.toml` is the source of truth. The frontend keeps oxlint.
+**Consequences.** One reformatting commit touched most Python files; from now on style is not
+discussed in review, and bugbear catches likely bugs early.

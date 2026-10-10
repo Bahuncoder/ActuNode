@@ -9,11 +9,13 @@ from app.mqtt_state import mqtt_bridge
 
 
 def state(serial, status="IDLE", x=1.0):
-    return json.dumps({
-        "serialNumber": serial,
-        "agvPosition": {"x": x, "y": 2.0},
-        "actunode": {"missionStatus": status},
-    }).encode()
+    return json.dumps(
+        {
+            "serialNumber": serial,
+            "agvPosition": {"x": x, "y": 2.0},
+            "actunode": {"missionStatus": status},
+        }
+    ).encode()
 
 
 def test_hub_tracks_latest_state_and_connection_per_robot():
@@ -79,4 +81,3 @@ def test_websocket_sends_snapshot_then_live_messages(client):
 
     assert event["type"] == "message"
     assert event["robot"]["state"]["actunode"]["missionStatus"] == "MOVING"
-

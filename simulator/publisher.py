@@ -70,7 +70,9 @@ class RobotConnection:
                 return processed
             processed = True
             if topic_name == self.inject_topic:
-                log.warning("%s: failure injection: %s", self.robot.robot_id, self.robot.handle_command_payload(payload))
+                log.warning(
+                    "%s: failure injection: %s", self.robot.robot_id, self.robot.handle_command_payload(payload)
+                )
             elif self.robot.handle_order_payload(payload):
                 log.info("%s: accepted order %s", self.robot.robot_id, self.robot.order_id)
             else:

@@ -31,11 +31,15 @@ def test_real_actunode_messages_are_valid(name):
 
 
 def test_orders_built_by_the_backend_are_valid():
-    order = vda5050.build_order("robot_01", "o-1", [
-        {"nodeId": "A", "x": 1, "y": 1, "actions": [vda5050.load_action("pick", "o-1-pick", "P-1")]},
-        {"nodeId": "B", "x": 2, "y": 2},
-        {"nodeId": "C", "x": 3, "y": 3, "actions": [vda5050.load_action("drop", "o-1-drop", None)]},
-    ])
+    order = vda5050.build_order(
+        "robot_01",
+        "o-1",
+        [
+            {"nodeId": "A", "x": 1, "y": 1, "actions": [vda5050.load_action("pick", "o-1-pick", "P-1")]},
+            {"nodeId": "B", "x": 2, "y": 2},
+            {"nodeId": "C", "x": 3, "y": 3, "actions": [vda5050.load_action("drop", "o-1-drop", None)]},
+        ],
+    )
 
     assert Validator().check(vda5050.topic("robot_01", "order"), order, valid_json=True) == []
 
@@ -149,7 +153,18 @@ def test_full_mission_including_block_and_clear_is_clean():
     validator = Validator()
     topic, base = fixture("state_moving")
 
-    sequence = ["IDLE", "ACCEPTED", "MOVING", "BLOCKED", "MOVING", "COMPLETED", "ACCEPTED", "MOVING", "COMPLETED", "IDLE"]
+    sequence = [
+        "IDLE",
+        "ACCEPTED",
+        "MOVING",
+        "BLOCKED",
+        "MOVING",
+        "COMPLETED",
+        "ACCEPTED",
+        "MOVING",
+        "COMPLETED",
+        "IDLE",
+    ]
     found = [validator.check(topic, state(base, status, i + 1), valid_json=True) for i, status in enumerate(sequence)]
 
     assert found == [[]] * len(sequence)

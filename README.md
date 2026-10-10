@@ -58,6 +58,9 @@ python3 -m venv simulator/.venv
 simulator/.venv/bin/pip install -r simulator/requirements-dev.txt
 simulator/.venv/bin/python -m simulator --robots 3   # up to 50; 10 fill the charging area
 
+# Lint and format Python (ruff is in requirements-dev.txt)
+backend/.venv/bin/ruff check . && backend/.venv/bin/ruff format --check .
+
 # Tests
 cd backend && .venv/bin/pytest
 simulator/.venv/bin/pytest simulator   # from repo root

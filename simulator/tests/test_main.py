@@ -12,7 +12,7 @@ def test_ten_robots_park_apart_inside_charging_area():
     assert all(0 < x < 12 and 0 < y < 4 for x, y in spots)
     # At least 2 m between any two robots, so markers and labels do not overlap.
     for i, (x1, y1) in enumerate(spots):
-        for x2, y2 in spots[i + 1:]:
+        for x2, y2 in spots[i + 1 :]:
             assert ((x1 - x2) ** 2 + (y1 - y2) ** 2) ** 0.5 >= 2.0
 
 

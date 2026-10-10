@@ -62,6 +62,7 @@ Plan objective is done. Remaining work for this week is verification and documen
 - [ ] Confirm `curl localhost:8000/api/health` works from a normal terminal (open issue 15)
 - [ ] Confirm the Day 1–5 CI compose failures are understood (open issue 3)
 - [ ] Read the VDA 5050 3.0 release notes and record what changes for us (open issue 9)
+- [x] Python linter and formatter (ruff, 120 columns) in CI (issue 16, D-14)
 - [ ] Customer discovery: first outreach messages sent (plan: 30 conversations in 60 days)
 
 Proposed focus for the coming weeks (each week's plan objective + hardening of what was built early):
@@ -85,6 +86,7 @@ exercised by hand with a real browser and MQTT traffic.
 |---|---|---|
 | Backend API | 66 unit/API tests (pytest), run in CI, including a shutdown test under a real uvicorn server | |
 | Simulator | 34 unit tests (pytest), run in CI | |
+| Python style | `ruff check` + `ruff format --check` in CI (backend, simulator) | |
 | Frontend | Type check + lint + production build in CI; E2E by headless-Chrome screenshots | No automated UI tests |
 | MQTT flow | E2E against amqtt (9 Oct) and **Mosquitto in Docker** (10 Oct) | Not automated |
 | Shutdown | Reboot reproduced by stopping the broker first, then simulator and backend: both exit 0 in ~1 s, open recording closed with its end line; normal stop leaves all robots OFFLINE | Not automated in Docker |
@@ -96,7 +98,7 @@ exercised by hand with a real browser and MQTT traffic.
 
 ## Open issues and technical debt
 
-Numbered so they can be referenced from commits. Remove an item only when it is fixed and verified; numbers are never reused (fixed: 1, 2).
+Numbered so they can be referenced from commits. Remove an item only when it is fixed and verified; numbers are never reused (fixed: 1, 2, 16).
 
 | # | Issue | Impact | Plan |
 |---|---|---|---|
@@ -113,11 +115,19 @@ Numbered so they can be referenced from commits. Remove an item only when it is 
 | 13 | Robot `state` is published with QoS 0, so it can be dropped; recordings capture only what the backend receives | Rare gaps in recordings | Accept for now; document |
 | 14 | CI warnings: `actions/checkout@v4` uses Node 20 (deprecated); `ubuntu-latest` moves to Ubuntu 26 from 19 Oct 2026 | CI may break after the migration | Update actions; watch the first run after 19 Oct |
 | 15 | From the dev machine, `127.0.0.1:8000` (backend published port) accepts connections but never answers, while the LAN address `192.168.1.151:8000`, port 8080 on loopback, and container-to-container calls all work. Seen from the assistant's sandboxed shell; not yet checked from a normal terminal | API docs at localhost:8000/docs may be unreachable; the UI is unaffected (it uses 8080) | Run `curl -m 5 localhost:8000/api/health` in a normal terminal; if it hangs there too, investigate Docker's port forwarding |
-| 16 | No linter or formatter configured for Python (no agreed line length; the IDE flags E501 against the default 79) | Inconsistent style creeps in | Add `ruff` with the project's line length to CI; Week 1/2 |
 
 ## Session log
 
 Newest first. One entry per work session: what was done, what was learned, what is next.
+
+### Sat 10 Oct 2026 (night): Python lint and format
+
+- Added ruff (pinned 0.17.0): pycodestyle, pyflakes, import order, bugbear, pyupgrade; 120 columns
+  (D-14). Formatted all Python once; new `lint` job in CI; `.flake8` so editors agree.
+- Real findings fixed by hand: five `raise HTTPException` inside `except` without `from` (original
+  error hidden from tracebacks); order validator's `zip` made explicitly non-strict, because a wrong
+  edge count must be reported, not crash the check.
+- All tests unchanged and passing after formatting. Issue 16 closed.
 
 ### Sat 10 Oct 2026 (late evening): laptop restart exposed two shutdown bugs
 

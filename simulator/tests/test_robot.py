@@ -6,10 +6,23 @@ from simulator.robot import ACCEPTED, BLOCKED, COMPLETED, IDLE, MOVING, Robot
 from simulator.topics import control_topic, topic
 
 REQUIRED_STATE_FIELDS = {
-    "headerId", "timestamp", "version", "manufacturer", "serialNumber",
-    "orderId", "orderUpdateId", "lastNodeId", "lastNodeSequenceId",
-    "nodeStates", "edgeStates", "driving", "operatingMode",
-    "batteryState", "actionStates", "errors", "safetyState",
+    "headerId",
+    "timestamp",
+    "version",
+    "manufacturer",
+    "serialNumber",
+    "orderId",
+    "orderUpdateId",
+    "lastNodeId",
+    "lastNodeSequenceId",
+    "nodeStates",
+    "edgeStates",
+    "driving",
+    "operatingMode",
+    "batteryState",
+    "actionStates",
+    "errors",
+    "safetyState",
 }
 
 
@@ -22,16 +35,24 @@ def make_order(serial="robot_01", order_id="order-1", points=((3, 0), (3, 4))):
             actions = [{"actionId": "a-pick", "actionType": "pick", "blockingType": "HARD"}]
         elif index == len(points) - 1:
             actions = [{"actionId": "a-drop", "actionType": "drop", "blockingType": "HARD"}]
-        nodes.append({
-            "nodeId": f"N{index}",
-            "sequenceId": index * 2,
-            "released": True,
-            "nodePosition": {"x": x, "y": y, "mapId": "warehouse"},
-            "actions": actions,
-        })
+        nodes.append(
+            {
+                "nodeId": f"N{index}",
+                "sequenceId": index * 2,
+                "released": True,
+                "nodePosition": {"x": x, "y": y, "mapId": "warehouse"},
+                "actions": actions,
+            }
+        )
     edges = [
-        {"edgeId": f"N{i - 1}->N{i}", "sequenceId": i * 2 - 1, "released": True,
-         "startNodeId": f"N{i - 1}", "endNodeId": f"N{i}", "actions": []}
+        {
+            "edgeId": f"N{i - 1}->N{i}",
+            "sequenceId": i * 2 - 1,
+            "released": True,
+            "startNodeId": f"N{i - 1}",
+            "endNodeId": f"N{i}",
+            "actions": [],
+        }
         for i in range(1, len(points))
     ]
     return {"serialNumber": serial, "orderId": order_id, "orderUpdateId": 0, "nodes": nodes, "edges": edges}
@@ -145,13 +166,16 @@ def test_busy_robot_rejects_second_order():
     assert "busy" in robot.errors[0]["errorDescription"]
 
 
-@pytest.mark.parametrize("payload, reason", [
-    (b"{not json", "not valid JSON"),
-    (b"[]", "JSON object"),
-    (json.dumps(make_order(serial="robot_99")).encode(), "addressed to"),
-    (json.dumps({**make_order(), "nodes": []}).encode(), "no nodes"),
-    (json.dumps({**make_order(), "orderId": ""}).encode(), "no orderId"),
-])
+@pytest.mark.parametrize(
+    "payload, reason",
+    [
+        (b"{not json", "not valid JSON"),
+        (b"[]", "JSON object"),
+        (json.dumps(make_order(serial="robot_99")).encode(), "addressed to"),
+        (json.dumps({**make_order(), "nodes": []}).encode(), "no nodes"),
+        (json.dumps({**make_order(), "orderId": ""}).encode(), "no orderId"),
+    ],
+)
 def test_bad_orders_are_rejected_with_error(payload, reason):
     robot = Robot("robot_01")
 
@@ -268,12 +292,15 @@ def test_blocked_robot_rejects_new_orders():
     assert {e["errorType"] for e in robot.errors} == {"pathBlocked", "orderError"}
 
 
-@pytest.mark.parametrize("payload, expected", [
-    (command(), "ignored BLOCKED_PATH while IDLE"),
-    (command(action="clear"), "ignored clear: not blocked"),
-    (command(failure="LASER_SHARKS"), "ignored unknown failure 'LASER_SHARKS'"),
-    (b"nope", "ignored malformed command"),
-])
+@pytest.mark.parametrize(
+    "payload, expected",
+    [
+        (command(), "ignored BLOCKED_PATH while IDLE"),
+        (command(action="clear"), "ignored clear: not blocked"),
+        (command(failure="LASER_SHARKS"), "ignored unknown failure 'LASER_SHARKS'"),
+        (b"nope", "ignored malformed command"),
+    ],
+)
 def test_commands_that_do_not_apply_are_ignored(payload, expected):
     robot = Robot("robot_01")
 

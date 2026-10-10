@@ -81,12 +81,14 @@ async def live_feed(websocket: WebSocket):
     # that only sends would never notice it, and would block server shutdown.
     closed = asyncio.create_task(_wait_for_close(websocket))
     try:
-        await websocket.send_json({
-            "type": "snapshot",
-            **hub.snapshot(),
-            "recording": sessions.recorder.status(),
-            "replay": sessions.replayer.status(),
-        })
+        await websocket.send_json(
+            {
+                "type": "snapshot",
+                **hub.snapshot(),
+                "recording": sessions.recorder.status(),
+                "replay": sessions.replayer.status(),
+            }
+        )
         while True:
             next_event = asyncio.create_task(queue.get())
             done, _ = await asyncio.wait({next_event, closed}, return_when=asyncio.FIRST_COMPLETED)
