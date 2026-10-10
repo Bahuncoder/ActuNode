@@ -5,6 +5,7 @@ What changed, per commit, newest first. Status and plans are in [docs/PROGRESS.m
 ## Unreleased
 
 ### Added
+- Frontend tests (Vitest + React Testing Library, `npm test`), run in CI (D-19).
 - Sessions: size limit (`ACTUNODE_MAX_SESSION_MB`, default 200), end record `reason`, delete
   (`DELETE /api/sessions/{id}` and a UI button), size shown while recording, auto-stop notice and
   SIZE LIMIT / WRITE ERROR badges in the UI.
@@ -20,6 +21,7 @@ What changed, per commit, newest first. Status and plans are in [docs/PROGRESS.m
 - [docs/PLAN.md](docs/PLAN.md) is now the plan reference with calendar dates; status moved to PROGRESS.md.
 
 ### Changed
+- Frontend moved from end-of-life Node.js 20 to Node.js 24 LTS (dev, CI, Docker) (D-19).
 - CI: GitHub Actions upgraded to v7 (Node.js 24); runner pinned to `ubuntu-24.04`.
 - Compose: containers no longer have fixed names (`actunode-backend` → `actunode-backend-1`, etc.).
 - CI: the `compose` build job is replaced by the `e2e` job, which builds and runs the stack.

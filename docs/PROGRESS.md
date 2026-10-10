@@ -111,7 +111,7 @@ exercised by hand with a real browser and MQTT traffic.
 | Backend API | 66 unit/API tests (pytest), run in CI, including a shutdown test under a real uvicorn server | |
 | Simulator | 34 unit tests (pytest), run in CI | |
 | Python style | `ruff check` + `ruff format --check` in CI (backend, simulator) | |
-| Frontend | Type check + lint + production build in CI; E2E by headless-Chrome screenshots | No automated UI tests |
+| Frontend | Type check, lint, 10 unit/component tests (`npm test`, incl. malformed robot data) and production build, in CI | No real-browser tests (issue 6) |
 | MQTT flow | Automated against Mosquitto in Docker (`tests/e2e`) | |
 | Shutdown | Automated in `tests/e2e` (broker first, then backend; recording gets its end line) and `backend/tests/test_shutdown.py` | |
 | Docker stack, end to end | **Automated** (`tests/e2e`, in CI): health, state every second, mission state machine, BLOCKED_PATH, validation clean, record/replay, last will on kill, broker restart recovery, shutdown with open recording | No frontend/browser tests |
@@ -122,13 +122,13 @@ exercised by hand with a real browser and MQTT traffic.
 
 ## Open issues and technical debt
 
-Numbered so they can be referenced from commits. Remove an item only when it is fixed and verified; numbers are never reused (fixed: 1, 2, 4, 9, 10, 11, 13, 14, 16).
+Numbered so they can be referenced from commits. Remove an item only when it is fixed and verified; numbers are never reused (fixed: 1, 2, 4, 9, 10, 11, 13, 14, 16, 18).
 
 | # | Issue | Impact | Plan |
 |---|---|---|---|
 | 3 | CI `compose` job failed on Days 1–5, passes since Day 6. No build-relevant file changed in between; logs need a GitHub login | Probably transient (base image pulls), but unconfirmed | Check the job logs on GitHub Actions |
 | 5 | No collision avoidance or traffic management; robots drive through each other | Unrealistic with many robots | Decide in Week 4 whether to model it |
-| 6 | No automated frontend (browser) tests | UI regressions are caught by hand only | End-to-end tests now cover API and MQTT (D-16); add browser tests later |
+| 6 | No real-browser tests (component and logic tests exist since D-19, but run in jsdom, not a browser) | Browser-only issues (layout, WebSocket in a real browser) are caught by hand | Add Playwright tests against the e2e stack |
 | 7 | Schemas are a hand-written subset of VDA 5050 2.x | May accept messages the official schemas reject, or the reverse | Replace with the official 2.1.0 / 3.0.0 schemas (D-15); Week 5 |
 | 8 | ActuNode speaks only VDA 5050 2.1 (`uagv/v2`, `2.1.0`); 3.0 is breaking ([research note](research/VDA5050_3_0.md)) | 3.0 robots or fleet managers cannot be tested; the validator would reject all their messages | Support both side by side, chosen by topic (D-15); Week 5 |
 | 12 | No authentication: Mosquitto allows anonymous clients, the API has no login, no TLS | Since D-18 the lab is reachable only from the same computer by default; with `ACTUNODE_BIND_ADDRESS=0.0.0.0` anyone on the network can command robots | Broker credentials + API auth + TLS before any shared deployment |
@@ -141,6 +141,13 @@ Newest first. One entry per work session: what was done, what was learned, what 
 
 ### Sat 10 Oct 2026: working through open issues one by one
 
+- **#6 narrowed; #18 found and closed.** Frontend tests: Vitest + React Testing Library, 10 tests for the
+  live-data reducer, the defensive readers and components with malformed robot data. Proved the
+  regression test works: putting the old unguarded battery read back makes it fail with the original
+  `TypeError: battery.toFixed is not a function`. Installing the tools exposed **#18: the frontend ran on
+  end-of-life Node.js 20** (last release Mar 2026; Vitest/jsdom need ≥ 22; npm crashed). Moved to
+  Node 24 LTS in dev (`.nvmrc`; nvm default untouched), CI and the Docker build stage (verified
+  `node -v` = v24.21.0 inside it); e2e passes. #6 now covers only real-browser tests.
 - **#11 closed.** Reading the code found four problems, not two: no limit; a write error (disk full)
   logged a traceback per message and silently dropped messages; replay loaded the file twice
   (measured 90 MB peak for a 25 MB file); listing parsed every line of every file. Fixed: size limit

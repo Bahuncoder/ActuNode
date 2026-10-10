@@ -53,8 +53,9 @@ python3 -m venv .venv
 .venv/bin/pip install -r requirements-dev.txt
 .venv/bin/uvicorn app.main:app --reload --port 8000
 
-# Frontend (second terminal; proxies /api to :8000)
+# Frontend (second terminal; proxies /api to :8000). Needs Node.js 24 (frontend/.nvmrc).
 cd frontend
+nvm use            # or install Node 24 another way
 npm install
 npm run dev        # http://localhost:5173
 
@@ -62,6 +63,9 @@ npm run dev        # http://localhost:5173
 python3 -m venv simulator/.venv
 simulator/.venv/bin/pip install -r simulator/requirements-dev.txt
 simulator/.venv/bin/python -m simulator --robots 3   # up to 50; 10 fill the charging area
+
+# Frontend unit and component tests
+(cd frontend && npm test)
 
 # Lint and format Python (ruff is in requirements-dev.txt)
 backend/.venv/bin/ruff check . && backend/.venv/bin/ruff format --check .

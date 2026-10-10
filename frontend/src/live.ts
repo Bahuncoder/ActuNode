@@ -114,7 +114,7 @@ type LiveEvent =
   | { type: 'message'; message: MqttMessage; robot: Robot | null }
   | { type: 'failure'; failure: FailureEntry }
 
-type Feed = {
+export type Feed = {
   connected: boolean
   robots: Record<string, Robot>
   messages: MqttMessage[]
@@ -127,7 +127,8 @@ type Feed = {
 
 type Action = { type: 'connected' | 'disconnected' } | { type: 'event'; event: LiveEvent }
 
-function reducer(feed: Feed, action: Action): Feed {
+// Exported for tests.
+export function reducer(feed: Feed, action: Action): Feed {
   switch (action.type) {
     case 'connected':
       return { ...feed, connected: true }

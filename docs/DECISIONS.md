@@ -201,3 +201,16 @@ the lab on a network is an explicit choice, documented with its risk in the READ
 bind only to the address they connect to.
 **Consequences.** Safe by default for a laptop lab. Real authentication (broker credentials, API login,
 TLS) is still needed before any shared deployment (PROGRESS issue 12).
+
+## D-19 · Node.js 24 LTS for the frontend; Vitest for frontend tests
+10 Oct 2026 · Accepted
+
+**Context.** The frontend was built on Node.js 20 (dev machine, CI, Docker image) because that was
+installed on Day 1. Node 20 had its last release in March 2026 and is end-of-life. Adding frontend tests
+showed it concretely: Vitest 5 and jsdom 30 require Node ≥ 22, and npm crashed installing them on 20.
+**Decision.** Node.js 24 ("Krypton", current LTS) everywhere: `frontend/.nvmrc`, `engines` in
+`package.json`, CI and the Docker build stage. Frontend tests use Vitest + React Testing Library on
+jsdom (`npm test`), run in CI. The developer's nvm default is left unchanged; `nvm use` in `frontend/`
+selects 24.
+**Consequences.** Supported runtime with security fixes; tests for the live-data logic and for
+components rendering malformed robot data. Real-browser tests are still to come (issue 6).

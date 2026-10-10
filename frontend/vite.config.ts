@@ -1,3 +1,4 @@
+/// <reference types="vitest/config" />
 import react from '@vitejs/plugin-react'
 import { defineConfig } from 'vite'
 
@@ -5,6 +6,9 @@ import { defineConfig } from 'vite'
 // In Docker, nginx does the same proxying (see nginx.conf).
 export default defineConfig({
   plugins: [react()],
+  test: {
+    environment: 'jsdom',
+  },
   server: {
     proxy: {
       '/api': {
