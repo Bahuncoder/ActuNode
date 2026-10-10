@@ -58,7 +58,7 @@ Plan objective is done. Remaining work for this week is verification and documen
 - [x] Message schemas ([backend/app/schemas](../backend/app/schemas))
 - [x] Mosquitto in Docker Compose (config written)
 - [x] Project documentation: progress, architecture, decisions, changelog
-- [ ] **Run the Docker Compose stack end to end** on a real machine (needs Docker installed; see open issue 1)
+- [ ] **Run the Docker Compose stack end to end** (Docker is installed; needs docker-group permission first, see open issue 1)
 - [ ] Confirm the Day 1–5 CI compose failures are understood (open issue 3)
 - [ ] Read the VDA 5050 3.0 release notes and record what changes for us (open issue 9)
 - [ ] Customer discovery: first outreach messages sent (plan: 30 conversations in 60 days)
@@ -98,7 +98,7 @@ Numbered so they can be referenced from commits. Remove an item only when it is 
 
 | # | Issue | Impact | Plan |
 |---|---|---|---|
-| 1 | Docker Compose stack never run end to end (Docker not installed on the dev machine) | The "one command" promise is unverified | Install Docker; run the [DEMO.md](DEMO.md) script; Week 1 |
+| 1 | Docker Compose stack never run end to end. Docker 29.9.0 + Compose v5.6.0 **are installed** (since 8 Oct; an earlier check wrongly reported them missing), but user `rupert` is not in the `docker` group, so `docker ps` is denied | The "one command" promise is unverified | `sudo usermod -aG docker rupert`, re-login, then run the [DEMO.md](DEMO.md) script; Week 1 |
 | 2 | All E2E testing used amqtt, not Mosquitto | Broker-specific behaviour (retained messages, last will timing) unverified | Mosquitto in CI E2E tests; Week 2 |
 | 3 | CI `compose` job failed on Days 1–5, passes since Day 6. No build-relevant file changed in between; logs need a GitHub login | Probably transient (base image pulls), but unconfirmed | Check the job logs on GitHub Actions |
 | 4 | A robot whose battery reaches 0 % mid-mission stops but keeps reporting `MOVING` and `driving: true` | Wrong state; would also trip the validator's driving rule | Fix with the low-battery failure; Week 2/6 |
@@ -116,6 +116,12 @@ Numbered so they can be referenced from commits. Remove an item only when it is 
 ## Session log
 
 Newest first. One entry per work session: what was done, what was learned, what is next.
+
+### Sat 10 Oct 2026 (later): Docker check
+
+- Docker Engine 29.9.0 and Compose v5.6.0 are installed and the service is active; installed 8 Oct,
+  so the Day 1 report "Docker not installed" was wrong. Blocker is permission: `rupert` is not in the
+  `docker` group (open issue 1 updated).
 
 ### Sat 10 Oct 2026: weeks 4–5 items, documentation
 
