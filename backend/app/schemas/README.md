@@ -17,7 +17,19 @@ on a VDA 5050 topic is checked against the schema of its topic. None of them set
 The repository notes that where it differs from the PDF published by the VDA, the PDF is authoritative.
 
 To update: download the files from a newer tag into a new folder, record the tag and commit here, and
-point `OFFICIAL_SCHEMA_DIR` in `validator.py` at it (VDA 5050 3.0 support is planned per D-15).
+add it to `OFFICIAL_SCHEMA_DIRS` in `validator.py`.
+
+## Official VDA 5050 3.0.0 schemas (`vda5050-3.0.0/`)
+
+From the official repository, tag `3.0.0`, commit `e9ba560b0e2d3f66526550ad5d61b8a2ad936172`, MIT (see
+`vda5050-3.0.0/LICENSE.txt`). Files: `connection`, `factsheet`, `instantActions`, `order`, `responses`,
+`state`, `visualization`, `zoneSet`.
+
+**One local change:** three upstream files are not valid JSON (trailing commas): `factsheet.schema` (4),
+`order.schema` (1), `visualization.schema` (2). Those 7 commas were removed; nothing else differs from
+upstream (checked with `diff`). Reported as PROGRESS issue 17. Re-check when updating to a newer tag.
+
+The validator picks the set by the topic's major version: `v2` → 2.1.0, `v3` → 3.0.0.
 
 ## ActuNode's own schemas
 

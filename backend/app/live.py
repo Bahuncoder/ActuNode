@@ -85,14 +85,15 @@ class LiveHub:
         self.broadcast({"type": "message", "message": message, "robot": robot})
 
     def _update_robot(self, topic: str, body, received_at: str) -> dict | None:
-        parsed = vda5050.parse_topic(topic)
+        parsed = vda5050.topic_parts(topic)
         if parsed is None or not isinstance(body, dict):
             return None
-        serial_number, name = parsed
+        serial_number, name = parsed.serial_number, parsed.name
         robot = self._robots.setdefault(
             serial_number,
             {"robotId": serial_number, "connection": None, "state": None, "lastSeen": None, "lastStateAt": None},
         )
+        robot["vdaMajor"] = parsed.major
         if name == "state":
             robot["state"] = body
             robot["lastStateAt"] = received_at

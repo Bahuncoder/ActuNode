@@ -91,11 +91,12 @@ def test_actunode_extension_is_checked_against_its_own_schema():
     assert schema_issues == [("schema", "/actunode/missionStatus")]
 
 
-def test_every_vda5050_topic_has_an_official_schema():
-    validator = Validator()
+def test_every_vda5050_topic_has_an_official_schema_per_version():
+    validators = Validator()._validators
+    common = {"order", "instantActions", "state", "visualization", "connection", "factsheet"}
 
-    for topic_name in ("order", "instantActions", "state", "visualization", "connection", "factsheet"):
-        assert validator._validators.get(topic_name), topic_name
+    assert common <= set(validators["v2"])
+    assert common | {"zoneSet", "responses"} <= set(validators["v3"])
 
 
 def test_serial_number_must_match_topic():
@@ -263,3 +264,63 @@ def test_validation_api_reports_and_resets(client):
     reset = client.post("/api/validation/reset").json()
 
     assert (reset["checked"], reset["withIssues"], reset["byRule"]) == (0, 0, [])
+
+
+# --- VDA 5050 3.0 (D-15): the schema set is chosen by the topic's major version ---
+
+
+@pytest.mark.parametrize("name", ["v3_state", "v3_order", "v3_connection"])
+def test_valid_3_0_messages_on_v3_topics_are_clean(name):
+    topic, payload = fixture(name)
+
+    assert Validator().check(topic, payload, valid_json=True) == []
+
+
+def test_2_1_state_on_a_v3_topic_is_reported():
+    topic, payload = fixture("state_moving")
+    v3_topic = topic.replace("/v2/", "/v3/")
+
+    issues = Validator().check(v3_topic, payload, valid_json=True)
+
+    found = {(i["rule"], i["path"]) for i in issues}
+    assert ("version-mismatch", "/version") in found
+    assert ("schema", "/") in found  # root: e.g. 'powerSupply' is a required property in 3.0
+    assert ("schema", "/safetyState") in found  # 3.0 renamed eStop to activeEmergencyStop
+
+
+def test_3_0_orders_have_no_start_and_end_node_ids_and_that_is_fine():
+    topic, payload = fixture("v3_order")
+    assert "startNodeId" not in payload["edges"][0]
+
+    assert Validator().check(topic, payload, valid_json=True) == []
+
+
+def test_3_0_order_sequence_is_still_checked():
+    topic, payload = fixture("v3_order")
+    payload["edges"][0]["sequenceId"] = 2
+
+    assert "order-sequence" in rules(Validator().check(topic, payload, valid_json=True))
+
+
+def test_3_0_state_of_charge_out_of_range_is_a_plausibility_warning():
+    topic, payload = fixture("v3_state")
+    payload["powerSupply"]["stateOfCharge"] = 250
+
+    issues = Validator().check(topic, payload, valid_json=True)
+
+    assert ("value-range", "warning") in {(i["rule"], i["severity"]) for i in issues}
+
+
+def test_unsupported_major_version_is_not_validated():
+    assert Validator().check("uagv/v9/ActuNode/r/state", {"anything": 1}, valid_json=True) == []
+
+
+def test_hub_shows_3_0_robots_and_their_version():
+    topic, payload = fixture("v3_state")
+    live = LiveHub()
+
+    live.handle_mqtt(topic, json.dumps(payload).encode())
+
+    robot = live.robot("robot_31")
+    assert robot is not None, "a 3.0 robot must appear in the robot list"
+    assert robot["vdaMajor"] == "v3"

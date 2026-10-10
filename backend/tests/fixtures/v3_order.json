@@ -1,0 +1,50 @@
+{
+  "topic": "uagv/v3/ActuNode/robot_31/order",
+  "payload": {
+    "timestamp": "2026-10-10T12:00:00.000Z",
+    "version": "3.0.0",
+    "manufacturer": "ActuNode",
+    "serialNumber": "robot_31",
+    "headerId": 1,
+    "orderId": "order-31",
+    "orderUpdateId": 0,
+    "nodes": [
+      {
+        "nodeId": "A",
+        "sequenceId": 0,
+        "released": true,
+        "nodePosition": {
+          "x": 1,
+          "y": 2,
+          "mapId": "warehouse"
+        },
+        "actions": []
+      },
+      {
+        "nodeId": "B",
+        "sequenceId": 2,
+        "released": true,
+        "nodePosition": {
+          "x": 5,
+          "y": 2,
+          "mapId": "warehouse"
+        },
+        "actions": [
+          {
+            "actionType": "drop",
+            "actionId": "d1",
+            "blockingType": "HARD"
+          }
+        ]
+      }
+    ],
+    "edges": [
+      {
+        "edgeId": "A-B",
+        "sequenceId": 1,
+        "released": true,
+        "actions": []
+      }
+    ]
+  }
+}

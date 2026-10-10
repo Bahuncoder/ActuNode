@@ -1,0 +1,11 @@
+{
+  "topic": "uagv/v3/ActuNode/robot_31/connection",
+  "payload": {
+    "timestamp": "2026-10-10T12:00:00.000Z",
+    "version": "3.0.0",
+    "manufacturer": "ActuNode",
+    "serialNumber": "robot_31",
+    "headerId": 1,
+    "connectionState": "CONNECTION_BROKEN"
+  }
+}

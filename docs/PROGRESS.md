@@ -129,10 +129,10 @@ Numbered so they can be referenced from commits. Remove an item only when it is 
 | 3 | CI `compose` job failed on Days 1–5, passes since Day 6. No build-relevant file changed in between; logs need a GitHub login | Probably transient (base image pulls), but unconfirmed | Check the job logs on GitHub Actions |
 | 5 | No collision avoidance or traffic management; robots drive through each other | Unrealistic with many robots | Decide in Week 4 whether to model it |
 | 6 | No real-browser tests (component and logic tests exist since D-19, but run in jsdom, not a browser) | Browser-only issues (layout, WebSocket in a real browser) are caught by hand | Add Playwright tests against the e2e stack |
-| 8 | ActuNode speaks only VDA 5050 2.1 (`uagv/v2`, `2.1.0`); 3.0 is breaking ([research note](research/VDA5050_3_0.md)) | 3.0 robots or fleet managers cannot be tested; the validator would reject all their messages | Support both side by side, chosen by topic (D-15); Week 5 |
+| 8 | VDA 5050 3.0 support in progress (D-15): validation and robot list understand v3 topics; simulator, orders, replay and UI still 2.1 only | A 3.0 robot is validated and listed, but ActuNode cannot yet send it orders or display its position | Parts B–D of #8 |
 | 12 | No authentication: Mosquitto allows anonymous clients, the API has no login, no TLS | Since D-18 the lab is reachable only from the same computer by default; with `ACTUNODE_BIND_ADDRESS=0.0.0.0` anyone on the network can command robots | Broker credentials + API auth + TLS before any shared deployment |
 | 15 | From the dev machine, `127.0.0.1:8000` (backend published port) accepts connections but never answers, while the LAN address `192.168.1.151:8000`, port 8080 on loopback, and container-to-container calls all work. Seen from the assistant's sandboxed shell; not yet checked from a normal terminal | API docs at localhost:8000/docs may be unreachable; the UI is unaffected (it uses 8080) | Seen again on 10 Oct for MQTT ports 1883/11883 from the same shell while the LAN address worked, so most likely the assistant's sandbox; on GitHub's CI machine the same e2e tests reach the stack via plain `localhost`. E2E tests take `ACTUNODE_E2E_HOST` for this. Still: run `curl -m 5 localhost:8000/api/health` in a normal terminal; if it hangs there too, investigate Docker's port forwarding |
-| 17 | Official VDA 5050 `json_schemas/order.schema` at tag 3.0.0 is invalid JSON (trailing comma, line 315) | Loading the official schemas fails until fixed locally | Apply a documented local fix when vendoring (Week 5); report upstream (needs your GitHub account) |
+| 17 | Official VDA 5050 3.0.0 schemas are not valid JSON: trailing commas in `factsheet.schema` (4), `order.schema` (1, line 315), `visualization.schema` (2) | Any tool loading them as-is fails | Vendored with only those 7 commas removed (verified by diff); report upstream (needs your GitHub account) |
 
 ## Session log
 
@@ -140,6 +140,14 @@ Newest first. One entry per work session: what was done, what was learned, what 
 
 ### Sat 10 Oct 2026: working through open issues one by one
 
+- **#8 part A: version-aware validation.** Vendored the official 3.0.0 schemas (commit e9ba560). Found
+  **three** invalid upstream files, not one (factsheet, order, visualization: 7 trailing commas);
+  removed only those (diff-verified); #17 widened. Topic parsing now accepts `v2` and `v3` and the
+  validator picks the schema set per message. Found while reading the code: a 3.0 robot was **invisible**
+  (not listed, not on the map) because topic parsing accepted only `v2` — fixed, robots record their
+  version. 3.0 edges have no start/end node ids, so that check runs only where they exist; battery
+  plausibility also reads 3.0 `powerSupply.stateOfCharge`. 3.0 fixtures built and checked against the
+  official 3.0 schemas. Unit and e2e tests pass.
 - **#7 closed.** Checked first: official 2.1.0 schemas are MIT and set no `additionalProperties`; all of
   ActuNode's messages (4 recorded, 6 generated incl. IDLE/MOVING/BLOCKED/FAILED) pass them. Vendored the
   six schemas unchanged (commit 511d01d, license kept), replaced the hand-written subset; own schemas only

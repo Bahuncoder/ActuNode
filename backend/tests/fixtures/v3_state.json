@@ -1,0 +1,51 @@
+{
+  "topic": "uagv/v3/ActuNode/robot_31/state",
+  "payload": {
+    "timestamp": "2026-10-10T12:00:00.000Z",
+    "version": "3.0.0",
+    "manufacturer": "ActuNode",
+    "serialNumber": "robot_31",
+    "headerId": 7,
+    "orderId": "order-31",
+    "orderUpdateId": 0,
+    "lastNodeId": "A",
+    "lastNodeSequenceId": 0,
+    "nodeStates": [
+      {
+        "nodeId": "B",
+        "sequenceId": 2,
+        "released": true
+      }
+    ],
+    "edgeStates": [
+      {
+        "edgeId": "A-B",
+        "sequenceId": 1,
+        "released": true
+      }
+    ],
+    "driving": true,
+    "operatingMode": "AUTOMATIC",
+    "mobileRobotPosition": {
+      "x": 1.0,
+      "y": 2.0,
+      "theta": 0.0,
+      "mapId": "warehouse",
+      "localized": true
+    },
+    "powerSupply": {
+      "stateOfCharge": 88.5,
+      "charging": false
+    },
+    "actionStates": [],
+    "instantActionStates": [],
+    "errors": [],
+    "safetyState": {
+      "activeEmergencyStop": "NONE",
+      "fieldViolation": false
+    },
+    "actunode": {
+      "missionStatus": "MOVING"
+    }
+  }
+}

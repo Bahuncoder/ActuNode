@@ -1,6 +1,7 @@
 """VDA 5050 message building for the backend (master control side)."""
 
 import os
+from dataclasses import dataclass
 from datetime import UTC, datetime
 from itertools import count
 
@@ -19,12 +20,30 @@ def topic(serial_number: str, name: str) -> str:
     return f"{INTERFACE_NAME}/{MAJOR_VERSION}/{MANUFACTURER}/{serial_number}/{name}"
 
 
+# Topic major version -> protocol version ActuNode understands for it (D-15).
+SUPPORTED_MAJOR_VERSIONS = {"v2": "2.1.0", "v3": "3.0.0"}
+
+
+@dataclass(frozen=True)
+class TopicParts:
+    major: str
+    manufacturer: str
+    serial_number: str
+    name: str
+
+
+def topic_parts(topic_name: str) -> TopicParts | None:
+    """Split a VDA 5050 topic of any supported major version, or None if it is not one."""
+    parts = topic_name.split("/")
+    if len(parts) != 5 or parts[0] != INTERFACE_NAME or parts[1] not in SUPPORTED_MAJOR_VERSIONS:
+        return None
+    return TopicParts(parts[1], parts[2], parts[3], parts[4])
+
+
 def parse_topic(topic_name: str) -> tuple[str, str] | None:
     """Return (serialNumber, topic) for a VDA 5050 topic, or None if it is not one."""
-    parts = topic_name.split("/")
-    if len(parts) != 5 or parts[0] != INTERFACE_NAME or parts[1] != MAJOR_VERSION:
-        return None
-    return parts[3], parts[4]
+    parts = topic_parts(topic_name)
+    return (parts.serial_number, parts.name) if parts else None
 
 
 def utc_timestamp() -> str:

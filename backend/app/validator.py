@@ -15,7 +15,9 @@ from app import vda5050
 
 SCHEMA_DIR = Path(__file__).parent / "schemas"
 # Official VDA 5050 schemas, vendored unchanged (MIT, see the LICENSE.txt next to them).
-OFFICIAL_SCHEMA_DIR = SCHEMA_DIR / "vda5050-2.1.0"
+# Official VDA 5050 schemas per topic major version (D-15, D-20). 2.1.0 is vendored unchanged;
+# 3.0.0 is unchanged except 7 trailing commas removed to make it valid JSON (see schemas/README.md).
+OFFICIAL_SCHEMA_DIRS = {"v2": SCHEMA_DIR / "vda5050-2.1.0", "v3": SCHEMA_DIR / "vda5050-3.0.0"}
 MAX_SCHEMA_ISSUES = 5
 
 # ActuNode mission status machine (IDLE is always allowed: robot stopped or restarted).
@@ -43,16 +45,17 @@ RULES = {
 }
 
 
-def _load_validators() -> dict[str, list[Draft202012Validator]]:
-    """Schemas per message kind: the official VDA 5050 schema for each VDA topic, plus ActuNode's
-    own schemas for its extension of `state` and for its inject command."""
-    validators: dict[str, list[Draft202012Validator]] = {}
-    for path in sorted(OFFICIAL_SCHEMA_DIR.glob("*.schema")):
-        validators.setdefault(path.name.removesuffix(".schema"), []).append(
-            Draft202012Validator(json.loads(path.read_text()))
-        )
-    validators.setdefault("state", []).append(_own("actunode-state"))
-    validators["actunode-inject"] = [_own("actunode-inject")]
+def _load_validators() -> dict[str, dict[str, list[Draft202012Validator]]]:
+    """Per topic major version, per message kind: the official VDA 5050 schema, plus ActuNode's own
+    schema for its `state` extension. The inject command is not VDA 5050 and has no version."""
+    extension = _own("actunode-state")
+    validators: dict[str, dict[str, list[Draft202012Validator]]] = {}
+    for major, directory in OFFICIAL_SCHEMA_DIRS.items():
+        kinds = validators.setdefault(major, {})
+        for path in sorted(directory.glob("*.schema")):
+            kinds[path.name.removesuffix(".schema")] = [Draft202012Validator(json.loads(path.read_text()))]
+        kinds["state"].append(extension)
+    validators["actunode"] = {"actunode-inject": [_own("actunode-inject")]}
     return validators
 
 
@@ -75,17 +78,17 @@ class Validator:
         if not valid_json:
             return [issue("error", "invalid-json", RULES["invalid-json"])]
 
-        kind, serial_number, manufacturer = self._classify(topic)
+        kind, serial_number, manufacturer, major = self._classify(topic)
         if kind is None:
             return []  # not a topic ActuNode knows how to check
         if not isinstance(payload, dict):
             return [issue("error", "schema", "Payload must be a JSON object")]
 
-        issues = self._schema_issues(kind, payload)
+        issues = self._schema_issues(major, kind, payload)
         if kind == "actunode-inject":
             return issues
 
-        issues += self._header_issues(topic, payload, serial_number, manufacturer, retained)
+        issues += self._header_issues(topic, payload, serial_number, manufacturer, major, retained)
         if kind == "order":
             issues += self._order_issues(payload)
         elif kind == "state" and not retained:
@@ -94,21 +97,21 @@ class Validator:
 
     # --- Classification --------------------------------------------------------
 
-    def _classify(self, topic: str) -> tuple[str | None, str | None, str | None]:
+    def _classify(self, topic: str) -> tuple[str | None, str | None, str | None, str | None]:
+        """(kind, serialNumber, manufacturer, major version) of a topic ActuNode checks."""
         parts = topic.split("/")
         if len(parts) == 5 and parts[:3] == ["actunode", "v1", "sim"] and parts[4] == "inject":
-            return "actunode-inject", parts[3], None
-        parsed = vda5050.parse_topic(topic)
+            return "actunode-inject", parts[3], None, "actunode"
+        parsed = vda5050.topic_parts(topic)
         if parsed is None:
-            return None, None, None
-        serial_number, name = parsed
-        kind = name if name in self._validators else "header-only"
-        return kind, serial_number, parts[2]
+            return None, None, None, None
+        kind = parsed.name if parsed.name in self._validators[parsed.major] else "header-only"
+        return kind, parsed.serial_number, parsed.manufacturer, parsed.major
 
     # --- Single-message checks -------------------------------------------------
 
-    def _schema_issues(self, kind: str, payload: dict) -> list[dict]:
-        validators = self._validators.get(kind, [])
+    def _schema_issues(self, major: str, kind: str, payload: dict) -> list[dict]:
+        validators = self._validators[major].get(kind, [])
         errors = sorted(
             (error for validator in validators for error in validator.iter_errors(payload)),
             key=lambda error: list(error.absolute_path),
@@ -118,7 +121,7 @@ class Validator:
             for error in errors[:MAX_SCHEMA_ISSUES]
         ]
 
-    def _header_issues(self, topic, payload, serial_number, manufacturer, retained) -> list[dict]:
+    def _header_issues(self, topic, payload, serial_number, manufacturer, major, retained) -> list[dict]:
         issues = []
         if payload.get("serialNumber") not in (None, serial_number):
             issues.append(
@@ -140,11 +143,8 @@ class Validator:
             )
 
         version = payload.get("version")
-        expected_major = vda5050.MAJOR_VERSION.lstrip("v")
-        if isinstance(version, str) and version.split(".")[0] != expected_major:
-            issues.append(
-                issue("error", "version-mismatch", f"version {version} on a {vda5050.MAJOR_VERSION} topic", "/version")
-            )
+        if isinstance(version, str) and version.split(".")[0] != major.lstrip("v"):
+            issues.append(issue("error", "version-mismatch", f"version {version} on a {major} topic", "/version"))
 
         timestamp = payload.get("timestamp")
         if isinstance(timestamp, str) and not _is_iso_with_zone(timestamp):
@@ -189,7 +189,11 @@ class Validator:
                     f"edge {edge.get('edgeId')} (seq {edge['sequenceId']}) is not between "
                     f"nodes seq {before['sequenceId']} and {after['sequenceId']}"
                 )
-            if edge.get("startNodeId") != before.get("nodeId") or edge.get("endNodeId") != after.get("nodeId"):
+            # 2.x edges name their nodes; 3.0 removed startNodeId/endNodeId (sequence ids alone link them).
+            names_nodes = "startNodeId" in edge or "endNodeId" in edge
+            if names_nodes and (
+                edge.get("startNodeId") != before.get("nodeId") or edge.get("endNodeId") != after.get("nodeId")
+            ):
                 problems.append(
                     f"edge {edge.get('edgeId')} connects {edge.get('startNodeId')}->{edge.get('endNodeId')}, "
                     f"expected {before.get('nodeId')}->{after.get('nodeId')}"
@@ -200,17 +204,14 @@ class Validator:
 
     def _state_issues(self, robot_id: str, payload: dict) -> list[dict]:
         issues = []
-        # The official 2.1.0 schema limits batteryHealth to 0-100 but not batteryCharge ("in %").
-        charge = (payload.get("batteryState") or {}).get("batteryCharge")
-        if isinstance(charge, int | float) and not isinstance(charge, bool) and not 0 <= charge <= 100:
-            issues.append(
-                issue(
-                    "warning",
-                    "value-range",
-                    f"batteryCharge {charge} is outside 0-100 %",
-                    "/batteryState/batteryCharge",
+        # The official 2.1.0 schema limits batteryHealth to 0-100 but not batteryCharge ("in %");
+        # 3.0 renamed it powerSupply.stateOfCharge.
+        for container, field in (("batteryState", "batteryCharge"), ("powerSupply", "stateOfCharge")):
+            charge = (payload.get(container) or {}).get(field)
+            if isinstance(charge, int | float) and not isinstance(charge, bool) and not 0 <= charge <= 100:
+                issues.append(
+                    issue("warning", "value-range", f"{field} {charge} is outside 0-100 %", f"/{container}/{field}")
                 )
-            )
         status = (payload.get("actunode") or {}).get("missionStatus")
         if isinstance(status, str):
             previous = self._last_status.get(robot_id)
