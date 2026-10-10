@@ -21,6 +21,9 @@ What changed, per commit, newest first. Status and plans are in [docs/PROGRESS.m
 - CI: the `compose` build job is replaced by the `e2e` job, which builds and runs the stack.
 
 ### Fixed
+- A robot whose battery ran out mid-mission kept reporting MOVING and `driving: true`. It now stops
+  exactly where the battery runs out, the mission becomes FAILED with a FATAL `batteryEmpty` error,
+  and orders are rejected while the battery is empty (D-17).
 - HTTP errors raised from recorder/replay errors now keep the original error as their cause.
 - Backend hung on shutdown when no MQTT traffic flowed (idle WebSocket handler), so Docker killed it
   and an open recording lost its end line. Handler now watches for the close; uvicorn has a 5 s

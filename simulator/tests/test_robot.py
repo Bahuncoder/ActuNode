@@ -311,3 +311,30 @@ def test_commands_that_do_not_apply_are_ignored(payload, expected):
 
 def test_control_topic_is_separate_from_vda5050():
     assert control_topic("robot_01", "inject") == "actunode/v1/sim/robot_01/inject"
+
+
+def test_empty_battery_stops_the_robot_and_fails_the_mission():
+    robot = Robot("robot_01")
+    robot.battery = 0.2  # 1 m of driving left at 0.2 % per metre
+    robot.accept_order(make_order(order_id="order-9", points=((100, 0),)))
+
+    for _ in range(50):  # 5 simulated seconds at 1 m/s
+        robot.update(0.1)
+
+    assert robot.battery == 0
+    assert robot.x == pytest.approx(1.0)
+    state = robot.state_message()
+    assert state["actunode"]["missionStatus"] == "FAILED"
+    assert state["driving"] is False
+    [error] = state["errors"]
+    assert error["errorType"] == "batteryEmpty"
+    assert error["errorLevel"] == "FATAL"
+    assert {"referenceKey": "orderId", "referenceValue": "order-9"} in error["errorReferences"]
+
+
+def test_robot_with_empty_battery_rejects_new_orders():
+    robot = Robot("robot_01")
+    robot.battery = 0
+
+    assert not robot.accept_order(make_order())
+    assert "battery" in robot.errors[-1]["errorDescription"]

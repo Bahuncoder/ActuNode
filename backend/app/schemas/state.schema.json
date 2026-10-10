@@ -121,7 +121,7 @@
       "type": "object",
       "description": "ActuNode extension: simulator mission status.",
       "properties": {
-        "missionStatus": { "enum": ["IDLE", "ACCEPTED", "MOVING", "BLOCKED", "COMPLETED"] }
+        "missionStatus": { "enum": ["IDLE", "ACCEPTED", "MOVING", "BLOCKED", "COMPLETED", "FAILED"] }
       }
     }
   }

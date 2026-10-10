@@ -24,7 +24,7 @@ Week 1 started on Friday 9 October 2026 (Day 1). Each week runs Friday to Thursd
 | Week | Dates | Plan objective | Plan output | Feature state | Quality state |
 |---|---|---|---|---|---|
 | **1** | 9–15 Oct | VDA 5050 concepts, MQTT topics, AMR state machines | Notes + message schemas + Docker Mosquitto | ✅ Done | ✅ Docker stack verified end to end (10 Oct) |
-| 2 | 16–22 Oct | One fake AMR with battery, pose, state | Robot publishes status every second | ✅ Built early (Day 2) | 🟡 Battery-at-0 bug; no automated E2E tests |
+| 2 | 16–22 Oct | One fake AMR with battery, pose, state | Robot publishes status every second | ✅ Built early (Day 2) | ✅ Hardened 10 Oct: E2E tests in CI, battery-at-0 fixed |
 | 3 | 23–29 Oct | Mission sender + state transitions | Move job from start to destination | ✅ Built early (Day 3) | 🟡 No order updates, no cancel |
 | 4 | 30 Oct – 5 Nov | 5–10 robots + simple warehouse map | Multi-robot screen with location/state | ✅ Built early (Day 4, 10 Oct) | 🟡 Not load-tested beyond 10 robots; no collision avoidance |
 | 5 | 6–12 Nov | Message inspector + validation | Readable message stream + errors | ✅ Built early (Day 4, 10 Oct) | 🟡 Schemas are a hand-written subset; not compared with official ones |
@@ -58,7 +58,7 @@ since Day 2; this week makes it verified and correct (allowed early under D-11: 
 - [x] End-to-end tests against the real Docker stack, in CI (D-16); stable over 3 consecutive runs
 - [x] Objective verified automatically: state every ~1 s, consecutive `headerId`s
 - [x] Reconnect behaviour: robots and backend recover after a broker restart; killed simulator → CONNECTIONBROKEN
-- [ ] Fix battery at 0 % mid-mission (open issue 4)
+- [x] Fix battery at 0 % mid-mission: FAILED + FATAL `batteryEmpty`, orders rejected (issue 4, D-17)
 
 ## This week (Week 1, 9–15 Oct)
 
@@ -122,12 +122,11 @@ exercised by hand with a real browser and MQTT traffic.
 
 ## Open issues and technical debt
 
-Numbered so they can be referenced from commits. Remove an item only when it is fixed and verified; numbers are never reused (fixed: 1, 2, 9, 16).
+Numbered so they can be referenced from commits. Remove an item only when it is fixed and verified; numbers are never reused (fixed: 1, 2, 4, 9, 16).
 
 | # | Issue | Impact | Plan |
 |---|---|---|---|
 | 3 | CI `compose` job failed on Days 1–5, passes since Day 6. No build-relevant file changed in between; logs need a GitHub login | Probably transient (base image pulls), but unconfirmed | Check the job logs on GitHub Actions |
-| 4 | A robot whose battery reaches 0 % mid-mission stops but keeps reporting `MOVING` and `driving: true` | Wrong state; would also trip the validator's driving rule | Fix with the low-battery failure; Week 2/6 |
 | 5 | No collision avoidance or traffic management; robots drive through each other | Unrealistic with many robots | Decide in Week 4 whether to model it |
 | 6 | No automated frontend (browser) tests | UI regressions are caught by hand only | End-to-end tests now cover API and MQTT (D-16); add browser tests later |
 | 7 | Schemas are a hand-written subset of VDA 5050 2.x | May accept messages the official schemas reject, or the reverse | Replace with the official 2.1.0 / 3.0.0 schemas (D-15); Week 5 |
@@ -137,12 +136,20 @@ Numbered so they can be referenced from commits. Remove an item only when it is 
 | 12 | No authentication anywhere; Mosquitto allows anonymous clients | Fine for a laptop lab only; must not be exposed on a network | Documented; revisit before any shared deployment |
 | 13 | Robot `state` is published with QoS 0, so it can be dropped; recordings capture only what the backend receives | Rare gaps in recordings | Accept for now; document |
 | 14 | CI warnings: `actions/checkout@v4` uses Node 20 (deprecated); `ubuntu-latest` moves to Ubuntu 26 from 19 Oct 2026 | CI may break after the migration | Update actions; watch the first run after 19 Oct |
-| 15 | From the dev machine, `127.0.0.1:8000` (backend published port) accepts connections but never answers, while the LAN address `192.168.1.151:8000`, port 8080 on loopback, and container-to-container calls all work. Seen from the assistant's sandboxed shell; not yet checked from a normal terminal | API docs at localhost:8000/docs may be unreachable; the UI is unaffected (it uses 8080) | Seen again on 10 Oct for MQTT ports 1883/11883 from the same shell while the LAN address worked, so most likely the assistant's sandbox. E2E tests take `ACTUNODE_E2E_HOST` for this. Still: run `curl -m 5 localhost:8000/api/health` in a normal terminal; if it hangs there too, investigate Docker's port forwarding |
+| 15 | From the dev machine, `127.0.0.1:8000` (backend published port) accepts connections but never answers, while the LAN address `192.168.1.151:8000`, port 8080 on loopback, and container-to-container calls all work. Seen from the assistant's sandboxed shell; not yet checked from a normal terminal | API docs at localhost:8000/docs may be unreachable; the UI is unaffected (it uses 8080) | Seen again on 10 Oct for MQTT ports 1883/11883 from the same shell while the LAN address worked, so most likely the assistant's sandbox; on GitHub's CI machine the same e2e tests reach the stack via plain `localhost`. E2E tests take `ACTUNODE_E2E_HOST` for this. Still: run `curl -m 5 localhost:8000/api/health` in a normal terminal; if it hangs there too, investigate Docker's port forwarding |
 | 17 | Official VDA 5050 `json_schemas/order.schema` at tag 3.0.0 is invalid JSON (trailing comma, line 315) | Loading the official schemas fails until fixed locally | Apply a documented local fix when vendoring (Week 5); report upstream (needs your GitHub account) |
 
 ## Session log
 
 Newest first. One entry per work session: what was done, what was learned, what is next.
+
+### Sat 10 Oct 2026 (late night): battery at 0 % fixed
+
+- Reproduced issue 4 with failing tests first. Cause: steps were not capped by the remaining battery,
+  and nothing changed the status when it hit 0, so the robot stayed MOVING forever.
+- Fix (D-17): new mission status FAILED with a FATAL `batteryEmpty` error; robot stops exactly where
+  the battery runs out; orders rejected while empty. Validator transitions, schema enum and UI (red)
+  updated; tests for each. Issue 4 closed. All Week 2 items done.
 
 ### Sat 10 Oct 2026 (late night): Week 2 started early — end-to-end tests
 

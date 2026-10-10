@@ -65,9 +65,11 @@ last will if the robot vanishes.
 ## ActuNode extensions (not VDA 5050)
 
 - `state.actunode.missionStatus`: the simulator's mission state machine
-  `IDLE → ACCEPTED → MOVING → COMPLETED`, plus `BLOCKED` under failure injection.
+  `IDLE → ACCEPTED → MOVING → COMPLETED`, plus `BLOCKED` under failure injection and `FAILED`
+  when the battery runs empty.
 - `actunode/v1/sim/<robot>/inject`: failure-injection commands, kept off VDA 5050 topics.
-- Error type `pathBlocked` for the BLOCKED_PATH failure; order rejections use `orderError`.
+- Error types: `pathBlocked` (BLOCKED_PATH failure, WARNING), `batteryEmpty` (FATAL), `orderError`
+  (order rejected, WARNING).
 
 ## What the validator checks
 

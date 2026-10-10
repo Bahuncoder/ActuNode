@@ -89,7 +89,8 @@ function RobotRoute({ robot }: { robot: Robot }) {
   if (!position || route.length === 0) return null
 
   const points = [position, ...route]
-  const blocked = missionStatus(robot) === 'BLOCKED'
+  // Route the robot cannot finish right now: blocked path or empty battery.
+  const blocked = ['BLOCKED', 'FAILED'].includes(missionStatus(robot))
   return (
     <polyline
       className={`route ${blocked ? 'blocked' : ''}`}

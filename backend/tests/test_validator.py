@@ -170,6 +170,25 @@ def test_full_mission_including_block_and_clear_is_clean():
     assert found == [[]] * len(sequence)
 
 
+def test_empty_battery_failure_and_recovery_are_allowed_transitions():
+    validator = Validator()
+    topic, base = fixture("state_moving")
+
+    sequence = ["ACCEPTED", "MOVING", "FAILED", "ACCEPTED", "MOVING", "COMPLETED"]
+    found = [validator.check(topic, state(base, status, i + 1), valid_json=True) for i, status in enumerate(sequence)]
+
+    assert found == [[]] * len(sequence)
+
+
+def test_failed_cannot_jump_straight_to_completed():
+    validator = Validator()
+    topic, base = fixture("state_moving")
+
+    validator.check(topic, state(base, "FAILED", 1), valid_json=True)
+
+    assert rules(validator.check(topic, state(base, "COMPLETED", 2), valid_json=True)) == ["mission-transition"]
+
+
 def test_driving_must_match_mission_status():
     topic, base = fixture("state_moving")
 

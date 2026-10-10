@@ -69,13 +69,17 @@ which is what puts them in the message stream and in recordings.
 
 ```
 IDLE ──order──▶ ACCEPTED ──next tick──▶ MOVING ──last node──▶ COMPLETED ──order──▶ ACCEPTED …
-                    │                    │  ▲
-                    └──BLOCKED_PATH──▶ BLOCKED ──clear──┘
+                    │                    │  ▲  │
+                    └──BLOCKED_PATH──▶ BLOCKED ─clear─┘
+                                         │
+                                  battery 0 % ──▶ FAILED ──order (battery > 0)──▶ ACCEPTED …
 ```
 
 - Orders arriving while ACCEPTED / MOVING / BLOCKED are rejected with an `orderError`.
 - Motion: 1 m/s straight lines between nodes; battery −0.2 % per metre; pick/drop actions finish
   instantly on arrival.
+- At 0 % battery the robot stops where it ran out and the mission is FAILED (`batteryEmpty`, FATAL);
+  orders are rejected until it can drive again (D-17). Charging is not simulated yet.
 - Threading: paho network threads only put messages on a queue; the robot object is touched only by
   the main loop.
 

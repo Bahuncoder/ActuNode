@@ -176,3 +176,16 @@ for recent-looking state (a replay that just ended produces exactly that).
 **Consequences.** CI takes ~2 minutes longer; a developer's own stack and recordings are never
 touched by a test run. `ACTUNODE_E2E_HOST` exists for environments where loopback to Docker ports
 misbehaves (issue 15).
+
+## D-17 · Empty battery ends the mission in FAILED with a FATAL `batteryEmpty` error
+10 Oct 2026 · Accepted
+
+**Context.** A robot whose battery reached 0 % mid-mission stopped moving but kept reporting
+`MOVING` and `driving: true` (issue 4): wrong state, and invisible to anyone watching.
+**Decision.** Add mission status `FAILED` (ActuNode extension, like the others). At 0 % the robot stops
+exactly where the battery ran out (steps are capped to the remaining range), reports `driving: false`
+and an error `batteryEmpty` at level `FATAL` (it cannot recover on its own) referencing the next node
+and the order. Orders are rejected while the battery is empty. `FAILED → ACCEPTED` is allowed once a
+robot can drive again. Charging is not simulated yet.
+**Consequences.** The state machine gains one state; validator and UI updated. Week 6's low-battery
+failure builds on this (warning before empty, and a way to recharge).

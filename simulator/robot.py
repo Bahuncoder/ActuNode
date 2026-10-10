@@ -10,12 +10,15 @@ SPEED_M_PER_S = 1.0
 BATTERY_PER_METER = 0.2
 
 # Mission state machine: IDLE -> ACCEPTED -> MOVING -> COMPLETED
-# Failure injection can put a robot on a route into BLOCKED until cleared.
+# Failure injection can put a robot on a route into BLOCKED until cleared;
+# an empty battery ends the mission in FAILED.
 IDLE = "IDLE"
 ACCEPTED = "ACCEPTED"
 MOVING = "MOVING"
 COMPLETED = "COMPLETED"
 BLOCKED = "BLOCKED"
+# The robot cannot continue on its own (battery empty). Cleared by the next accepted order.
+FAILED = "FAILED"
 
 BLOCKED_PATH = "BLOCKED_PATH"
 
@@ -110,6 +113,8 @@ class Robot:
         return True
 
     def _check_order(self, order: dict) -> str | None:
+        if self.battery <= 0:
+            return "battery is empty; robot cannot drive"
         if self.busy:
             return f"robot is busy with order {self.order_id}"
         if order.get("serialNumber") != self.robot_id:
@@ -214,8 +219,9 @@ class Robot:
         if self.mission_status != MOVING:
             return
 
-        budget = SPEED_M_PER_S * dt
-        while self.node_states and self.battery > 0:
+        # Never drive further than the remaining battery allows.
+        budget = min(SPEED_M_PER_S * dt, self.battery / BATTERY_PER_METER)
+        while self.node_states and budget > 0:
             node_id = self.node_states[0]["nodeId"]
             target_x, target_y = self._node_positions[node_id]
             dx, dy = target_x - self.x, target_y - self.y
@@ -226,7 +232,7 @@ class Robot:
                 self.x += dx / distance * budget
                 self.y += dy / distance * budget
                 self._drain(budget)
-                return
+                break
 
             if distance > 0:
                 self.theta = math.atan2(dy, dx)
@@ -239,6 +245,24 @@ class Robot:
             self.mission_status = COMPLETED
             # Rejections of orders sent while busy no longer apply.
             self._drop_errors("orderError")
+        elif self.battery <= 0:
+            self._fail_battery_empty()
+
+    def _fail_battery_empty(self) -> None:
+        next_node = self.node_states[0]["nodeId"]
+        self.mission_status = FAILED
+        self._drop_errors("batteryEmpty")
+        self.errors.append(
+            {
+                "errorType": "batteryEmpty",
+                "errorLevel": "FATAL",
+                "errorDescription": f"Battery empty; stopped at ({self.x:.1f}, {self.y:.1f}) on the way to {next_node}",
+                "errorReferences": [
+                    {"referenceKey": "nodeId", "referenceValue": next_node},
+                    {"referenceKey": "orderId", "referenceValue": self.order_id},
+                ],
+            }
+        )
 
     def _arrive(self, node_id: str) -> None:
         node = self.node_states.pop(0)
@@ -254,7 +278,9 @@ class Robot:
                 action["actionStatus"] = "FINISHED"
 
     def _drain(self, meters: float) -> None:
-        self.battery = max(0.0, self.battery - meters * BATTERY_PER_METER)
+        remaining = self.battery - meters * BATTERY_PER_METER
+        # Snap float residue (e.g. 1e-17) to exactly empty.
+        self.battery = remaining if remaining > 1e-9 else 0.0
 
     def status(self) -> None:
         print(f"{self.robot_id} | {self.mission_status} | x={self.x:.1f} y={self.y:.1f} | battery={self.battery:.1f}%")

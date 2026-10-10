@@ -452,7 +452,8 @@ code,
   fill: var(--machine-mint);
 }
 
-.warehouse-map .robot.status-blocked circle {
+.warehouse-map .robot.status-blocked circle,
+.warehouse-map .robot.status-failed circle {
   fill: var(--danger);
 }
 
@@ -505,7 +506,8 @@ code,
 }
 
 .badge.down,
-.badge.status-blocked {
+.badge.status-blocked,
+.badge.status-failed {
   color: var(--node-navy);
   background: var(--danger);
 }
