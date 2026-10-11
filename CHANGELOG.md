@@ -29,6 +29,7 @@ What changed, per commit, newest first. Status and plans are in [docs/PROGRESS.m
 - [docs/PLAN.md](docs/PLAN.md) is now the plan reference with calendar dates; status moved to PROGRESS.md.
 
 ### Changed
+- API docs moved to `/api/docs` (and `/api/openapi.json`), so they are reachable through the UI port.
 - The credentials volume is now called `secrets` (was `mqtt-secrets`); it also holds the web login token.
 - Validator uses the official VDA 5050 2.1.0 schemas (vendored, MIT) for all six topics instead of a
   hand-written subset; `batteryCharge` outside 0–100 % is a `value-range` warning (D-20).

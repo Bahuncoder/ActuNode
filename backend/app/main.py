@@ -35,6 +35,10 @@ app = FastAPI(
     description="Infrastructure for autonomous machines. AMR integration lab backend.",
     version=VERSION,
     lifespan=lifespan,
+    # Under /api so the UI port (nginx forwards /api) serves them too, not only the direct port 8000.
+    docs_url="/api/docs",
+    redoc_url="/api/redoc",
+    openapi_url="/api/openapi.json",
 )
 # Starlette runs the middleware added last first: LocalWebGuard (D-24), then SessionGuard (D-25).
 app.add_middleware(auth.SessionGuard)

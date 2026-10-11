@@ -122,13 +122,12 @@ exercised by hand with a real browser and MQTT traffic.
 
 ## Open issues and technical debt
 
-Numbered so they can be referenced from commits. Remove an item only when it is fixed and verified; numbers are never reused (fixed: 1, 2, 4, 5, 7, 8, 9, 10, 11, 12, 13, 14, 16, 17, 18).
+Numbered so they can be referenced from commits. Remove an item only when it is fixed and verified; numbers are never reused (fixed: 1, 2, 4, 5, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18).
 
 | # | Issue | Impact | Plan |
 |---|---|---|---|
 | 3 | CI `compose` job failed on Days 1–5, passes since Day 6. No build-relevant file changed in between; logs need a GitHub login | Probably transient (base image pulls), but unconfirmed | Check the job logs on GitHub Actions |
 | 6 | No real-browser tests (component and logic tests exist since D-19, but run in jsdom, not a browser) | Browser-only issues (layout, WebSocket in a real browser) are caught by hand | Add Playwright tests against the e2e stack |
-| 15 | From the dev machine, `127.0.0.1:8000` (backend published port) accepts connections but never answers, while the LAN address `192.168.1.151:8000`, port 8080 on loopback, and container-to-container calls all work. Seen from the assistant's sandboxed shell; not yet checked from a normal terminal | API docs at localhost:8000/docs may be unreachable; the UI is unaffected (it uses 8080) | Seen again on 10 Oct for MQTT ports 1883/11883 from the same shell while the LAN address worked, so most likely the assistant's sandbox; on GitHub's CI machine the same e2e tests reach the stack via plain `localhost`. E2E tests take `ACTUNODE_E2E_HOST` for this. Still: run `curl -m 5 localhost:8000/api/health` in a normal terminal; if it hangs there too, investigate Docker's port forwarding |
 | 19 | The live robot list is keyed by serial number only: robots with the same serial under different manufacturers or versions share one entry in the UI | Confusing display in mixed fleets with colliding serials (missions are safe since the ambiguity check) | Key robots by (version, manufacturer, serial) in hub and UI |
 
 ## Session log
@@ -174,8 +173,15 @@ Newest first. One entry per work session: what was done, what was learned, what 
   release yet, and the exact problem is already open as VDA5050/VDA5050#660. A duplicate report would
   add noise; our copy stays pinned to the 3.0.0 tag with the documented 7-comma fix until a fixed release
   appears. Exact lines recorded in `backend/app/schemas/README.md`.
-- #3 and #15 need the founder (GitHub login, a normal terminal); the Chrome extension was not
-  connected, so they could not be checked from the browser either.
+- **#15 closed: root cause found, not ActuNode and not the sandbox.** The founder's own terminal also
+  hung on `localhost:8000`, so it was real. Probing showed this computer could reach container port 80
+  directly but not 8000 or 1883, while other containers and the LAN path could. The kernel log showed
+  `[UFW BLOCK] OUT=br-… SRC=172.18.0.1 DST=… DPT=8000/1883`: the host firewall (ufw) denies outgoing
+  connections by default (`DEFAULT_OUTPUT_POLICY="DROP"`), and Docker's loopback forwarding is an
+  outgoing connection from the host. Changed in ActuNode: API docs now under `/api/docs` (reachable via
+  the UI port); README troubleshooting with the check and a narrow optional ufw rule (system security
+  settings are the founder's decision, not changed by the assistant).
+- #3 needs the founder (GitHub login); the Chrome extension was not connected.
 
 ### Sat 10 Oct 2026 (night, continued)
 

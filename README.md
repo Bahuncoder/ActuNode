@@ -27,7 +27,7 @@ docker compose up --build
 | Service | URL |
 |---|---|
 | Lab UI | http://localhost:8080 (or https://localhost:8443) |
-| API docs | http://localhost:8000/docs |
+| API docs | http://localhost:8080/api/docs |
 | MQTT broker | `localhost:1883` (WebSocket `9001`) |
 
 Your user needs access to Docker (`sudo usermod -aG docker $USER`, then log in again).
@@ -258,6 +258,17 @@ Watch them live: `mosquitto_sub -h localhost -t 'uagv/#' -v`
 - **ActuNode Sim**: robot/fleet simulator
 - **ActuNode Test**: integration scenarios and CI checks
 - **ActuNode Replay**: record and replay robot communication sessions
+
+## Troubleshooting
+
+**`localhost:8000` or `localhost:1883` hangs while the UI on `localhost:8080` works.** A host firewall
+that denies outgoing connections (for example ufw with `DEFAULT_OUTPUT_POLICY="DROP"`) blocks this
+computer's own connections to Docker container ports; check with `journalctl -k | grep "UFW BLOCK"`.
+The UI, API docs (`localhost:8080/api/docs`) and robots are unaffected. To allow it, narrowly:
+
+```bash
+sudo ufw allow out proto tcp to 172.16.0.0/12 port 1883,8000,8883,9001 comment 'ActuNode containers'
+```
 
 ## Documentation
 

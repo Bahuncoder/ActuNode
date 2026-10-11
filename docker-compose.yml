@@ -1,6 +1,6 @@
 # One-command local stack: docker compose up --build
 # UI:      http://localhost:8080
-# API:     http://localhost:8000/docs
+# API:     http://localhost:8080/api/docs (direct backend: 127.0.0.1:8000)
 # MQTT:    localhost:1883 (ws: 9001)
 #
 # Ports are published on 127.0.0.1 only: the broker accepts anonymous clients and the API has no

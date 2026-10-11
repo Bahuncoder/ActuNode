@@ -154,7 +154,7 @@ WebSocket client's queue → `send_json`.
 | POST | `/api/replay/stop` | Stop replay |
 | WS | `/api/ws` | Snapshot, then live events |
 
-Interactive docs: http://localhost:8000/docs.
+Interactive docs: http://localhost:8080/api/docs (served under `/api`, so the UI port reaches them).
 
 ### WebSocket events
 

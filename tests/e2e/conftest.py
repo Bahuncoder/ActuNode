@@ -7,7 +7,8 @@ sessions directory) and removes it afterwards, so a stack you are using is never
     pytest tests/e2e            # ACTUNODE_E2E_KEEP=1 leaves the stack running for debugging
 
 ACTUNODE_E2E_HOST sets the address used to reach the published ports (default "localhost"). Use the
-machine's LAN address in sandboxes where loopback connections to Docker ports hang (PROGRESS issue 15).
+machine's LAN address where a host firewall blocks this computer's own connections to Docker container
+ports (e.g. ufw with outgoing traffic denied; see README, troubleshooting). That runs the shared mode.
 """
 
 import json
