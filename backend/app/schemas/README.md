@@ -44,3 +44,15 @@ The validator picks the set by the topic's major version: `v2` → 2.1.0, `v3` �
 Rules a schema cannot express (headerId per topic, order sequence, state machine, topic consistency)
 and plausibility checks the official schema does not make (e.g. `batteryCharge` within 0–100 %, which
 the 2.1.0 schema leaves unbounded) are in `app/validator.py`.
+
+## Known quirks in the 3.0.0 factsheet schema (worked around in the simulator, D-34)
+
+- `protocolFeatures` … `pauseAllowed` and `cancelAllowed` are typed `string` in the schema but described
+  as boolean in the specification text. The simulator sends `"false"` so the official schema validates.
+- `required` lists `mobileRobotKinematic` while `properties` defines `mobileRobotKinematics`. The
+  simulator sends both keys.
+
+Upstream status (checked 11 Oct 2026): the boolean type for `pauseAllowed`/`cancelAllowed` is already
+fixed on `main` (VDA5050/VDA5050 PR #609, merged 17 Jun 2026) but not in a release; a 3.0.1 bug-fix PR
+(#632) is open. Whether the `mobileRobotKinematic(s)` mismatch is covered there was not verified; check
+#632 before filing a report.

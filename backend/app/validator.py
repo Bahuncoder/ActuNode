@@ -47,7 +47,7 @@ RULES = {
     "header-id": "headerId did not increase on this topic",
     "order-sequence": "Order nodes/edges are not a valid alternating sequence",
     "mission-transition": "Mission status changed in a way the state machine does not allow",
-    "driving-consistency": "driving flag disagrees with the mission status",
+    "driving-consistency": "robot reports driving while its mission status says it is not on a route",
     "last-node-regression": "lastNodeSequenceId went backwards within the same order",
     "value-range": "Value outside its physical range (ActuNode plausibility check, not in the official schema)",
     "proximity": "Two live robots closer than the minimum distance (near-collision; ACTUNODE_PROXIMITY_M)",
@@ -260,8 +260,11 @@ class Validator:
                 )
             _remember(self._last_status, robot_id, status)
 
+            # `driving` means the robot is actually moving (2.1: "driving and/or rotating"). A robot on a
+            # route may stand still for a moment (just accepted, waiting), so only driving outside a route
+            # is inconsistent (D-34).
             driving = payload.get("driving")
-            if isinstance(driving, bool) and driving != (status == "MOVING"):
+            if driving is True and status != "MOVING":
                 issues.append(
                     issue(
                         "warning", "driving-consistency", f"driving={str(driving).lower()} while {status}", "/driving"

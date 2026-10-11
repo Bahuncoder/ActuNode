@@ -220,6 +220,15 @@ def test_driving_must_match_mission_status():
     assert rules(issues) == ["driving-consistency"]
 
 
+def test_standing_still_on_a_route_is_not_inconsistent():
+    """MOVING with driving=false happens on the tick a route starts and while waiting (D-34)."""
+    topic, base = fixture("state_moving")
+
+    issues = Validator().check(topic, state(base, "MOVING", 1, driving=False), valid_json=True)
+
+    assert "driving-consistency" not in rules(issues)
+
+
 def test_last_node_must_not_go_backwards_in_an_order():
     validator = Validator()
     topic, base = fixture("state_moving")
