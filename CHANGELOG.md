@@ -4,6 +4,19 @@ What changed, per commit, newest first. Status and plans are in [docs/PROGRESS.m
 
 ## Unreleased
 
+### Week 2 quality gate (D-33, D-34)
+- Battery charges while a robot has no order and stands in the charging area (1 %/s); `charging` is
+  reported truthfully; a robot that ran empty there takes orders again once charged. Before, every robot
+  died after ~500 m until the simulator restarted.
+- State is published on VDA 5050 events (node traversal, action and error changes, driving start/stop),
+  not only every second; `driving`/`vx` reflect real movement; `theta` stays within −π…π.
+- Each robot publishes its `factsheet` (retained, QoS 0), validated against the official 2.1.0 and 3.0.0
+  schemas.
+- Validator: `driving-consistency` flags only driving outside a route (standing still on a route is
+  truthful, not an error).
+- Measured on the real stack: state every second holds at 1, 10 and 50 robots (worst interval 1.064 s,
+  no headerId gaps, no drift).
+
 ### Security and robustness (Week 1 quality gate, D-30 to D-32)
 Found by an independent review; each item reproduced first and covered by a regression test.
 - One MQTT message could break the backend: wrong-shaped fields crashed the validator (message lost),

@@ -27,10 +27,10 @@ uagv/v2/ActuNode/robot_01/state
 |---|---|---|---|
 | `order` | master → robot | Route (nodes + edges) and actions to perform | ✅ backend sends, simulator executes |
 | `instantActions` | master → robot | Actions to run now (cancelOrder, pause, …) | ⬜ planned (cancel a blocked mission) |
-| `state` | robot → master | Position, order progress, battery, errors, actions | ✅ every 1 s and on change |
+| `state` | robot → master | Position, order progress, battery, errors, actions | ✅ every 1 s and on every state event |
 | `visualization` | robot → master | High-rate position for displays | ⬜ |
 | `connection` | robot → master | ONLINE / OFFLINE / CONNECTIONBROKEN, retained, last will | ✅ |
-| `factsheet` | robot → master | Robot capabilities | ⬜ |
+| `factsheet` | robot → master | Robot capabilities | ✅ simulator publishes it (retained) on every connect |
 
 **QoS (section 6.2, same in 3.0):** QoS 0 (best effort) for `order`, `instantActions`, `state`,
 `factsheet`, `visualization` (3.0 adds `zoneSet`, `responses`); QoS 1 (at least once) for `connection`.

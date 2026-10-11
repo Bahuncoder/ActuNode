@@ -72,6 +72,7 @@ and produce a `warning` in the mission response when they do not match.
 | `uagv/v2/ActuNode/<robot>/order` | backend | that robot | 0 | no | VDA 5050 order |
 | `uagv/v2/ActuNode/<robot>/state` | robot | backend | 0 | no | VDA 5050 state + `actunode.missionStatus`; every 1 s and on every status change |
 | `uagv/v2/ActuNode/<robot>/connection` | robot (and broker, as last will) | backend | 1 | yes | `ONLINE` / `OFFLINE` / `CONNECTIONBROKEN` |
+| `uagv/v2/ActuNode/<robot>/factsheet` | robot, on every connect | backend (validated) | 0 | yes | What the simulated robot is and can do (D-34) |
 | `actunode/v1/sim/<robot>/inject` | backend | that robot | 1 | no | Failure-injection command (ActuNode, not VDA 5050) |
 
 QoS follows VDA 5050 section 6.2: QoS 0 for `order`, `instantActions`, `state`, `factsheet`,

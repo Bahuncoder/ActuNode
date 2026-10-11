@@ -445,3 +445,41 @@ as the Host header (default ports normalised). nginx forwards the browser's Host
 Open live feeds re-check their session at least every 5 s, so logout or expiry also ends them.
 **Consequences.** Verified with unit tests (other port, other scheme, other allowed host name refused;
 dev proxy, nginx HTTP and HTTPS accepted) and the e2e suite through nginx in all three configurations.
+
+## D-33 · Simulated robots charge in the charging area
+11 Oct 2026 · Accepted (Week 2 quality gate)
+
+**Context.** The battery only ever drained (0.2 % per metre) and `charging` was always false, so every
+robot was empty after about 500 m and refused orders until the simulator restarted, although robots park
+in the charging area. A long lab session degraded silently.
+**Decision.** A robot charges while it has no active order and stands inside the map's charging zone
+(x 0–12 m, y 0–4 m, the same zone the UI draws and `warehouse.py` names), at 1 % per second, so a demo
+robot is full within two minutes; `charging` is reported truthfully (2.1 `batteryState`, 3.0
+`powerSupply`). Once an empty robot has charge again its FATAL `batteryEmpty` error is cleared: FATAL
+means "needs a human", and keeping it would make a fleet manager stop sending orders. The mission stays
+FAILED until the next accepted order. A robot that runs empty outside the zone stays empty (that is a
+real robot's situation too; low-battery behaviour is Week 6).
+**Consequences.** The lab can run indefinitely. Charging is fast on purpose; it is a lab, not a battery
+model.
+
+## D-34 · State is published on VDA 5050 events; the robot publishes a factsheet
+11 Oct 2026 · Accepted (Week 2 quality gate)
+
+**Context.** A semantic review against the official 2.1 and 3.0 texts (the messages already passed the
+schemas) found: node traversals, finished actions and new errors were published only on the next 1 s
+tick (2.1 §6.10 and 3.0 §6.6 make them triggers); `driving: true` and a speed were reported while the
+robot stood still; `theta` could be 3.142 (range is −π…π); and no `factsheet`, which both versions make
+mandatory.
+**Decision.** The simulator compares an event signature (mission status, last node, node/edge/action
+states, errors, driving, order ids) before and after each tick and publishes on any change, at most once
+per 0.1 s tick, besides the 1 s periodic message. `driving` and `vx` come from the distance actually
+moved; `theta` is clamped after rounding. Each robot publishes its factsheet on every connect, retained,
+QoS 0 (both versions: QoS 0 for every topic except `connection`). It declares what the simulator really
+does (pick and drop node actions, no instant actions yet, 1 m/s); numbers the schema requires but the
+simulator does not model (size, acceleration, load mass) are nominal and marked so in the code. Two
+upstream 3.0.0 factsheet schema quirks are worked around and recorded in `backend/app/schemas/README.md`.
+The backend's `driving-consistency` rule now flags only `driving: true` outside a route: a robot on a
+route may truthfully stand still (found when the e2e validation check flagged the corrected robot).
+**Consequences.** Remaining order-handling deviations found by the same review are Week 3 work (horizon
+nodes, edge actions, unknown actions, version-specific error types, start node out of range, loads,
+`instantActions`); listed in PROGRESS.

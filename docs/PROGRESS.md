@@ -14,7 +14,7 @@ the status line, the schedule table, the session log, and the open issues.
 |---|---|
 | **Calendar** | Week 1 of 8 by date (Fri 9 Oct – Thu 15 Oct 2026); dates no longer gate the work (D-30) |
 | **Last updated** | Sun 11 Oct 2026 |
-| **Status** | **Week 1 complete** (quality gate passed 11 Oct: every confirmed finding fixed with a regression test; 4 remaining items logged as issues 21–24). Next: Week 2 quality gate (the Week 2 feature exists since Day 2). |
+| **Status** | **Weeks 1 and 2 complete** (quality gates passed 11 Oct, D-30). Next: Week 3, mission sender and state transitions: its feature exists since Day 3; the gap list from the Week 2 review below is the work. |
 | **Working rule** | A week is done when its work is fully done (D-30): features, then a quality gate (independent bug and security review, scans, a test for every fix, all suites and e2e green, docs). Then the next week starts, whatever the date. |
 
 ## Schedule
@@ -24,7 +24,7 @@ Week 1 started on Friday 9 October 2026 (Day 1). Each week runs Friday to Thursd
 | Week | Dates | Plan objective | Plan output | Feature state | Quality state |
 |---|---|---|---|---|---|
 | **1** | 9–15 Oct | VDA 5050 concepts, MQTT topics, AMR state machines | Notes + message schemas + Docker Mosquitto | ✅ Done | ✅ Quality gate passed 11 Oct (D-30, see below) |
-| 2 | 16–22 Oct | One fake AMR with battery, pose, state | Robot publishes status every second | ✅ Built early (Day 2) | ✅ Hardened 10 Oct: E2E tests in CI, battery-at-0 fixed |
+| 2 | 16–22 Oct | One fake AMR with battery, pose, state | Robot publishes status every second | ✅ Built early (Day 2) | ✅ Quality gate passed 11 Oct (charging, VDA 5050 state events, factsheet; timing measured at 50 robots) |
 | 3 | 23–29 Oct | Mission sender + state transitions | Move job from start to destination | ✅ Built early (Day 3) | 🟡 No order updates, no cancel |
 | 4 | 30 Oct – 5 Nov | 5–10 robots + simple warehouse map | Multi-robot screen with location/state | ✅ Built early (Day 4, 10 Oct) | 🟡 Not load-tested beyond 10 robots. Near-collisions detected and reported, never avoided (D-22) |
 | 5 | 6–12 Nov | Message inspector + validation | Readable message stream + errors | ✅ Built early (Day 4, 10 Oct) | 🟡 Official VDA 5050 2.1.0 and 3.0.0 schemas, chosen by topic (D-15, D-20). No offline validation of session files yet |
@@ -52,6 +52,43 @@ the 8-week plan; the 8-week plan is the full roadmap. All of Days 1–7 were bui
 | Day 5 | `BLOCKED_PATH` failure | Week 6 (1 of 4 failures) |
 | Days 6–7 | Record to JSONL, replay | Week 7 |
 | 10 Oct | 10 robots; validator, schemas, VDA 5050 notes | Weeks 4, 5, 1 (rest) |
+
+## Week 2 quality gate (11 Oct, D-30)
+
+Scope: one fake AMR with battery, pose and state, publishing every second. Checked three ways: a semantic
+review of the state and connection messages against the official 2.1 and 3.0 **texts** (they already
+passed the schemas), a timing measurement on the real stack, and a look at the battery and pose model.
+Each fix has a test that was shown to fail on the old code.
+
+| Finding | Fix |
+|---|---|
+| Battery never recharged: every robot empty after ~500 m, then refused orders until restart | Charging in the charging area, 1 %/s; `charging` truthful; empty robot recovers (D-33) |
+| Node traversals, finished actions and new errors published up to 0.9 s late (2.1 §6.10, 3.0 §6.6 make them triggers) | Event signature per tick; publish on change, ≤ 1 per tick (D-34) |
+| `driving: true` and 1 m/s reported while standing still | From the distance actually moved |
+| `theta` could be 3.142 (range −π…π) | Clamped |
+| No `factsheet` (mandatory in both versions) | Published on connect, retained, QoS 0; validates against both official schemas |
+| Our validator's `driving-consistency` demanded `driving` whenever MOVING (found by e2e after the fix above) | Flags only driving outside a route |
+| Will comment claimed headerId order holds after reconnect | Corrected (spec: will header fields are always outdated) |
+
+Timing (plan output "status every second"): see the verification table; passes at 1, 10 and 50 robots
+before and after the changes.
+
+**Moved to Week 3** (order handling, found by the same review; Week 3 is "mission sender and state
+transitions"):
+- `released: false` (horizon) is ignored: the robot reports horizon nodes as base and drives through
+  them; it must stop at the last released node (2.1 §6.6.2).
+- Edge actions are dropped (must appear in `actionStates`); unknown action types are accepted and
+  reported FINISHED (2.1: reject with a warning; 3.0: `INVALID_ORDER_ACTION`).
+- Error types are not version-specific: 2.1 malformed order → `validationError`; 3.0 →
+  `VALIDATION_FAILURE`, `OTHER_ORDER_ACTIVE`, `OUTDATED_ORDER_UPDATE`.
+- Rejection warnings are cleared when the old mission completes; they must stay until a new order is
+  accepted.
+- An order whose first node is far from the robot is accepted (2.1 §6.6.2 step 4; 3.0
+  `START_NODE_OUT_OF_RANGE`); the backend should start orders at the robot's current node.
+- `loads` not reported although pick/drop are; `instantActions` not handled at all (cancelOrder,
+  stateRequest, factsheetRequest; 3.0 makes cancelOrder/startPause/stopPause mandatory).
+
+**Moved to Week 6** (failure injection): 3.0 `errorLevel` for `pathBlocked` (WARNING vs URGENT).
 
 ## Week 1 quality gate (11 Oct, D-30)
 
@@ -153,8 +190,8 @@ exercised by hand with a real browser and MQTT traffic.
 
 | Area | How it was verified | Gaps |
 |---|---|---|
-| Backend API | 183 unit/API tests (pytest), run in CI, including a shutdown test under a real uvicorn server | |
-| Simulator | 64 tests (pytest, incl. conformance against the official 2.1.0 and 3.0.0 schemas), run in CI | |
+| Backend API | 184 unit/API tests (pytest), run in CI, including a shutdown test under a real uvicorn server | |
+| Simulator | 78 tests (pytest, incl. conformance against the official 2.1.0 and 3.0.0 schemas), run in CI | |
 | Python style | `ruff check` + `ruff format --check` in CI (backend, simulator) | |
 | Frontend | Type check, lint, 36 unit/component tests (`npm test`, incl. malformed robot data, both VDA versions, login, nothing opened before the session check) and production build, in CI; real-browser tests in the e2e suite (below) | |
 | MQTT flow | Automated against Mosquitto in Docker (`tests/e2e`) | |
@@ -164,6 +201,7 @@ exercised by hand with a real browser and MQTT traffic.
 | Record → replay | E2E; replay timing matched the recording within ~25 ms at 5×. Size limit stops a recording by itself (unit test); replay streams the file (unit test: 25 MB file, peak memory under 5 MB) | No retention or upload |
 | Validator | Official VDA 5050 2.1.0 schemas (D-20); real and generated messages in every mission state pass them; planted bad messages flagged; e2e: all live traffic clean. 3.0.0 schemas on `v3` topics (D-15), tested with valid 3.0 messages and 2.1 messages on a `v3` topic | No offline validation of session files |
 | 10 robots, 6 concurrent missions | E2E screenshot | No load test |
+| State every second (Week 2) | Measured on the real stack, 75 s windows with missions: 1, 10 and 50 robots; worst interval 1.068 s, p99 ≤ 1.064 s, no headerId gaps, drift 0, at most one message per 0.1 s tick; one retained factsheet per robot | Not automated (scratch script); 50 robots is the simulator maximum |
 | Dependencies and images | `pip-audit` (backend, simulator, e2e), `npm audit`, `bandit`, `trivy` images and Dockerfiles: 0 known HIGH/CRITICAL after the gate (11 Oct) | Not yet automated in CI |
 | Security (D-18, D-23–D-28, D-31, D-32) | E2E: MQTT logins and ACL (spoofing refused, incl. own serial under another manufacturer; old serial-only login refused), Host/Origin checks, nothing works without a session in login mode, plain ports unreachable from the LAN, TLS refuses clients that do not trust the CA | |
 | Near-collisions (D-22) | 8 unit tests (incl. 3.0 positions, offline robots, two robots sharing a serial); e2e: two robots at the same spot raise one warning | |
@@ -179,6 +217,19 @@ Numbered so they can be referenced from commits. Remove an item only when it is 
 ## Session log
 
 Newest first. One entry per work session: what was done, what was learned, what is next.
+
+### Sun 11 Oct 2026 (night, last): Week 2 quality gate
+
+- Battery model gap found by reading: no charging at all (D-33). Fixed test-first.
+- Semantic review against the official spec texts: Week 2 items fixed (state events, truthful driving,
+  theta range, factsheet; D-34); order-handling items written down as Week 3 work.
+- Timing measured on the real stack at 1, 10, 50 robots, before and after the changes: passes.
+- Caught on the way: one new test did not fail on the old code (it checked a tick too late), so every
+  new test was re-run against the committed code in a scratch worktree; I had asked for factsheet QoS 1
+  where both spec versions say QoS 0; the e2e validation check flagged our own validator rule, which
+  demanded the untruthful `driving` the fix removed. The two 3.0.0 factsheet schema quirks: the boolean
+  fix is already on upstream `main` (PR #609), so no duplicate report.
+- Week 2 is complete. Next: Week 3 (the list above).
 
 ### Sun 11 Oct 2026 (night, later): Week 1 quality gate; new working rule (D-30)
 
