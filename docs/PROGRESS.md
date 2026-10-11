@@ -13,7 +13,7 @@ the status line, the schedule table, the session log, and the open issues.
 | | |
 |---|---|
 | **Calendar** | Week 1 of 8 (Fri 9 Oct – Thu 15 Oct 2026) |
-| **Last updated** | Sat 10 Oct 2026 (late evening) |
+| **Last updated** | Sun 11 Oct 2026 |
 | **Status** | Ahead on features, catching up on verification. The Docker stack now runs the full definition-of-done scenario end to end; there are still no end-to-end tests in CI. |
 | **Working rule** | Follow the calendar. Being ahead is not a reason to start the next week's features: spare time goes into hardening, verification, documentation and user conversations. |
 
@@ -70,7 +70,7 @@ Plan objective is done. Remaining work for this week is verification and documen
 - [x] Project documentation: progress, architecture, decisions, changelog
 - [x] **Run the Docker Compose stack end to end**: definition of done passed on 10 Oct (record → mission → block → clear → replay, UI via nginx)
 - [ ] Confirm `curl localhost:8000/api/health` works from a normal terminal (open issue 15)
-- [ ] Confirm the Day 1–5 CI compose failures are understood (open issue 3)
+- [x] Confirm the Day 1–5 CI compose failures are understood (issue 3: transient runner problem, closed 11 Oct)
 - [x] Read the VDA 5050 3.0 release notes and record what changes for us ([research note](research/VDA5050_3_0.md), D-15)
 - [x] Python linter and formatter (ruff, 120 columns) in CI (issue 16, D-14)
 - [x] Customer discovery kit: [outreach messages](discovery/OUTREACH.md), [interview guide](discovery/INTERVIEW_GUIDE.md), private tracker
@@ -122,11 +122,10 @@ exercised by hand with a real browser and MQTT traffic.
 
 ## Open issues and technical debt
 
-Numbered so they can be referenced from commits. Remove an item only when it is fixed and verified; numbers are never reused (fixed: 1, 2, 4, 5, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18).
+Numbered so they can be referenced from commits. Remove an item only when it is fixed and verified; numbers are never reused (fixed: 1, 2, 3, 4, 5, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18).
 
 | # | Issue | Impact | Plan |
 |---|---|---|---|
-| 3 | CI `compose` job failed on Days 1–5, passes since Day 6. No build-relevant file changed in between; logs need a GitHub login | Probably transient (base image pulls), but unconfirmed | Check the job logs on GitHub Actions |
 | 6 | No real-browser tests (component and logic tests exist since D-19, but run in jsdom, not a browser) | Browser-only issues (layout, WebSocket in a real browser) are caught by hand | Add Playwright tests against the e2e stack |
 | 19 | The live robot list is keyed by serial number only: robots with the same serial under different manufacturers or versions share one entry in the UI | Confusing display in mixed fleets with colliding serials (missions are safe since the ambiguity check) | Key robots by (version, manufacturer, serial) in hub and UI |
 
@@ -181,7 +180,17 @@ Newest first. One entry per work session: what was done, what was learned, what 
   outgoing connection from the host. Changed in ActuNode: API docs now under `/api/docs` (reachable via
   the UI port); README troubleshooting with the check and a narrow optional ufw rule (system security
   settings are the founder's decision, not changed by the assistant).
-- #3 needs the founder (GitHub login); the Chrome extension was not connected.
+- **#3 closed: transient CI runner problem, not the code.** The `compose` job on Days 1–5 (9 Oct,
+  21:20–21:42 UTC) failed in `docker compose build` after 1 s, before any image could be pulled or built;
+  GitHub's public annotations show only "exit code 1" (full logs need a login). Checked: the workflow
+  file is identical in the last failing (aecb40b) and first passing (e019357) commit, and the only
+  Compose change in between is the sessions volume. Reproduced locally from clean checkouts of
+  5045226, aecb40b and e019357: `docker compose config` passes for all three and aecb40b builds in 18 s.
+  Decisive test: pushed the unchanged aecb40b to a temporary branch so GitHub's runners ran it again;
+  all four jobs passed, `docker compose build` in 12 s. Same code, same workflow, now green, so the
+  failure came from the runner environment at that time. Temporary branch and worktrees deleted.
+  Lesson kept: check CI after every push (since Day 6), and re-run an unchanged commit before
+  hunting for a code cause.
 
 ### Sat 10 Oct 2026 (night, continued)
 
