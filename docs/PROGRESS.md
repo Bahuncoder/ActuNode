@@ -14,7 +14,7 @@ the status line, the schedule table, the session log, and the open issues.
 |---|---|
 | **Calendar** | Week 1 of 8 (Fri 9 Oct – Thu 15 Oct 2026) |
 | **Last updated** | Sun 11 Oct 2026 |
-| **Status** | Ahead on features; spare time goes into hardening (D-11). End-to-end tests run in CI for VDA 5050 2.1 and 3.0 and for the shared (login + TLS) mode. Open: issues 6 and 20. |
+| **Status** | Ahead on features; spare time goes into hardening (D-11). End-to-end tests run in CI for VDA 5050 2.1 and 3.0 and for the shared (login + TLS) mode. Open: issue 6. |
 | **Working rule** | Follow the calendar. Being ahead is not a reason to start the next week's features: spare time goes into hardening, verification, documentation and user conversations. |
 
 ## Schedule
@@ -120,21 +120,40 @@ exercised by hand with a real browser and MQTT traffic.
 | Record → replay | E2E; replay timing matched the recording within ~25 ms at 5×. Size limit stops a recording by itself (unit test); replay streams the file (unit test: 25 MB file, peak memory under 5 MB) | No retention or upload |
 | Validator | Official VDA 5050 2.1.0 schemas (D-20); real and generated messages in every mission state pass them; planted bad messages flagged; e2e: all live traffic clean. 3.0.0 schemas on `v3` topics (D-15), tested with valid 3.0 messages and 2.1 messages on a `v3` topic | No offline validation of session files |
 | 10 robots, 6 concurrent missions | E2E screenshot | No load test |
-| Security (D-18, D-23–D-26) | E2E: MQTT logins and ACL (spoofing refused), Host/Origin checks, nothing works without a session in login mode, plain ports unreachable from the LAN, TLS refuses clients that do not trust the CA | |
+| Security (D-18, D-23–D-28) | E2E: MQTT logins and ACL (spoofing refused, incl. own serial under another manufacturer; old serial-only login refused), Host/Origin checks, nothing works without a session in login mode, plain ports unreachable from the LAN, TLS refuses clients that do not trust the CA | |
 | Near-collisions (D-22) | 8 unit tests (incl. 3.0 positions, offline robots, two robots sharing a serial); e2e: two robots at the same spot raise one warning | |
 
 ## Open issues and technical debt
 
-Numbered so they can be referenced from commits. Remove an item only when it is fixed and verified; numbers are never reused (fixed: 1, 2, 3, 4, 5, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19).
+Numbered so they can be referenced from commits. Remove an item only when it is fixed and verified; numbers are never reused (fixed: 1, 2, 3, 4, 5, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20).
 
 | # | Issue | Impact | Plan |
 |---|---|---|---|
 | 6 | No real-browser tests (component and logic tests exist since D-19, but run in jsdom, not a browser) | Browser-only issues (layout, WebSocket in a real browser) are caught by hand | Add Playwright tests against the e2e stack |
-| 20 | Broker logins are per serial number (username = serial, ACL `uagv/+/+/%u/...`): two robots from different manufacturers with the same serial cannot both get a login, and one robot's login may publish under any manufacturer or version | Mixed fleets with colliding serials cannot all connect in login mode; the hub (D-27) is ready for them, the broker is not | Decide a login name scheme that includes the manufacturer (e.g. `manufacturer.serial`) and update `add-robot`, ACL and docs |
 
 ## Session log
 
 Newest first. One entry per work session: what was done, what was learned, what is next.
+
+### Sun 11 Oct 2026 (evening): issue 20, robot logins name the manufacturer
+
+- **#20 closed (D-28).** Robot logins are `<manufacturer>.<serial>`; `mqtt-init` generates the broker ACL
+  (static rules + one block per robot with manufacturer and serial in the topics; version stays `+`).
+  `%u` patterns could not do this (one topic level; Mosquitto refuses `/` in substituted usernames).
+  `add-robot <manufacturer> <serial>`; old serial-only files are skipped with a warning, never guessed.
+- Checked the script on the real volume: missing argument and a dotted manufacturer exit 2; a real robot
+  `VendorB.robot_01` next to the simulated `ActuNode.robot_01` gets its own block without `inject`;
+  a planted old-style file warns and gets no login; ACL owned by mosquitto, 0400. No real robot logins
+  existed on this machine, so nothing to migrate.
+- Live on the broker: `VendorB.robot_01` logged in; its own state arrived, the same message published as
+  `ActuNode/robot_01` was dropped; the hub showed two `robot_01` robots (issues 19 and 20 together).
+  Test login removed afterwards.
+- Found on the way: `docker compose up -d` does not recreate the broker when only a mounted config
+  file's content changes; it kept the old ACL and the simulator (new username) could not publish until
+  `--force-recreate mqtt-init mosquitto`. Written into the CHANGELOG upgrade note.
+- E2E security tests: the old `robot_01` login is refused; publishing its own serial under another
+  manufacturer is dropped. E2E 15/15 (+3 login-only skipped) for 2.1 and 3.0; simulator 43.
+- Next: issue 6 (real-browser tests); Week 1 still has customer outreach open (founder).
 
 ### Sun 11 Oct 2026 (later): issue 19, robots keyed by (version, manufacturer, serial)
 
@@ -152,7 +171,6 @@ Newest first. One entry per work session: what was done, what was learned, what 
   changelog say so.
 - **New issue 20:** broker logins are still per serial (`%u` in the ACL), so colliding serials cannot
   all log in. Needs a decision on the login name scheme, not a quick patch.
-- Next: issue 6 (real-browser tests) or issue 20; Week 1 still has customer outreach open.
 
 ### Sun 11 Oct 2026: open issues one by one (12, 17, 15, 3)
 

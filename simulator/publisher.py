@@ -19,8 +19,8 @@ class RobotConnection:
     """
 
     def __init__(self, robot: Robot, host: str, port: int, password: str | None = None):
-        """With a password, the robot logs in with its serial number as username (D-23): the broker
-        then lets it publish only its own topics."""
+        """With a password, the robot logs in as <manufacturer>.<serial> (D-23, D-28): the broker then
+        lets it publish only its own topics."""
         self.robot = robot
         self.host = host
         self.port = port
@@ -41,7 +41,7 @@ class RobotConnection:
             retain=True,
         )
         if password is not None:
-            self._client.username_pw_set(robot.robot_id, password)
+            self._client.username_pw_set(f"{MANUFACTURER}.{robot.robot_id}", password)
         self._client.on_connect = self._on_connect
         self._client.on_message = self._on_message
         self._client.reconnect_delay_set(min_delay=1, max_delay=10)

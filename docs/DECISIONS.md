@@ -283,6 +283,7 @@ read only its own `order`/`instantActions`/`zoneSet`/`responses`/inject topics. 
 in git or on the host; each service mounts only its own subfolder read-only, files owned by that
 service's user (0400): the simulator cannot read the backend's password. Real robots get a login with
 `docker compose run --rm mqtt-init add-robot <serial>`; the tools password with `... show tools`.
+*Amended by D-28:* robot logins are now `<manufacturer>.<serial>` and pin the manufacturer.
 Without a username configured, backend and simulator connect anonymously (local development broker).
 **Consequences.** Spoofing another robot or sending orders without the backend's login is refused by the
 broker (verified: 7 attempts blocked, own messages delivered; permanent e2e tests). Needs Docker ≥ 26
@@ -354,3 +355,24 @@ now also bounds the identities a publisher can create.
 **Consequences.** Mixed fleets with colliding serials show as separate rows (with manufacturer and
 version when serials collide) and markers. Breaking change for API clients reading proximity pairs or
 `identities`. Broker logins are still per serial (issue 20).
+
+## D-28 · Robot logins are `<manufacturer>.<serial>`, with one generated ACL block per robot
+11 Oct 2026 · Accepted (issue 20, amends D-23)
+
+**Context.** D-23 named each robot login after its serial and used Mosquitto `%u` patterns
+(`uagv/+/+/%u/state`). VDA 5050 serials are unique per manufacturer only, so two vendors' robots with the
+same serial could not both get a login, and one robot's login could publish under any manufacturer
+name, i.e. appear as a different robot in the hub (D-27). A pattern cannot fix this: `%u` stands for
+one topic level, and Mosquitto refuses pattern substitution for usernames containing `/`.
+**Decision.** A robot logs in as `<manufacturer>.<serial>`; both parts are limited to `[A-Za-z0-9_-]`, so
+the dot splits them unambiguously. `mqtt-init` builds the broker's ACL on every start: the static rules
+(`mosquitto/config/acl`: backend, tools, healthcheck) plus one `user` block per robot login, with
+manufacturer and serial written into the topics (`uagv/+/<manufacturer>/<serial>/state` ...). The VDA
+major version stays a wildcard, so a firmware update from 2.x to 3.0 needs no new login (the hub shows
+it as another robot, D-27). Simulated robots are `ActuNode.robot_NN` and alone get the `inject` topic.
+Real robots: `add-robot <manufacturer> <serial>`. An old serial-only login file is ignored with a
+warning naming the command to re-create it; ActuNode does not guess its manufacturer.
+**Consequences.** Mixed fleets with colliding serials can all connect; a login can no longer publish under
+another manufacturer (verified live and in e2e). The ACL is generated (≈24 KB for 50 simulated robots)
+and lives in the secrets volume; the broker must be recreated with `mqtt-init` after upgrading, and real
+robot logins made before this change must be re-created.

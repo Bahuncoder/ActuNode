@@ -41,7 +41,7 @@ broker requires a login: passwords are generated on first start and kept in a Do
 
 ```bash
 docker compose run --rm mqtt-init show tools          # read-only login for MQTT tools (user: tools)
-docker compose run --rm mqtt-init add-robot amr_7     # login for a real robot (user = serial number)
+docker compose run --rm mqtt-init add-robot Acme amr_7   # login for a real robot (user = Acme.amr_7)
 docker compose up -d --force-recreate mqtt-init mosquitto   # apply a new robot login
 ```
 

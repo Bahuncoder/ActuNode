@@ -20,22 +20,31 @@ def connect(stack, username, password):
 
 
 def test_anonymous_and_wrong_password_logins_are_refused(stack):
-    for username, password in [(None, None), ("tools", "wrong"), ("robot_01", stack.tools_password)]:
+    robot_password = stack.secret("simulator/password")
+    attempts = [
+        (None, None),
+        ("tools", "wrong"),
+        ("ActuNode.robot_01", stack.tools_password),
+        ("robot_01", robot_password),  # the old serial-only login name no longer exists (D-28)
+    ]
+    for username, password in attempts:
         client, rc = connect(stack, username, password)
         client.loop_stop()
         assert rc == "Not authorized", (username, rc)
 
 
 def test_a_robot_can_publish_only_as_itself(stack):
-    """robot_01's login cannot publish robot_02's state, order robot_02, or inject failures."""
+    """robot_01's login cannot publish robot_02's state, order robot_02, inject failures, or publish its
+    own serial under another manufacturer (D-28)."""
     robot_password = stack.secret("simulator/password")
-    client, rc = connect(stack, "robot_01", robot_password)
+    client, rc = connect(stack, "ActuNode.robot_01", robot_password)
     assert rc == "Success"
 
     attempts = {
         f"uagv/v{VDA}/ActuNode/robot_02/state": "as-robot_02",
         f"uagv/v{VDA}/ActuNode/robot_02/order": "orders-robot_02",
         "actunode/v1/sim/robot_02/inject": "injects-robot_02",
+        f"uagv/v{VDA}/OtherVendor/robot_01/state": "as-other-manufacturer",
     }
     for topic, tag in attempts.items():
         client.publish(topic, json.dumps({"serialNumber": "robot_01", "SPOOF": tag}), qos=1).wait_for_publish(5)

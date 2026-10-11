@@ -15,7 +15,7 @@
 
 services:
   # Creates MQTT logins and the web login token on first start (kept in the secrets volume) and rebuilds the broker's
-  # password file on every start (D-23). Tools password: docker compose run --rm mqtt-init show tools
+  # password file and ACL on every start (D-23, D-28). Tools password: docker compose run --rm mqtt-init show tools
   mqtt-init:
     image: eclipse-mosquitto:2
     entrypoint: ["/bin/sh", "/init-secrets.sh"]
@@ -25,6 +25,7 @@ services:
       SIM_MAX_ROBOTS: 50
     volumes:
       - ./mosquitto/init-secrets.sh:/init-secrets.sh:ro
+      - ./mosquitto/config/acl:/acl.base:ro
       - secrets:/secrets
 
   # TLS certificates (D-26): a local CA, made once, and a server certificate for localhost and the
