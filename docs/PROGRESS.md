@@ -14,7 +14,7 @@ the status line, the schedule table, the session log, and the open issues.
 |---|---|
 | **Calendar** | Week 1 of 8 (Fri 9 Oct – Thu 15 Oct 2026) |
 | **Last updated** | Sun 11 Oct 2026 |
-| **Status** | Ahead on features; spare time goes into hardening (D-11). End-to-end tests run in CI for VDA 5050 2.1 and 3.0 and for the shared (login + TLS) mode. Open: issue 6. |
+| **Status** | Ahead on features; spare time goes into hardening (D-11). End-to-end tests run in CI for VDA 5050 2.1 and 3.0 and for the shared (login + TLS) mode, including real-browser tests (D-29). No open issues. |
 | **Working rule** | Follow the calendar. Being ahead is not a reason to start the next week's features: spare time goes into hardening, verification, documentation and user conversations. |
 
 ## Schedule
@@ -28,7 +28,7 @@ Week 1 started on Friday 9 October 2026 (Day 1). Each week runs Friday to Thursd
 | 3 | 23–29 Oct | Mission sender + state transitions | Move job from start to destination | ✅ Built early (Day 3) | 🟡 No order updates, no cancel |
 | 4 | 30 Oct – 5 Nov | 5–10 robots + simple warehouse map | Multi-robot screen with location/state | ✅ Built early (Day 4, 10 Oct) | 🟡 Not load-tested beyond 10 robots. Near-collisions detected and reported, never avoided (D-22) |
 | 5 | 6–12 Nov | Message inspector + validation | Readable message stream + errors | ✅ Built early (Day 4, 10 Oct) | 🟡 Official VDA 5050 2.1.0 and 3.0.0 schemas, chosen by topic (D-15, D-20). No offline validation of session files yet |
-| 6 | 13–19 Nov | Failure injection | Blocked path, low battery, disconnect, invalid payload | 🟡 1 of 4 (blocked path, Day 5) | ⬜ |
+| — | No open issues | | |
 | 7 | 20–26 Nov | Record/replay | Session file can reproduce incident | ✅ Built early (Days 6–7) | 🟡 Size limit (`ACTUNODE_MAX_SESSION_MB`, default 200) and streaming replay. No retention or upload yet |
 | 8 | 27 Nov – 3 Dec | Demo + README + 3-minute video | GitHub repo + pitch demo | 🟡 README + demo script written | ⬜ Video not recorded |
 
@@ -112,10 +112,10 @@ exercised by hand with a real browser and MQTT traffic.
 | Backend API | 139 unit/API tests (pytest), run in CI, including a shutdown test under a real uvicorn server | |
 | Simulator | 43 tests (pytest, incl. conformance against the official 2.1.0 and 3.0.0 schemas), run in CI | |
 | Python style | `ruff check` + `ruff format --check` in CI (backend, simulator) | |
-| Frontend | Type check, lint, 28 unit/component tests (`npm test`, incl. malformed robot data, both VDA versions, login) and production build, in CI | No real-browser tests (issue 6) |
+| Frontend | Type check, lint, 31 unit/component tests (`npm test`, incl. malformed robot data, both VDA versions, login, nothing opened before the session check) and production build, in CI; real-browser tests in the e2e suite (below) | |
 | MQTT flow | Automated against Mosquitto in Docker (`tests/e2e`) | |
 | Shutdown | Automated in `tests/e2e` (broker first, then backend; recording gets its end line) and `backend/tests/test_shutdown.py` | |
-| Docker stack, end to end | **Automated** (`tests/e2e`, 18 tests, in CI for VDA 2.1, 3.0 and 2.1 with login): health, state every second, mission state machine, BLOCKED_PATH, near-collision warning, validation clean, record/replay, last will on kill, broker restart recovery, shutdown with open recording | No frontend/browser tests (issue 6) |
+| Docker stack, end to end | **Automated** (`tests/e2e`, 21 tests incl. 3 in Chromium via Playwright, in CI for VDA 2.1, 3.0 and 2.1 with login): health, state every second, mission state machine, BLOCKED_PATH, near-collision warning, validation clean, record/replay, last will on kill, broker restart recovery, shutdown with open recording; in the browser: live robots, map and stream over a real WebSocket, a mission sent from the form completes, login screen refuses a wrong token, no console errors | Browser tests use the local plain-HTTP UI, not HTTPS (D-29) |
 | P-1042 scenario (mission → block → clear → complete) | E2E, several times | |
 | Record → replay | E2E; replay timing matched the recording within ~25 ms at 5×. Size limit stops a recording by itself (unit test); replay streams the file (unit test: 25 MB file, peak memory under 5 MB) | No retention or upload |
 | Validator | Official VDA 5050 2.1.0 schemas (D-20); real and generated messages in every mission state pass them; planted bad messages flagged; e2e: all live traffic clean. 3.0.0 schemas on `v3` topics (D-15), tested with valid 3.0 messages and 2.1 messages on a `v3` topic | No offline validation of session files |
@@ -125,7 +125,7 @@ exercised by hand with a real browser and MQTT traffic.
 
 ## Open issues and technical debt
 
-Numbered so they can be referenced from commits. Remove an item only when it is fixed and verified; numbers are never reused (fixed: 1, 2, 3, 4, 5, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20).
+Numbered so they can be referenced from commits. Remove an item only when it is fixed and verified; numbers are never reused (fixed: 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20).
 
 | # | Issue | Impact | Plan |
 |---|---|---|---|
@@ -134,6 +134,26 @@ Numbered so they can be referenced from commits. Remove an item only when it is 
 ## Session log
 
 Newest first. One entry per work session: what was done, what was learned, what is next.
+
+### Sun 11 Oct 2026 (night): issue 6, real-browser tests (D-29)
+
+- **#6 closed.** `tests/e2e/test_05_browser.py`: Chromium via Playwright (Python) on the e2e `stack`
+  fixture, so it runs in all three CI configurations. Any console or page error fails a test, from the
+  first page load on. Tests: robots, markers and live stream over a real WebSocket; a mission sent from
+  the form (choosing the observed ActuNode v3 target on 3.0, as D-21 requires) reaches COMPLETED at the
+  right spot; the login screen refuses a wrong token and then opens the lab with the right one. The
+  browser uses the plain-HTTP UI on 127.0.0.1 (certificate checks are never switched off; TLS is covered
+  by the security tests).
+- **Bug found on its first login-mode run:** the lab mounted while the first session check was still
+  pending (`session === null` read as "no login needed"), so the live feed and API polling started
+  without a session: a 401 and a WebSocket 403 in the console. That contradicted the comment on `Lab`.
+  Fixed by telling "checking" from "unreachable": nothing is shown but "Connecting to ActuNode…" until
+  the first answer; an unreachable backend still opens the lab, which reports it. Three component
+  tests written first (two failed on the old code).
+- E2E 17 passed / 4 skipped (2.1 and 3.0), 20 passed / 1 skipped (2.1 with login; the skip is the
+  LAN-only check); frontend 31. Stability rerun of the login and 3.0 configurations: identical results.
+- No open issues left. Next: Week 1 customer outreach (founder); then the Week 3 hardening items
+  (cancelOrder, order updates) when the calendar reaches Week 3, per the working rule.
 
 ### Sun 11 Oct 2026 (evening): issue 20, robot logins name the manufacturer
 
@@ -153,7 +173,6 @@ Newest first. One entry per work session: what was done, what was learned, what 
   `--force-recreate mqtt-init mosquitto`. Written into the CHANGELOG upgrade note.
 - E2E security tests: the old `robot_01` login is refused; publishing its own serial under another
   manufacturer is dropped. E2E 15/15 (+3 login-only skipped) for 2.1 and 3.0; simulator 43.
-- Next: issue 6 (real-browser tests); Week 1 still has customer outreach open (founder).
 
 ### Sun 11 Oct 2026 (later): issue 19, robots keyed by (version, manufacturer, serial)
 

@@ -102,7 +102,9 @@ simulator/.venv/bin/pytest simulator   # from repo root
 
 # End-to-end tests: start an isolated copy of the Docker stack (ports 18080/11883),
 # drive it through the API and MQTT, then remove it (~2 minutes)
+# (and the real-browser tests, Chromium via Playwright)
 python3 -m venv tests/e2e/.venv && tests/e2e/.venv/bin/pip install -r tests/e2e/requirements.txt
+tests/e2e/.venv/bin/python -m playwright install chromium   # once; add --with-deps on a fresh machine
 tests/e2e/.venv/bin/pytest tests/e2e
 ```
 

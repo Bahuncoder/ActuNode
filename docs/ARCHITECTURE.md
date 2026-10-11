@@ -244,4 +244,4 @@ can go first).
 | Backend | `cd backend && .venv/bin/pytest` | ✅ |
 | Simulator | `simulator/.venv/bin/pytest simulator` | ✅ |
 | Frontend | `cd frontend && nvm use && npm run lint && npm test && npm run build` (Node 24, D-19) | ✅ |
-| End to end | `pytest tests/e2e` (needs Docker; starts its own isolated stack, D-16) | ✅ |
+| End to end | `pytest tests/e2e` (needs Docker; starts its own isolated stack, D-16); includes real-browser tests in Chromium via Playwright (`playwright install chromium` once, D-29) | ✅ |

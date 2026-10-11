@@ -213,7 +213,7 @@ showed it concretely: Vitest 5 and jsdom 30 require Node ≥ 22, and npm crashed
 jsdom (`npm test`), run in CI. The developer's nvm default is left unchanged; `nvm use` in `frontend/`
 selects 24.
 **Consequences.** Supported runtime with security fixes; tests for the live-data logic and for
-components rendering malformed robot data. Real-browser tests are still to come (issue 6).
+components rendering malformed robot data. Real-browser tests: D-29.
 
 ## D-20 · Validate against the official VDA 5050 2.1.0 schemas
 10 Oct 2026 · Accepted · supersedes the hand-written-schema part of D-8
@@ -376,3 +376,21 @@ warning naming the command to re-create it; ActuNode does not guess its manufact
 another manufacturer (verified live and in e2e). The ACL is generated (≈24 KB for 50 simulated robots)
 and lives in the secrets volume; the broker must be recreated with `mqtt-init` after upgrading, and real
 robot logins made before this change must be re-created.
+
+## D-29 · Real-browser tests: Playwright (Python) inside the end-to-end suite
+11 Oct 2026 · Accepted (issue 6)
+
+**Context.** Frontend tests run in jsdom (D-19); nothing checked the UI in a real browser against the
+real stack (WebSocket, layout, login screen).
+**Decision.** Chromium driven by Playwright's Python sync API, as `tests/e2e/test_05_browser.py`, using
+the e2e suite's `stack` fixture, so it runs in every CI configuration (2.1, 3.0, 2.1 with login) with no
+second harness. No pytest plugin: fixtures stay explicit. Every test fails on any browser console error
+or page error from the first page load on, including before login. The browser uses the local plain-HTTP
+UI (127.0.0.1 only, present in every mode): the suite never turns certificate checks off, and TLS is
+already covered by `test_04_security.py`; the module is skipped when the stack is reached over the
+network. It runs last, because sending a mission moves robots that earlier tests expect parked.
+**Consequences.** Three tests: live robots, map markers and stream over a real WebSocket; a mission sent
+from the form (choosing the observed target on 3.0, D-21) reaches COMPLETED; the login screen refuses a
+wrong token. On its first run in login mode it found a real bug: the lab mounted before the first session
+check answered and opened the live feed and API calls without a session (401/403 in the console). CI
+installs Chromium (`playwright install --with-deps chromium`), adding about a minute to each e2e job.

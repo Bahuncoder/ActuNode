@@ -804,3 +804,8 @@ code,
   font-size: 13px;
   cursor: pointer;
 }
+
+/* Shown for the moment before the first session check answers. */
+.connecting {
+  padding: 2rem;
+}

@@ -5,6 +5,7 @@ What changed, per commit, newest first. Status and plans are in [docs/PROGRESS.m
 ## Unreleased
 
 ### Added
+- Real-browser tests: Chromium via Playwright in the e2e suite, run in every CI configuration (D-29, #6).
 - TLS: HTTPS on 8443 and MQTT over TLS on 8883 with a local CA from `cert-init` (`show ca`); plain ports are always published on 127.0.0.1 only (D-26, #12 part C2).
 - Web login for sharing the lab (`ACTUNODE_REQUIRE_LOGIN`, token from `mqtt-init show api-token`, HttpOnly session cookie, rate-limited); backend refuses to start shared without it; login screen and Log out in the UI (D-25, #12 part C1).
 - Host and Origin checks for the API and live feed (`ACTUNODE_ALLOWED_HOSTS`): other web pages can no longer use it via DNS rebinding or cross-site requests (D-24, #12 part B).
@@ -47,6 +48,9 @@ What changed, per commit, newest first. Status and plans are in [docs/PROGRESS.m
 - CI: the `compose` build job is replaced by the `e2e` job, which builds and runs the stack.
 
 ### Fixed
+- In login mode the UI opened the live feed and API calls before its first session check answered (401 and
+  WebSocket 403 in the browser console); it now shows "Connecting to ActuNode…" until the check answers
+  (found by the new browser tests, #6).
 - Starting a recording within the same second as the previous one failed (409, same session id); a
   suffix (`_2`, `-2`) now keeps them apart.
 - Security: orders were routed by the identity a robot was last seen with, so any MQTT client could

@@ -142,12 +142,13 @@ function Lab({ onLogout }: { onLogout?: () => void }) {
 
 /** Shows the login screen when the backend requires one (sharing the lab, D-25), otherwise the lab. */
 export default function App() {
-  const [session, setSession] = useState<SessionStatus | null>(null)
+  // 'checking' until the first answer: nothing that needs a session may start before it (issue 6).
+  const [session, setSession] = useState<SessionStatus | 'checking' | 'unreachable'>('checking')
 
   const refresh = useCallback(() => {
     fetchSession()
       .then(setSession)
-      .catch(() => setSession(null)) // backend unreachable: the lab shows that itself
+      .catch(() => setSession('unreachable')) // the lab shows that itself
   }, [])
 
   useEffect(() => {
@@ -156,9 +157,12 @@ export default function App() {
     return () => clearInterval(timer)
   }, [refresh])
 
-  if (session?.loginRequired && !session.loggedIn) {
+  if (session === 'checking') {
+    return <p className="muted connecting">Connecting to ActuNode…</p>
+  }
+  if (session !== 'unreachable' && session.loginRequired && !session.loggedIn) {
     return <Login onLoggedIn={refresh} />
   }
-  const onLogout = session?.loginRequired ? () => logout().finally(refresh) : undefined
+  const onLogout = session !== 'unreachable' && session.loginRequired ? () => logout().finally(refresh) : undefined
   return <Lab onLogout={onLogout} />
 }
