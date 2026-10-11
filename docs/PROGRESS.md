@@ -14,7 +14,7 @@ the status line, the schedule table, the session log, and the open issues.
 |---|---|
 | **Calendar** | Week 1 of 8 (Fri 9 Oct – Thu 15 Oct 2026) |
 | **Last updated** | Sun 11 Oct 2026 |
-| **Status** | Ahead on features, catching up on verification. The Docker stack now runs the full definition-of-done scenario end to end; there are still no end-to-end tests in CI. |
+| **Status** | Ahead on features; spare time goes into hardening (D-11). End-to-end tests run in CI for VDA 5050 2.1 and 3.0 and for the shared (login + TLS) mode. Open: issues 6 and 19. |
 | **Working rule** | Follow the calendar. Being ahead is not a reason to start the next week's features: spare time goes into hardening, verification, documentation and user conversations. |
 
 ## Schedule
@@ -26,10 +26,10 @@ Week 1 started on Friday 9 October 2026 (Day 1). Each week runs Friday to Thursd
 | **1** | 9–15 Oct | VDA 5050 concepts, MQTT topics, AMR state machines | Notes + message schemas + Docker Mosquitto | ✅ Done | ✅ Docker stack verified end to end (10 Oct) |
 | 2 | 16–22 Oct | One fake AMR with battery, pose, state | Robot publishes status every second | ✅ Built early (Day 2) | ✅ Hardened 10 Oct: E2E tests in CI, battery-at-0 fixed |
 | 3 | 23–29 Oct | Mission sender + state transitions | Move job from start to destination | ✅ Built early (Day 3) | 🟡 No order updates, no cancel |
-| 4 | 30 Oct – 5 Nov | 5–10 robots + simple warehouse map | Multi-robot screen with location/state | ✅ Built early (Day 4, 10 Oct) | 🟡 Not load-tested beyond 10 robots; no collision avoidance |
-| 5 | 6–12 Nov | Message inspector + validation | Readable message stream + errors | ✅ Built early (Day 4, 10 Oct) | 🟡 Schemas are a hand-written subset; not compared with official ones |
+| 4 | 30 Oct – 5 Nov | 5–10 robots + simple warehouse map | Multi-robot screen with location/state | ✅ Built early (Day 4, 10 Oct) | 🟡 Not load-tested beyond 10 robots. Near-collisions detected and reported, never avoided (D-22) |
+| 5 | 6–12 Nov | Message inspector + validation | Readable message stream + errors | ✅ Built early (Day 4, 10 Oct) | 🟡 Official VDA 5050 2.1.0 and 3.0.0 schemas, chosen by topic (D-15, D-20). No offline validation of session files yet |
 | 6 | 13–19 Nov | Failure injection | Blocked path, low battery, disconnect, invalid payload | 🟡 1 of 4 (blocked path, Day 5) | ⬜ |
-| 7 | 20–26 Nov | Record/replay | Session file can reproduce incident | ✅ Built early (Days 6–7) | 🟡 No size limits; whole file loaded for replay |
+| 7 | 20–26 Nov | Record/replay | Session file can reproduce incident | ✅ Built early (Days 6–7) | 🟡 Size limit (`ACTUNODE_MAX_SESSION_MB`, default 200) and streaming replay. No retention or upload yet |
 | 8 | 27 Nov – 3 Dec | Demo + README + 3-minute video | GitHub repo + pitch demo | 🟡 README + demo script written | ⬜ Video not recorded |
 
 Legend: ✅ done · 🟡 partly done / known gaps · ⬜ not started
@@ -69,23 +69,24 @@ Plan objective is done. Remaining work for this week is verification and documen
 - [x] Mosquitto in Docker Compose (config written)
 - [x] Project documentation: progress, architecture, decisions, changelog
 - [x] **Run the Docker Compose stack end to end**: definition of done passed on 10 Oct (record → mission → block → clear → replay, UI via nginx)
-- [ ] Confirm `curl localhost:8000/api/health` works from a normal terminal (open issue 15)
+- [x] Confirm `curl localhost:8000/api/health` works from a normal terminal (issue 15: host firewall, closed 11 Oct)
 - [x] Confirm the Day 1–5 CI compose failures are understood (issue 3: transient runner problem, closed 11 Oct)
 - [x] Read the VDA 5050 3.0 release notes and record what changes for us ([research note](research/VDA5050_3_0.md), D-15)
 - [x] Python linter and formatter (ruff, 120 columns) in CI (issue 16, D-14)
 - [x] Customer discovery kit: [outreach messages](discovery/OUTREACH.md), [interview guide](discovery/INTERVIEW_GUIDE.md), private tracker
 - [ ] Customer discovery: first outreach messages sent (plan: 30 conversations in 60 days)
 
-Proposed focus for the coming weeks (each week's plan objective + hardening of what was built early):
+Proposed focus for the coming weeks (each week's plan objective + hardening of what was built early).
+Struck-through items are already done:
 
 | Week | Proposed engineering focus |
 |---|---|
-| 2 | End-to-end tests against real Mosquitto in CI (broker as a service container); fix battery-at-0; reconnect behaviour |
+| 2 | ~~End-to-end tests in CI; fix battery-at-0; reconnect behaviour~~ (done 10 Oct, see Week 2 above) |
 | 3 | `instantActions` cancelOrder (the "cancel" in *cancel, reroute or escalate*); order updates (`orderUpdateId`) |
-| 4 | Load test 10/25/50 robots (CPU, message rate, UI frame rate); decide whether to model traffic/near-collisions |
-| 5 | Version-aware validation with the official 2.1.0 and 3.0.0 schemas, chosen by topic (D-15); offline validation of session files |
+| 4 | Load test 10/25/50 robots (CPU, message rate, UI frame rate); ~~decide whether to model traffic/near-collisions~~ (D-22: detect, never avoid) |
+| 5 | ~~Version-aware validation with the official 2.1.0 and 3.0.0 schemas, chosen by topic~~ (D-15, D-20); offline validation of session files |
 | 6 | Remaining failures: low battery, disconnect, invalid payload, timeouts; simulator safety stops (`fieldViolation`) when a robot is in the path (D-22) |
-| 7 | Session size limits and retention; upload a session someone sent you; streaming replay |
+| 7 | ~~Session size limits~~; retention; upload a session someone sent you; ~~streaming replay~~ |
 | 8 | Record the demo video ([DEMO.md](DEMO.md)); polish README; publish |
 
 ## Customer discovery
@@ -108,17 +109,19 @@ exercised by hand with a real browser and MQTT traffic.
 
 | Area | How it was verified | Gaps |
 |---|---|---|
-| Backend API | 66 unit/API tests (pytest), run in CI, including a shutdown test under a real uvicorn server | |
-| Simulator | 34 unit tests (pytest), run in CI | |
+| Backend API | 137 unit/API tests (pytest), run in CI, including a shutdown test under a real uvicorn server | |
+| Simulator | 43 tests (pytest, incl. conformance against the official 2.1.0 and 3.0.0 schemas), run in CI | |
 | Python style | `ruff check` + `ruff format --check` in CI (backend, simulator) | |
-| Frontend | Type check, lint, 10 unit/component tests (`npm test`, incl. malformed robot data) and production build, in CI | No real-browser tests (issue 6) |
+| Frontend | Type check, lint, 24 unit/component tests (`npm test`, incl. malformed robot data, both VDA versions, login) and production build, in CI | No real-browser tests (issue 6) |
 | MQTT flow | Automated against Mosquitto in Docker (`tests/e2e`) | |
 | Shutdown | Automated in `tests/e2e` (broker first, then backend; recording gets its end line) and `backend/tests/test_shutdown.py` | |
-| Docker stack, end to end | **Automated** (`tests/e2e`, in CI): health, state every second, mission state machine, BLOCKED_PATH, validation clean, record/replay, last will on kill, broker restart recovery, shutdown with open recording | No frontend/browser tests |
+| Docker stack, end to end | **Automated** (`tests/e2e`, 18 tests, in CI for VDA 2.1, 3.0 and 2.1 with login): health, state every second, mission state machine, BLOCKED_PATH, near-collision warning, validation clean, record/replay, last will on kill, broker restart recovery, shutdown with open recording | No frontend/browser tests (issue 6) |
 | P-1042 scenario (mission → block → clear → complete) | E2E, several times | |
-| Record → replay | E2E; replay timing matched the recording within ~25 ms at 5× | |
-| Validator | Official VDA 5050 2.1.0 schemas (D-20); real and generated messages in every mission state pass them; planted bad messages flagged; e2e: all live traffic clean | 3.0 not supported (issue 8) |
+| Record → replay | E2E; replay timing matched the recording within ~25 ms at 5×. Size limit stops a recording by itself (unit test); replay streams the file (unit test: 25 MB file, peak memory under 5 MB) | No retention or upload |
+| Validator | Official VDA 5050 2.1.0 schemas (D-20); real and generated messages in every mission state pass them; planted bad messages flagged; e2e: all live traffic clean. 3.0.0 schemas on `v3` topics (D-15), tested with valid 3.0 messages and 2.1 messages on a `v3` topic | No offline validation of session files |
 | 10 robots, 6 concurrent missions | E2E screenshot | No load test |
+| Security (D-18, D-23–D-26) | E2E: MQTT logins and ACL (spoofing refused), Host/Origin checks, nothing works without a session in login mode, plain ports unreachable from the LAN, TLS refuses clients that do not trust the CA | |
+| Near-collisions (D-22) | 7 unit tests (incl. 3.0 positions, offline robots); e2e: two robots at the same spot raise one warning | |
 
 ## Open issues and technical debt
 
@@ -133,11 +136,9 @@ Numbered so they can be referenced from commits. Remove an item only when it is 
 
 Newest first. One entry per work session: what was done, what was learned, what is next.
 
-### Sat 10 Oct 2026: working through open issues one by one
+### Sun 11 Oct 2026: open issues one by one (12, 17, 15, 3)
 
-### Sun 11 Oct 2026: issue 12 part A, MQTT logins
-
-- Broker: no anonymous clients; logins for backend, tools (read only), healthcheck and one per robot
+- **Issue 12 part A: MQTT logins.** Broker: no anonymous clients; logins for backend, tools (read only), healthcheck and one per robot
   (serial = username); ACL lets a robot publish only its own topics (D-23). `mqtt-init` generates
   passwords into a Docker volume; each service mounts only its own subfolder, owned by its user, 0400
   (checked: simulator cannot read the backend password).
@@ -180,6 +181,18 @@ Newest first. One entry per work session: what was done, what was learned, what 
   outgoing connection from the host. Changed in ActuNode: API docs now under `/api/docs` (reachable via
   the UI port); README troubleshooting with the check and a narrow optional ufw rule (system security
   settings are the founder's decision, not changed by the assistant).
+- **Stale documentation fixed** (founder's review): PROGRESS still listed as missing what the code
+  has had since 10 Oct. Each claim was checked against the code and tests before rewriting: official
+  2.1.0 and 3.0.0 schemas chosen by topic, near-collision detection (D-22), the recording size limit
+  (`recorder.py`, unit test) and streaming replay (unit test: 25 MB file, peak memory under 5 MB).
+  Updated the status line, schedule quality column, proposed focus (done items struck through),
+  verification table (real test counts: backend 137, simulator 43, frontend 24, e2e 18; new rows for
+  security and near-collisions) and two Week 1 checkboxes. Same sweep over the other docs: the
+  `docker-compose.yml` header still said the broker was anonymous and the API had no login, and
+  `VDA5050_NOTES.md` said ActuNode speaks only 2.x; both fixed. Confirmed still missing (and listed as
+  such): cancelOrder and order updates, offline validation of session files, session retention and
+  upload, load tests. Lesson: when a fix lands, update every row that names the gap, not just the
+  issue table.
 - **#3 closed: transient CI runner problem, not the code.** The `compose` job on Days 1–5 (9 Oct,
   21:20–21:42 UTC) failed in `docker compose build` after 1 s, before any image could be pulled or built;
   GitHub's public annotations show only "exit code 1" (full logs need a login). Checked: the workflow

@@ -3,9 +3,9 @@
 # API:     http://localhost:8080/api/docs (direct backend: 127.0.0.1:8000)
 # MQTT:    localhost:1883 (ws: 9001)
 #
-# Ports are published on 127.0.0.1 only: the broker accepts anonymous clients and the API has no
-# login, so nothing should be reachable from the network by default. ACTUNODE_BIND_ADDRESS=0.0.0.0
-# shares the lab on your network: anyone on it can then command the robots (see README).
+# By default nothing is reachable from the network. The broker requires logins (D-23); the web UI and
+# API have a login for sharing (D-25). Sharing the lab: ACTUNODE_BIND_ADDRESS plus ACTUNODE_REQUIRE_LOGIN=1
+# (the backend refuses to start with a network bind and no login; see README, "Sharing the lab").
 #
 # Plain ports (8080, 8000, 1883, 9001) are always published on 127.0.0.1; HTTPS 8443 and MQTT over TLS
 # 8883 follow ACTUNODE_BIND_ADDRESS (D-26).

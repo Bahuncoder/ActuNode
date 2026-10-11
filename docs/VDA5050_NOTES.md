@@ -6,8 +6,9 @@ check the official text before relying on details.
 **VDA 5050 3.0 (March 2026) is a breaking release**: same topic layout and header, but renamed
 fields (`agvPosition` → `mobileRobotPosition`, `batteryState` → `powerSupply`), new enums
 (`CONNECTION_BROKEN`, error levels URGENT/CRITICAL) and edges without `startNodeId`/`endNodeId`.
-Everything below describes **2.x**, which ActuNode speaks today. See
-[research/VDA5050_3_0.md](research/VDA5050_3_0.md) for the full comparison and the plan (D-15).
+ActuNode speaks **both**, chosen per message by the topic's major version (`v2` / `v3`, D-15). The
+notes below describe **2.x** field names; [research/VDA5050_3_0.md](research/VDA5050_3_0.md) has the full
+comparison with 3.0.
 
 ## What it is
 
@@ -105,6 +106,6 @@ plus ActuNode's own schemas for its extension and inject command. Rules: `backen
 
 ## Open questions to research
 
-- ~~What changed in 3.0~~ → [research/VDA5050_3_0.md](research/VDA5050_3_0.md). Supporting 2.x and 3.0 side by side is planned for Week 5 (D-15).
-- ~~Validate against the official JSON schemas~~ done for 2.1.0; 3.0 per D-15.
+- ~~What changed in 3.0~~ → [research/VDA5050_3_0.md](research/VDA5050_3_0.md). 2.x and 3.0 are supported side by side since 10 Oct (D-15, issue 8).
+- ~~Validate against the official JSON schemas~~ done for 2.1.0 and 3.0.0 (D-20).
 - `instantActions` cancelOrder as the response to a blocked path (plan: "cancel, reroute or escalate").
