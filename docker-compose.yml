@@ -13,6 +13,14 @@
 # Host ports and the sessions directory can be overridden with environment variables
 # (the end-to-end tests use this to run a second, isolated copy). Defaults are shown below.
 
+# Container logs rotate (10 MB × 3 per service): a client sending bad messages at high rate must not be
+# able to fill the disk through our error logs.
+x-logging: &logging
+  driver: json-file
+  options:
+    max-size: "10m"
+    max-file: "3"
+
 services:
   # Creates MQTT logins and the web login token on first start (kept in the secrets volume) and rebuilds the broker's
   # password file and ACL on every start (D-23, D-28). Tools password: docker compose run --rm mqtt-init show tools
@@ -40,6 +48,7 @@ services:
       - secrets:/secrets
 
   mosquitto:
+    logging: *logging
     image: eclipse-mosquitto:2
     # Unencrypted MQTT never leaves this computer; robots on a network use TLS on 8883 (D-26).
     ports:
@@ -67,6 +76,7 @@ services:
         condition: service_completed_successfully
 
   backend:
+    logging: *logging
     build: ./backend
     # Write session files as the host user, not root. Set ACTUNODE_UID/ACTUNODE_GID
     # if your user id is not 1000 (check with `id -u` and `id -g`).
@@ -106,6 +116,7 @@ services:
         condition: service_healthy
 
   simulator:
+    logging: *logging
     build:
       context: .
       dockerfile: simulator/Dockerfile
@@ -127,11 +138,15 @@ services:
         condition: service_healthy
 
   frontend:
+    logging: *logging
     build: ./frontend
     # Plain HTTP only on this computer; HTTPS (8443) is what a network sees (D-26).
     ports:
       - "127.0.0.1:${ACTUNODE_UI_HOST_PORT:-8080}:80"
       - "${ACTUNODE_BIND_ADDRESS:-127.0.0.1}:${ACTUNODE_UI_TLS_HOST_PORT:-8443}:443"
+    # nginx runs as uid 101 (D-12); let it bind 80/443 inside its own network namespace only.
+    sysctls:
+      net.ipv4.ip_unprivileged_port_start: 0
     volumes:
       - type: volume
         source: secrets

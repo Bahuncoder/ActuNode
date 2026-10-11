@@ -4,7 +4,7 @@
 #
 #   /secrets/ca/            ca.key, ca.crt     local certificate authority (key never leaves here)
 #   /secrets/broker/tls/    server.crt/.key    mosquitto, port 8883      -> owned by mosquitto (1883)
-#   /secrets/web/           server.crt/.key    nginx, port 443 (8443)    -> root (nginx master reads it)
+#   /secrets/web/           server.crt/.key    nginx, port 443 (8443)    -> owned by nginx (101, non-root)
 #   /secrets/people/ca.crt                     what browsers and robots trust: `show ca`
 #
 # The CA is made once (10 years). The server certificate covers localhost, 127.0.0.1, ::1, mosquitto
@@ -67,6 +67,7 @@ fi
 cp "$S/ca/ca.crt" "$S/people/ca.crt"
 cp "$S/ca/ca.crt" "$S/broker/tls/ca.crt"
 chown -R 1883:1883 "$S/broker/tls"
+chown -R 101:101 "$S/web"
 chmod 500 "$S/broker/tls" "$S/web"
 chmod 400 "$S/broker/tls/server.key" "$S/web/server.key"
 chmod 444 "$S/broker/tls/server.crt" "$S/broker/tls/ca.crt" "$S/web/server.crt" "$S/people/ca.crt"
