@@ -1,9 +1,9 @@
 #!/bin/sh
-# MQTT credentials for ActuNode (D-23). Runs as root in the eclipse-mosquitto image, writing into the
+# Credentials for ActuNode: MQTT logins (D-23) and the web login token (D-25). Runs as root in the eclipse-mosquitto image, writing into the
 # mqtt-secrets volume mounted at /secrets. Each consumer gets its own folder, readable only by it:
 #
 #   /secrets/broker/     passwd (hashed), healthcheck.password   -> owned by mosquitto (1883)
-#   /secrets/backend/    password                                -> owned by BACKEND_UID
+#   /secrets/backend/    password, api-token                     -> owned by BACKEND_UID
 #   /secrets/simulator/  password (shared by robot_01..robot_NN) -> owned by SIMULATOR_UID
 #   /secrets/people/     tools.password                          -> root only; shown with `show tools`
 #   /secrets/robots/     <serial>.password for real robots       -> root only; shown when added
@@ -12,6 +12,7 @@
 #
 #   (no argument)        create missing passwords, rebuild the password file
 #   show tools           print the read-only tools password
+#   show api-token       print the token for the web login (needed when ACTUNODE_REQUIRE_LOGIN=1)
 #   add-robot <serial>   create a login for a real robot and print its password
 set -eu
 umask 077
@@ -33,8 +34,12 @@ valid_serial() {  # serial numbers become usernames and ACL topic levels: no / +
 new_robot=""
 case "${1:-}" in
   show)
-    [ "${2:-}" = tools ] || { echo "usage: show tools" >&2; exit 2; }
-    cat "$S/people/tools.password"; echo
+    case "${2:-}" in
+      tools) cat "$S/people/tools.password" ;;
+      api-token) cat "$S/backend/api-token" ;;
+      *) echo "usage: show tools | show api-token" >&2; exit 2 ;;
+    esac
+    echo
     exit 0 ;;
   add-robot)
     new_robot="${2:-}"
@@ -47,6 +52,7 @@ esac
 
 mkdir -p "$S/broker" "$S/backend" "$S/simulator" "$S/people" "$S/robots"
 ensure "$S/backend/password"
+ensure "$S/backend/api-token"
 ensure "$S/simulator/password"
 ensure "$S/people/tools.password"
 ensure "$S/broker/healthcheck.password"
@@ -73,7 +79,8 @@ chown -R 1883:1883 "$S/broker"
 chown -R "$BACKEND_UID" "$S/backend"
 chown -R "$SIMULATOR_UID" "$S/simulator"
 chmod 500 "$S/broker" "$S/backend" "$S/simulator"
-chmod 400 "$S/broker/passwd" "$S/broker/healthcheck.password" "$S/backend/password" "$S/simulator/password"
+chmod 400 "$S/broker/passwd" "$S/broker/healthcheck.password" "$S/backend/password" "$S/backend/api-token" \
+  "$S/simulator/password"
 chmod -R go-rwx "$S/people" "$S/robots"
 echo "mqtt-init: credentials ready ($SIM_MAX_ROBOTS simulated robots)"
 if [ -n "$new_robot" ]; then

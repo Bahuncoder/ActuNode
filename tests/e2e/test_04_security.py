@@ -4,7 +4,8 @@ import json
 import threading
 import time
 
-from conftest import HOST, MQTT_PORT, VDA, wait_for
+from conftest import HOST, LOGIN, MQTT_PORT, VDA, wait_for
+from websockets.exceptions import InvalidStatus
 
 
 def connect(stack, username, password):
@@ -78,12 +79,37 @@ def test_other_web_pages_cannot_use_the_api_through_nginx(stack):
     assert stack.api.get("/recording").json()["recording"] is None
 
     async def open_feed(origin):
-        async with websockets.connect(f"ws://{HOST}:{UI_PORT}/api/ws", origin=origin) as ws:
+        url = f"ws://{HOST}:{UI_PORT}/api/ws"
+        async with websockets.connect(url, origin=origin, additional_headers=stack.session_cookie()) as ws:
             return (await asyncio.wait_for(ws.recv(), 5))[:20]
 
     assert asyncio.run(open_feed(f"http://{HOST}:{UI_PORT}")).startswith('{"type"')
     try:
         asyncio.run(open_feed("https://attacker.example"))
         raise AssertionError("cross-site WebSocket was accepted")
-    except websockets.exceptions.InvalidStatus as refused:
+    except InvalidStatus as refused:
         assert refused.response.status_code == 403
+
+
+def test_with_login_required_nothing_works_without_a_session(stack):
+    """D-25: sharing mode. Skipped when the stack runs without login (local mode)."""
+    import asyncio
+
+    import httpx
+    import pytest
+    import websockets
+    from conftest import UI_PORT
+
+    if not LOGIN:
+        pytest.skip("stack runs without login")
+    base = f"http://{HOST}:{UI_PORT}/api"
+    assert httpx.get(f"{base}/robots").status_code == 401
+    assert httpx.post(f"{base}/login", json={"token": "wrong"}).status_code == 401
+    assert httpx.get(f"{base}/health").status_code == 200
+
+    async def open_feed():
+        async with websockets.connect(f"ws://{HOST}:{UI_PORT}/api/ws") as ws:
+            await ws.recv()
+
+    with pytest.raises(InvalidStatus):
+        asyncio.run(open_feed())

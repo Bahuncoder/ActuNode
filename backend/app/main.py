@@ -4,7 +4,7 @@ from contextlib import asynccontextmanager
 
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect
 
-from app import failures, missions, sessions
+from app import auth, failures, missions, sessions
 from app.config import settings
 from app.live import hub
 from app.mqtt_state import mqtt_bridge
@@ -18,6 +18,7 @@ logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
+    auth.check_sharing(settings.bind_address, settings.require_login)
     hub.attach_loop(asyncio.get_running_loop())
     mqtt_bridge.start()
     yield
@@ -35,7 +36,10 @@ app = FastAPI(
     version=VERSION,
     lifespan=lifespan,
 )
+# Starlette runs the middleware added last first: LocalWebGuard (D-24), then SessionGuard (D-25).
+app.add_middleware(auth.SessionGuard)
 app.add_middleware(LocalWebGuard, allowed_hosts=settings.allowed_hosts)
+app.include_router(auth.router)
 app.include_router(missions.router)
 app.include_router(failures.router)
 app.include_router(sessions.router)

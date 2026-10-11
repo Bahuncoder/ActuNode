@@ -46,8 +46,20 @@ docker compose up -d --force-recreate mqtt-init mosquitto   # apply a new robot 
 ```
 
 Each robot may publish only its own topics; only the backend may send orders. Other web pages in your
-browser cannot use the API (Host and Origin checks, D-24). The API has no login yet,
-so do not share the lab on a network (`ACTUNODE_BIND_ADDRESS=0.0.0.0`) until issue 12 is complete.
+browser cannot use the API (Host and Origin checks, D-24).
+
+### Sharing the lab on a network
+
+Sharing needs a login (D-25); the backend refuses to start shared without one:
+
+```bash
+ACTUNODE_BIND_ADDRESS=0.0.0.0 ACTUNODE_REQUIRE_LOGIN=1 \
+ACTUNODE_ALLOWED_HOSTS=localhost,127.0.0.1,::1,<this machine's name or IP> \
+docker compose up --build
+docker compose run --rm mqtt-init show api-token      # the token people enter in the browser
+```
+
+Not encrypted yet (TLS is issue 12 part C2): share only on a network you trust.
 
 ## Local development (without Docker)
 

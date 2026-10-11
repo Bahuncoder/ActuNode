@@ -29,6 +29,8 @@ HOST = os.environ.get("ACTUNODE_E2E_HOST", "localhost")
 # VDA 5050 major version the simulated robots speak in this run (CI runs both): "2" or "3".
 VDA = os.environ.get("ACTUNODE_VDA_VERSION", "2")
 CONNECTION_BROKEN = "CONNECTIONBROKEN" if VDA == "2" else "CONNECTION_BROKEN"
+# Web login (D-25): on when asked for, and necessarily when the stack is reached over the network.
+LOGIN = os.environ.get("ACTUNODE_REQUIRE_LOGIN", "") in ("1", "true") or HOST not in ("localhost", "127.0.0.1")
 ORDER_TOPIC = f"uagv/v{VDA}/ActuNode/{{}}/order"
 UI_PORT = 18080
 MQTT_PORT = 11883
@@ -44,6 +46,11 @@ class Stack:
         self.tools_password: str | None = None  # read-only MQTT login, set once the stack is up
 
     # --- Docker -----------------------------------------------------------------
+
+    def session_cookie(self) -> dict:
+        """Cookie header for raw HTTP/WebSocket clients (empty without login)."""
+        value = self.api.cookies.get("actunode_session")
+        return {"Cookie": f"actunode_session={value}"} if value else {}
 
     def secret(self, path: str) -> str:
         """Read a generated credential from the mqtt-secrets volume (see mosquitto/init-secrets.sh)."""
@@ -127,11 +134,19 @@ class Stack:
                 return False
         return True
 
+    def login(self) -> bool:
+        """Log the test client in (sessions live in backend memory: a backend restart ends them)."""
+        if not LOGIN:
+            return True
+        token = self.secret("backend/api-token")
+        return self.api.post("/login", json={"token": token}).status_code == 200
+
     def start_and_wait_live(self, *compose_args: str, timeout: float = 60) -> None:
         """Run a compose command that (re)starts services, then wait for robot state sent *after* it.
         Recency alone is not enough: a replay that just ended leaves fresh-looking ONLINE robots."""
         since = datetime.now(UTC)
         self.compose(*compose_args)
+        wait_for(self.login, 30, "login after restart")
         wait_for(lambda: self.live_since(since), timeout, f"robots live after: docker compose {' '.join(compose_args)}")
 
     # --- MQTT -------------------------------------------------------------------
@@ -175,7 +190,7 @@ def wait_for(predicate, timeout: float, what: str, interval: float = 0.25):
             value = predicate()
             if value:
                 return value
-        except (httpx.HTTPError, KeyError, TypeError) as error:
+        except (httpx.HTTPError, KeyError, TypeError, ValueError) as error:  # ValueError: non-JSON reply
             last_error = error
         time.sleep(interval)
     detail = f" (last error: {last_error})" if last_error else ""
@@ -199,12 +214,14 @@ def stack(tmp_path_factory):
         "ACTUNODE_GID": str(os.getgid()),
         "ACTUNODE_SIM_ROBOTS": str(len(ROBOTS)),
         "ACTUNODE_ALLOWED_HOSTS": f"localhost,127.0.0.1,::1,{HOST}",
+        "ACTUNODE_REQUIRE_LOGIN": "1" if LOGIN else "0",
         "ACTUNODE_VDA_VERSION": VDA,
     }
     stack = Stack(env, sessions_dir)
     stack.compose("up", "-d", "--build", "--wait", "--wait-timeout", "180")
     try:
         stack.tools_password = stack.secret("people/tools.password")
+        assert stack.login()
         wait_for(stack.all_online, 30, "all robots ONLINE")
         yield stack
     finally:

@@ -65,8 +65,13 @@ jobs:
       fail-fast: false
       matrix:
         vda: ["2", "3"]
+        login: ["0"]
+        include:
+          - vda: "2"
+            login: "1"  # sharing mode (D-25)
     env:
       ACTUNODE_VDA_VERSION: ${{ matrix.vda }}
+      ACTUNODE_REQUIRE_LOGIN: ${{ matrix.login }}
     steps:
       - uses: actions/checkout@v7
       - uses: actions/setup-python@v7
@@ -77,5 +82,5 @@ jobs:
       - if: failure()
         uses: actions/upload-artifact@v7
         with:
-          name: e2e-container-logs-vda${{ matrix.vda }}
+          name: e2e-container-logs-vda${{ matrix.vda }}-login${{ matrix.login }}
           path: tests/e2e/last-run.log

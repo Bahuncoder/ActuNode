@@ -33,6 +33,22 @@ export type MissionRequest = {
 // `warning`: the robot has been seen, but never under the identity the order was sent to.
 export type MissionResponse = { order_id: string; topic: string; warning?: string }
 
+export type SessionStatus = { loginRequired: boolean; loggedIn: boolean }
+
+export async function fetchSession(): Promise<SessionStatus> {
+  const response = await fetch('/api/session')
+  if (!response.ok) throw new Error(`Session check failed: ${response.status}`)
+  return response.json()
+}
+
+export async function login(token: string): Promise<void> {
+  await postJson('/api/login', { token })
+}
+
+export async function logout(): Promise<void> {
+  await postJson('/api/logout', {})
+}
+
 export async function fetchLocations(): Promise<Record<string, Location>> {
   const response = await fetch('/api/locations')
   if (!response.ok) {

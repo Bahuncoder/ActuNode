@@ -11,7 +11,7 @@
 # (the end-to-end tests use this to run a second, isolated copy). Defaults are shown below.
 
 services:
-  # Creates MQTT logins on first start (kept in the mqtt-secrets volume) and rebuilds the broker's
+  # Creates MQTT logins and the web login token on first start (kept in the secrets volume) and rebuilds the broker's
   # password file on every start (D-23). Tools password: docker compose run --rm mqtt-init show tools
   mqtt-init:
     image: eclipse-mosquitto:2
@@ -22,7 +22,7 @@ services:
       SIM_MAX_ROBOTS: 50
     volumes:
       - ./mosquitto/init-secrets.sh:/init-secrets.sh:ro
-      - mqtt-secrets:/secrets
+      - secrets:/secrets
 
   mosquitto:
     image: eclipse-mosquitto:2
@@ -33,7 +33,7 @@ services:
       - ./mosquitto/config/mosquitto.conf:/mosquitto/config/mosquitto.conf:ro
       - ./mosquitto/config/acl:/mosquitto/config/acl:ro
       - type: volume
-        source: mqtt-secrets
+        source: secrets
         target: /mosquitto/secrets
         read_only: true
         volume:
@@ -56,8 +56,13 @@ services:
       ACTUNODE_MQTT_HOST: mosquitto
       ACTUNODE_MQTT_PORT: 1883
       ACTUNODE_MQTT_USERNAME: actunode-backend
-      ACTUNODE_MQTT_PASSWORD_FILE: /run/secrets/mqtt/password
+      ACTUNODE_MQTT_PASSWORD_FILE: /run/secrets/actunode/password
       ACTUNODE_SESSIONS_DIR: /app/sessions
+      # Sharing the lab (D-25): the backend refuses to start if ports are published beyond this
+      # machine without a login. Token: docker compose run --rm mqtt-init show api-token
+      ACTUNODE_BIND_ADDRESS: ${ACTUNODE_BIND_ADDRESS:-127.0.0.1}
+      ACTUNODE_REQUIRE_LOGIN: ${ACTUNODE_REQUIRE_LOGIN:-0}
+      ACTUNODE_API_TOKEN_FILE: /run/secrets/actunode/api-token
       ACTUNODE_MAX_SESSION_MB: ${ACTUNODE_MAX_SESSION_MB:-200}
       ACTUNODE_PROXIMITY_M: ${ACTUNODE_PROXIMITY_M:-1.0}
       # Host names the API answers to (D-24); add this machine's name/address when sharing the lab.
@@ -67,8 +72,8 @@ services:
     volumes:
       - ${ACTUNODE_SESSIONS_HOST_DIR:-./sessions}:/app/sessions
       - type: volume
-        source: mqtt-secrets
-        target: /run/secrets/mqtt
+        source: secrets
+        target: /run/secrets/actunode
         read_only: true
         volume:
           subpath: backend
@@ -90,11 +95,11 @@ services:
       ACTUNODE_MQTT_PORT: 1883
       ACTUNODE_SIM_ROBOTS: ${ACTUNODE_SIM_ROBOTS:-3}
       ACTUNODE_VDA_VERSION: ${ACTUNODE_VDA_VERSION:-2}
-      ACTUNODE_MQTT_PASSWORD_FILE: /run/secrets/mqtt/password
+      ACTUNODE_MQTT_PASSWORD_FILE: /run/secrets/actunode/password
     volumes:
       - type: volume
-        source: mqtt-secrets
-        target: /run/secrets/mqtt
+        source: secrets
+        target: /run/secrets/actunode
         read_only: true
         volume:
           subpath: simulator
@@ -116,5 +121,6 @@ services:
         condition: service_healthy
 
 volumes:
-  # MQTT logins (D-23). Kept across `docker compose down`; `down -v` deletes them (new ones are made).
-  mqtt-secrets:
+  # Generated credentials: MQTT logins (D-23) and the web login token (D-25). Kept across
+  # `docker compose down`; `down -v` deletes them (new ones are made on the next start).
+  secrets:

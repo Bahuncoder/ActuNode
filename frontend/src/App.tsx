@@ -1,6 +1,15 @@
-import { useEffect, useState } from 'react'
-import { fetchHealth, fetchLocations, type Health, type Location } from './api'
+import { useCallback, useEffect, useState } from 'react'
+import {
+  fetchHealth,
+  fetchLocations,
+  fetchSession,
+  logout,
+  type Health,
+  type Location,
+  type SessionStatus,
+} from './api'
 import FailurePanel from './FailurePanel'
+import Login from './Login'
 import { useLiveFeed } from './live'
 import MessageStream from './MessageStream'
 import MissionSender from './MissionSender'
@@ -24,7 +33,8 @@ function StatusPill({ label, ok }: { label: string; ok: boolean | null }) {
   )
 }
 
-export default function App() {
+/** The lab itself; mounted only once the session allows it, so the live feed never opens without one. */
+function Lab({ onLogout }: { onLogout?: () => void }) {
   const [health, setHealth] = useState<Health | null>(null)
   const [apiUp, setApiUp] = useState<boolean | null>(null)
   const [locations, setLocations] = useState<Record<string, Location>>({})
@@ -78,6 +88,11 @@ export default function App() {
           <StatusPill label="MQTT" ok={mqttUp} />
           <StatusPill label="Live" ok={apiUp === null ? null : feed.connected} />
           {health && <span className="pill mono">v{health.version}</span>}
+          {onLogout && (
+            <button type="button" className="pill logout" onClick={onLogout}>
+              Log out
+            </button>
+          )}
         </div>
       </header>
 
@@ -123,4 +138,27 @@ export default function App() {
       </main>
     </div>
   )
+}
+
+/** Shows the login screen when the backend requires one (sharing the lab, D-25), otherwise the lab. */
+export default function App() {
+  const [session, setSession] = useState<SessionStatus | null>(null)
+
+  const refresh = useCallback(() => {
+    fetchSession()
+      .then(setSession)
+      .catch(() => setSession(null)) // backend unreachable: the lab shows that itself
+  }, [])
+
+  useEffect(() => {
+    refresh()
+    const timer = setInterval(refresh, POLL_MS) // also notices an expired session
+    return () => clearInterval(timer)
+  }, [refresh])
+
+  if (session?.loginRequired && !session.loggedIn) {
+    return <Login onLoggedIn={refresh} />
+  }
+  const onLogout = session?.loginRequired ? () => logout().finally(refresh) : undefined
+  return <Lab onLogout={onLogout} />
 }

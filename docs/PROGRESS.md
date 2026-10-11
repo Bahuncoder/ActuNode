@@ -128,7 +128,7 @@ Numbered so they can be referenced from commits. Remove an item only when it is 
 |---|---|---|---|
 | 3 | CI `compose` job failed on Days 1–5, passes since Day 6. No build-relevant file changed in between; logs need a GitHub login | Probably transient (base image pulls), but unconfirmed | Check the job logs on GitHub Actions |
 | 6 | No real-browser tests (component and logic tests exist since D-19, but run in jsdom, not a browser) | Browser-only issues (layout, WebSocket in a real browser) are caught by hand | Add Playwright tests against the e2e stack |
-| 12 | Security for shared use not finished: MQTT logins (part A, D-23) and Host/Origin checks (part B, D-24) done; still missing: API login and TLS (part C) | On a shared network the API is open and MQTT passwords travel unencrypted | Part C, next |
+| 12 | Security for shared use not finished: MQTT logins (D-23), Host/Origin checks (D-24) and web login (D-25) done; still missing: TLS (part C2) | On a shared network the token, session cookie and MQTT passwords travel unencrypted | Part C2, next |
 | 15 | From the dev machine, `127.0.0.1:8000` (backend published port) accepts connections but never answers, while the LAN address `192.168.1.151:8000`, port 8080 on loopback, and container-to-container calls all work. Seen from the assistant's sandboxed shell; not yet checked from a normal terminal | API docs at localhost:8000/docs may be unreachable; the UI is unaffected (it uses 8080) | Seen again on 10 Oct for MQTT ports 1883/11883 from the same shell while the LAN address worked, so most likely the assistant's sandbox; on GitHub's CI machine the same e2e tests reach the stack via plain `localhost`. E2E tests take `ACTUNODE_E2E_HOST` for this. Still: run `curl -m 5 localhost:8000/api/health` in a normal terminal; if it hangs there too, investigate Docker's port forwarding |
 | 17 | Official VDA 5050 3.0.0 schemas are not valid JSON: trailing commas in `factsheet.schema` (4), `order.schema` (1, line 315), `visualization.schema` (2) | Any tool loading them as-is fails | Vendored with only those 7 commas removed (verified by diff); report upstream (needs your GitHub account) |
 | 19 | The live robot list is keyed by serial number only: robots with the same serial under different manufacturers or versions share one entry in the UI | Confusing display in mixed fleets with colliding serials (missions are safe since the ambiguity check) | Key robots by (version, manufacturer, serial) in hub and UI |
@@ -156,6 +156,14 @@ Newest first. One entry per work session: what was done, what was learned, what 
   errors). Found and fixed on the way: two recordings started in the same second got the same session
   id (409); and my own new test wrote into the real `sessions/` folder (two files removed, test fixed).
   Backend 124 tests; e2e 15/15 for 2.1 and 3.0.
+- **Part C1 (D-25): web login for shared use.** Token → HttpOnly SameSite=Strict session cookie (12 h,
+  memory), rate limit 5 failures/min per client, interlock: backend refuses to start with a non-loopback
+  bind and no login (verified on a container). UI login screen, Log out. E2E runs in login mode when
+  reaching the stack over the network; CI adds a VDA 2 + login job; new test: nothing works without a
+  session. Found on the way: sessions end when the backend restarts, so the e2e harness logs in again
+  after restarts; a missing explicit import in my own test. Browser check: local mode opens the lab,
+  login mode shows only the login screen. Backend 136, frontend 24, e2e 16/16 for 2.1 and 3.0 (twice
+  for 3.0).
 
 ### Sat 10 Oct 2026 (night, continued)
 

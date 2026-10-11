@@ -48,11 +48,12 @@ request, so the backend can be restarted on its own (D-13).
 | Network | All ports published on 127.0.0.1 unless `ACTUNODE_BIND_ADDRESS` is set | D-18 |
 | MQTT | No anonymous clients; per-robot topic permissions (`mosquitto/config/acl`); generated passwords in the `mqtt-secrets` volume, one read-only subfolder per service | D-23 |
 | Browser | API answers only allowed `Host` names; cross-site WebSockets and state-changing requests refused | D-24 |
+| Shared use | Login (API token → HttpOnly session cookie) required; backend refuses to start shared without it | D-25 |
 | Commands | Orders go only where the request says or to the configured default, never inferred from traffic | D-21 |
 | Containers | Backend and simulator run as non-root users | D-12 |
 | Robot data | Treated as untrusted in the validator and the UI | D-9 |
 
-Not yet: API login and TLS for shared networks (issue 12 part C).
+Not yet: TLS for shared networks (issue 12 part C2).
 
 ## MQTT topics
 
@@ -132,6 +133,8 @@ WebSocket client's queue → `send_json`.
 | Method | Path | Purpose |
 |---|---|---|
 | GET | `/api/health` | Version and MQTT connection |
+| GET | `/api/session` | Whether login is required and the caller is logged in |
+| POST | `/api/login`, `/api/logout` | Exchange the API token for a session cookie / end it (D-25) |
 | GET | `/api/locations` | Named warehouse locations |
 | POST | `/api/missions` | Send a mission (robot, source, destination, load; optional `manufacturer`, `vda_version`) |
 | GET | `/api/robots` | Latest connection + state per robot |
@@ -217,13 +220,14 @@ can go first).
 | `ACTUNODE_MAX_SESSION_MB` | backend (recording stops itself at this size; fractions allowed) | `200` |
 | `ACTUNODE_PROXIMITY_M` | backend (near-collision distance in metres, D-22) | `1.0` |
 | `ACTUNODE_ALLOWED_HOSTS` | backend (host names the API answers to, D-24) | `localhost,127.0.0.1,::1` |
+| `ACTUNODE_REQUIRE_LOGIN`, `ACTUNODE_API_TOKEN_FILE` | backend (web login, D-25) | `0`, generated token in the `secrets` volume |
 | `ACTUNODE_SIM_ROBOTS` | simulator | `3` (1–50) |
 | `ACTUNODE_VDA_INTERFACE` | backend, simulator | `uagv` |
 | `ACTUNODE_VDA_MAJOR_VERSION` | backend (topic version of orders it sends) | `v2` |
 | `ACTUNODE_VDA_VERSION` | simulator (`--vda-version`): robots speak VDA 5050 2.1.0 (`2`) or 3.0.0 (`3`) | `2` |
 | `ACTUNODE_API_URL` | frontend dev server | `http://localhost:8000` |
 | `ACTUNODE_UID`, `ACTUNODE_GID` | Docker Compose (backend user) | `1000`, `1000` |
-| `ACTUNODE_BIND_ADDRESS` | Docker Compose (interface the ports are published on, D-18) | `127.0.0.1` |
+| `ACTUNODE_BIND_ADDRESS` | Docker Compose (interface the ports are published on, D-18); backend refuses non-loopback without login (D-25) | `127.0.0.1` |
 | `ACTUNODE_UI_HOST_PORT`, `ACTUNODE_API_HOST_PORT` | Docker Compose (host ports) | `8080`, `8000` |
 | `ACTUNODE_MQTT_HOST_PORT`, `ACTUNODE_MQTT_WS_HOST_PORT` | Docker Compose (host ports) | `1883`, `9001` |
 | `ACTUNODE_SESSIONS_HOST_DIR` | Docker Compose (recordings on the host) | `./sessions` |

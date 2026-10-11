@@ -303,3 +303,19 @@ an `Origin` of another host (or `null`) are refused. Requests without `Origin` (
 browser pages and are allowed. No CORS headers are sent, so cross-site reads stay hidden from pages.
 **Consequences.** All three attacks now refused (400/403/403), the UI unaffected; unit tests and an e2e
 test through nginx. A real API login is still needed for shared networks (part C).
+
+## D-25 · Login required when the lab is shared beyond this computer
+11 Oct 2026 · Accepted (issue 12, part C1)
+
+**Context.** Locally the lab is protected by the 127.0.0.1 bind (D-18) and Host/Origin checks (D-24).
+Shared on a network (publishing ports beyond this machine and allowing the machine's name in
+`ACTUNODE_ALLOWED_HOSTS`), the API had no login at all.
+**Decision.** `ACTUNODE_REQUIRE_LOGIN=1` closes every API path and the live feed (except health, login,
+logout, session status) behind a session. `POST /api/login` compares the generated API token (`secrets`
+volume, `mqtt-init show api-token`) in constant time and returns a random session id in an HttpOnly,
+SameSite=Strict cookie (Secure under HTTPS), valid 12 h, kept in backend memory (a restart logs everyone
+out). Failed logins are limited to 5 per minute per client (nginx sets `X-Real-IP`). **Interlock:** the
+backend refuses to start when `ACTUNODE_BIND_ADDRESS` is not a loopback address and login is off, so the
+lab cannot be shared by accident. The UI shows a login screen when needed and a Log out button.
+**Consequences.** Shared mode is authenticated; local mode unchanged (no token to paste). Without TLS the
+token and session cookie still cross the network in clear text: TLS is part C2.

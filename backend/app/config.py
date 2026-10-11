@@ -15,6 +15,10 @@ class Settings:
     # broker). The password is read from a file (ACTUNODE_MQTT_PASSWORD_FILE), never an env value.
     mqtt_username: str | None = os.getenv("ACTUNODE_MQTT_USERNAME") or None
     mqtt_password_file: str | None = os.getenv("ACTUNODE_MQTT_PASSWORD_FILE") or None
+    # Sharing the lab (D-25): login required whenever ports are published beyond this machine.
+    bind_address: str = os.getenv("ACTUNODE_BIND_ADDRESS", "127.0.0.1")
+    require_login: bool = os.getenv("ACTUNODE_REQUIRE_LOGIN", "").lower() in ("1", "true", "yes")
+    api_token_file: str | None = os.getenv("ACTUNODE_API_TOKEN_FILE") or None
     # Host names the API answers to (D-24): add the machine's name or address for shared use.
     allowed_hosts: frozenset[str] = frozenset(
         h.strip().lower()
