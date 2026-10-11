@@ -108,7 +108,7 @@ trusting TypeScript types; each panel has an error boundary.
 schedule.
 
 ## D-11 · Follow the calendar; spend time ahead on quality
-10 Oct 2026 · Accepted
+10 Oct 2026 · Superseded by D-30 (11 Oct 2026)
 
 **Context.** The first sprint built first versions of most of the 8-week feature list in two days.
 **Decision.** Keep to the 8-week calendar (Week 1 = 9–15 Oct 2026). Use time ahead of schedule for
@@ -117,7 +117,7 @@ forward. Track everything in [PROGRESS.md](PROGRESS.md).
 **Consequences.** Slower feature growth, better-understood and better-tested code.
 
 ## D-12 · Containers run as non-root; the backend runs as the host user
-10 Oct 2026 · Accepted
+10 Oct 2026 · Accepted · *Amended 11 Oct 2026:* nginx too (uid 101, `nginx-unprivileged`), see D-31
 
 **Context.** The first Docker run wrote session files into the mounted `./sessions` directory as
 `root`, so the user could not delete or edit their own recordings without `sudo`. Running services
@@ -394,3 +394,54 @@ from the form (choosing the observed target on 3.0, D-21) reaches COMPLETED; the
 wrong token. On its first run in login mode it found a real bug: the lab mounted before the first session
 check answered and opened the live feed and API calls without a session (401/403 in the console). CI
 installs Chromium (`playwright install --with-deps chromium`), adding about a minute to each e2e job.
+
+## D-30 · A week is done when its work is fully done, not when the calendar says
+11 Oct 2026 · Accepted (supersedes D-11)
+
+**Context.** D-11 held features back to the calendar. The founder changed the rule: dates do not matter;
+what matters is whether a week's work is complete.
+**Decision.** Each week ends with a **quality gate**: an independent review for bugs and security (every
+finding reproduced before it is fixed), dependency and image scans, tests for every fix, all suites and
+the end-to-end runs green, docs updated. When the gate passes, the next week's work starts immediately.
+Findings that are not fixed are logged as numbered issues with a reason.
+**Consequences.** Progress is reported as weeks completed. The Week 1 gate (11 Oct) is the first one.
+
+## D-31 · Treat every MQTT client as hostile: input limits, unguessable client ids, non-root nginx
+11 Oct 2026 · Accepted (Week 1 quality gate)
+
+**Context.** The Week 1 review showed that one message from any robot login could: drop silently
+(validator crash on a wrong-shaped field), break the API, the live feed and recording until restart
+(a ~600-level nested array, ~1.2 KB), blank every browser (NaN/Infinity, which Python accepts and browsers
+cannot parse), or exhaust memory (no size limit; a 6 MB payload of `[[],[],…]` took 129 MB parsed). Any
+login could also disconnect the backend or a robot by reusing its fixed MQTT client id, and one malformed
+order killed the whole simulator process.
+**Decision.**
+- Broker `max_packet_size` 256 KiB; the backend applies the same limit before parsing, rejects NaN and
+  Infinity and structures deeper than 32 levels. Rejected payloads are kept as text with a precise issue
+  (`payload-too-large`, `non-finite-number`, `too-deep`, `invalid-json`) and never update a robot.
+- Validators check types before reading nested fields; if the validator still fails, the message is kept
+  with a `validator-error` issue. Parsing and validation run outside the hub lock (single MQTT thread);
+  the WebSocket takes its snapshot off the event loop.
+- Payloads over 16 KiB are shown as a 1 KiB preview in the log and live feed; the recorder gets them whole.
+- Per-robot history (validator, proximity, header-id counters) is keyed by robot (D-27) and capped.
+- MQTT client ids get a random per-process suffix (backend, simulated robots).
+- The simulator validates order types strictly (rejecting with `orderError` naming the field), ignores
+  duplicates, rejects stale `orderUpdateId`s, and no single message can stop its loop.
+- nginx runs as uid 101 (`nginxinc/nginx-unprivileged`, stable line 1.30, `apk upgrade`); container logs
+  rotate.
+**Consequences.** Each attack above now has a regression test. Remaining risk is logged (issue 21: each
+robot's last state is still stored whole, up to 256 KiB × 1,000 robots).
+
+## D-32 · Same-origin check compares scheme, host and port
+11 Oct 2026 · Accepted (amends D-24)
+
+**Context.** D-24 compared only the Origin's host name with the allowed hosts, so any other web app on
+the same host (a dev server on another port, Jupyter) could send state-changing requests and open the
+live feed; with login off that is full control.
+**Decision.** A state-changing request or WebSocket with an Origin is accepted only if the Origin equals
+the site the browser asked for: same scheme (`X-Forwarded-Proto` behind nginx), same host and same port
+as the Host header (default ports normalised). nginx forwards the browser's Host header with its port
+(`$http_host`); the Vite dev proxy already does. Requests without Origin (scripts) are unchanged.
+Open live feeds re-check their session at least every 5 s, so logout or expiry also ends them.
+**Consequences.** Verified with unit tests (other port, other scheme, other allowed host name refused;
+dev proxy, nginx HTTP and HTTPS accepted) and the e2e suite through nginx in all three configurations.

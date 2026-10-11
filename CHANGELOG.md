@@ -4,6 +4,39 @@ What changed, per commit, newest first. Status and plans are in [docs/PROGRESS.m
 
 ## Unreleased
 
+### Security and robustness (Week 1 quality gate, D-30 to D-32)
+Found by an independent review; each item reproduced first and covered by a regression test.
+- One MQTT message could break the backend: wrong-shaped fields crashed the validator (message lost),
+  deeply nested JSON broke the API, live feed and recording until restart, NaN/Infinity blanked every
+  browser, and there was no size limit. Now: 256 KiB broker and backend limit, depth limit 32, NaN and
+  Infinity rejected with precise issues, type-checked validators, large payloads previewed (D-31).
+- Any MQTT login could disconnect the backend or a robot by reusing its fixed client id: ids now carry a
+  random suffix.
+- One malformed order crashed the whole simulator; orders are now type-checked and rejected with an
+  `orderError` naming the field; duplicate orders are ignored, stale `orderUpdateId`s rejected.
+- Same-origin check now compares scheme, host and port: another web app on the same host (another port)
+  can no longer control the lab; nginx forwards the Host header with its port (D-32).
+- Open live feeds end on logout or session expiry (checked at least every 5 s).
+- Default replay no longer republishes VDA 5050 3.0 `zoneSet` and `responses` (commands).
+- Frontend image: nginx 1.27 (end of life, 43 HIGH/CRITICAL fixable CVEs) → `nginx-unprivileged` 1.30,
+  runs as uid 101; 0 HIGH/CRITICAL in trivy.
+- Failed-login table and per-robot history are capped; container logs rotate; message-handler tracebacks
+  are rate-limited.
+- Upgrading: `docker compose up -d --build --force-recreate` (the broker and nginx configuration changed).
+
+### Fixed (Week 1 quality gate)
+- Command traffic (our own orders echoed back, instantActions, …) created ghost robots, could evict real
+  ones and hid the mission warning.
+- Validator history and failure injection mixed robots with the same serial (D-27); replay was blocked by
+  any same-serial robot from another manufacturer.
+- Near-collision pairs stayed active after a robot changed map, hiding the next incident.
+- `POST /api/failures` returned 500 when a robot's `actunode` field was null.
+- Replay scanned the session file on the event loop (≈2.5 s stall at 200 MB).
+- Simulator: the last will carried the first headerId and the process-start timestamp.
+- UI: a bad frame lost the whole live snapshot; `null` payloads or object-valued fields crashed the
+  message stream and robot table; robot and failure lists grew without limit; an old session answer could
+  override a newer one.
+
 ### Added
 - Real-browser tests: Chromium via Playwright in the e2e suite, run in every CI configuration (D-29, #6).
 - TLS: HTTPS on 8443 and MQTT over TLS on 8883 with a local CA from `cert-init` (`show ca`); plain ports are always published on 127.0.0.1 only (D-26, #12 part C2).

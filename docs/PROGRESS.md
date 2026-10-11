@@ -12,10 +12,10 @@ the status line, the schedule table, the session log, and the open issues.
 
 | | |
 |---|---|
-| **Calendar** | Week 1 of 8 (Fri 9 Oct – Thu 15 Oct 2026) |
+| **Calendar** | Week 1 of 8 by date (Fri 9 Oct – Thu 15 Oct 2026); dates no longer gate the work (D-30) |
 | **Last updated** | Sun 11 Oct 2026 |
-| **Status** | Ahead on features; spare time goes into hardening (D-11). End-to-end tests run in CI for VDA 5050 2.1 and 3.0 and for the shared (login + TLS) mode, including real-browser tests (D-29). No open issues. |
-| **Working rule** | Follow the calendar. Being ahead is not a reason to start the next week's features: spare time goes into hardening, verification, documentation and user conversations. |
+| **Status** | **Week 1 complete** (quality gate passed 11 Oct: every confirmed finding fixed with a regression test; 4 remaining items logged as issues 21–24). Next: Week 2 quality gate (the Week 2 feature exists since Day 2). |
+| **Working rule** | A week is done when its work is fully done (D-30): features, then a quality gate (independent bug and security review, scans, a test for every fix, all suites and e2e green, docs). Then the next week starts, whatever the date. |
 
 ## Schedule
 
@@ -23,12 +23,15 @@ Week 1 started on Friday 9 October 2026 (Day 1). Each week runs Friday to Thursd
 
 | Week | Dates | Plan objective | Plan output | Feature state | Quality state |
 |---|---|---|---|---|---|
-| **1** | 9–15 Oct | VDA 5050 concepts, MQTT topics, AMR state machines | Notes + message schemas + Docker Mosquitto | ✅ Done | ✅ Docker stack verified end to end (10 Oct) |
+| **1** | 9–15 Oct | VDA 5050 concepts, MQTT topics, AMR state machines | Notes + message schemas + Docker Mosquitto | ✅ Done | ✅ Quality gate passed 11 Oct (D-30, see below) |
 | 2 | 16–22 Oct | One fake AMR with battery, pose, state | Robot publishes status every second | ✅ Built early (Day 2) | ✅ Hardened 10 Oct: E2E tests in CI, battery-at-0 fixed |
 | 3 | 23–29 Oct | Mission sender + state transitions | Move job from start to destination | ✅ Built early (Day 3) | 🟡 No order updates, no cancel |
 | 4 | 30 Oct – 5 Nov | 5–10 robots + simple warehouse map | Multi-robot screen with location/state | ✅ Built early (Day 4, 10 Oct) | 🟡 Not load-tested beyond 10 robots. Near-collisions detected and reported, never avoided (D-22) |
 | 5 | 6–12 Nov | Message inspector + validation | Readable message stream + errors | ✅ Built early (Day 4, 10 Oct) | 🟡 Official VDA 5050 2.1.0 and 3.0.0 schemas, chosen by topic (D-15, D-20). No offline validation of session files yet |
-| — | No open issues | | |
+| 21 | Each robot's last state is stored whole (up to 256 KiB, D-31), so 1,000 robots could hold ~256 MB | Memory pressure only under a deliberate flood by logged-in clients | Store large states as a preview, or cap total bytes |
+| 22 | Suspected UI races (found by reading, not reproduced): a message counted during "reset validation" may be counted twice in the UI; a recording started from another tab shows the previous recording's counters | Wrong numbers in the UI, not in files | Reproduce with a test first, then fix |
+| 23 | Login rate limit trusts `X-Real-IP` from any peer: a local process on the direct API port 8000 (127.0.0.1 only) can rotate it | Accepted for now: the token has ~190 bits, so guessing stays infeasible; only memory growth, which is capped | Trust `X-Real-IP` only from the nginx container |
+| 24 | Dependency and image scans (`pip-audit`, `npm audit`, `trivy`) run by hand, not in CI | A new CVE in a dependency is noticed late | Add a scheduled CI job |
 | 7 | 20–26 Nov | Record/replay | Session file can reproduce incident | ✅ Built early (Days 6–7) | 🟡 Size limit (`ACTUNODE_MAX_SESSION_MB`, default 200) and streaming replay. No retention or upload yet |
 | 8 | 27 Nov – 3 Dec | Demo + README + 3-minute video | GitHub repo + pitch demo | 🟡 README + demo script written | ⬜ Video not recorded |
 
@@ -49,6 +52,43 @@ the 8-week plan; the 8-week plan is the full roadmap. All of Days 1–7 were bui
 | Day 5 | `BLOCKED_PATH` failure | Week 6 (1 of 4 failures) |
 | Days 6–7 | Record to JSONL, replay | Week 7 |
 | 10 Oct | 10 robots; validator, schemas, VDA 5050 notes | Weeks 4, 5, 1 (rest) |
+
+## Week 1 quality gate (11 Oct, D-30)
+
+Three independent reviews in fresh contexts (security of infra and auth; backend correctness; simulator
+and frontend), plus `pip-audit`, `npm audit`, `bandit` and `trivy`. Every finding below was reproduced
+(proof script or failing test) before it was fixed, and each fix has a regression test.
+
+| Severity | Finding | Fix |
+|---|---|---|
+| Critical | One malformed order (missing `sequenceId`, `edges: 5`, NaN position, …) killed the whole simulator | Strict order type checks → `orderError` naming the field; one bad message can't stop the loop |
+| High | A ~600-level nested JSON state broke `/api/robots`, `/api/messages`, the live feed and recording until restart | Depth limit 32, `RecursionError` caught (D-31) |
+| High | No MQTT size limit: 6 MB payload → 129 MB parsed; 10 MB state → 14 s validation under the hub lock, freezing the API | Broker and backend limit 256 KiB; validation outside the lock; snapshot off the event loop |
+| High | NaN/Infinity accepted, then sent as bare `NaN`: every browser lost the live feed until restart | Rejected as `non-finite-number`; client ignores unparsable frames |
+| High | Wrong-shaped fields (`batteryState: "x"`, `nodes: 5`) crashed the validator and the message vanished | Type guards; `validator-error` backstop keeps the message |
+| High | Any login (even read-only `tools`) could disconnect the backend or a robot by reusing its client id | Random per-process client-id suffix |
+| High | Frontend image on nginx 1.27 (end of life): 43 HIGH/CRITICAL fixable CVEs; nginx ran as root | `nginx-unprivileged` 1.30 + `apk upgrade`, uid 101; 0 in trivy |
+| High | Malformed but valid JSON (`null` payload, object `connectionState`) crashed the message stream / robot table | Guards and text rendering |
+| Medium | Default replay republished 3.0 `zoneSet`/`responses` (commands) to robots | Treated as commands |
+| Medium | Validator history, failure injection and the replay live check keyed by serial only (D-27) | Keyed by robot; failures pick the ActuNode robot |
+| Medium | Command traffic created ghost robots, could evict real ones, hid the mission warning | Only `state`/`connection` touch robots |
+| Medium | Near-collision pair stuck after a map change; next incident missed | Pair cleared |
+| Medium | `POST /api/failures` → 500 on `actunode: null` | Guarded (409) |
+| Medium | Duplicate orders re-executed, stale `orderUpdateId` accepted | Ignored / `orderUpdateError` |
+| Medium | Last will carried headerId 1 and the process-start timestamp | Refreshed after each connect |
+| Low | Origin check ignored scheme and port | Same-origin check (D-32) |
+| Low | Open live feeds kept streaming after logout/expiry | Session re-checked every ≤5 s |
+| Low | Unbounded failed-login table, validator/proximity/header-id state, client robot/failure lists | Capped |
+| Low | Replay scan blocked the event loop (≈2.5 s at 200 MB); log flood via tracebacks; no log rotation | `to_thread`; rate-limited tracebacks; logs 10 MB × 3 |
+| Low | Out-of-order session answers could show the lab after logout for one poll | Request sequence numbers |
+
+Not fixed, logged with reasons: issues 21–24. Checked and found sound: shell-script quoting and name
+validation, secret file permissions, session-file paths (no traversal), Host check, cookie flags,
+constant-time token compare, XSS (no raw HTML anywhere), MQTT resubscribe and shutdown order.
+
+Verified after the fixes: backend 183, simulator 64, frontend 36 tests; ruff, oxlint, tsc; e2e incl.
+browser tests: 17/17 (2.1), 17/17 (3.0), 20/20 (2.1 with login + TLS); live: the broker disconnects a
+client publishing 300 KB and nothing reaches the backend; nginx serves HTTP and HTTPS as uid 101.
 
 ## Week 2 (16–22 Oct): hardening, started early on 10 Oct
 
@@ -113,10 +153,10 @@ exercised by hand with a real browser and MQTT traffic.
 
 | Area | How it was verified | Gaps |
 |---|---|---|
-| Backend API | 139 unit/API tests (pytest), run in CI, including a shutdown test under a real uvicorn server | |
-| Simulator | 43 tests (pytest, incl. conformance against the official 2.1.0 and 3.0.0 schemas), run in CI | |
+| Backend API | 183 unit/API tests (pytest), run in CI, including a shutdown test under a real uvicorn server | |
+| Simulator | 64 tests (pytest, incl. conformance against the official 2.1.0 and 3.0.0 schemas), run in CI | |
 | Python style | `ruff check` + `ruff format --check` in CI (backend, simulator) | |
-| Frontend | Type check, lint, 31 unit/component tests (`npm test`, incl. malformed robot data, both VDA versions, login, nothing opened before the session check) and production build, in CI; real-browser tests in the e2e suite (below) | |
+| Frontend | Type check, lint, 36 unit/component tests (`npm test`, incl. malformed robot data, both VDA versions, login, nothing opened before the session check) and production build, in CI; real-browser tests in the e2e suite (below) | |
 | MQTT flow | Automated against Mosquitto in Docker (`tests/e2e`) | |
 | Shutdown | Automated in `tests/e2e` (broker first, then backend; recording gets its end line) and `backend/tests/test_shutdown.py` | |
 | Docker stack, end to end | **Automated** (`tests/e2e`, 21 tests incl. 3 in Chromium via Playwright, in CI for VDA 2.1, 3.0 and 2.1 with login): health, state every second, mission state machine, BLOCKED_PATH, near-collision warning, validation clean, record/replay, last will on kill, broker restart recovery, shutdown with open recording; in the browser: live robots, map and stream over a real WebSocket, a mission sent from the form completes, login screen refuses a wrong token, no console errors | Browser tests use the local plain-HTTP UI, not HTTPS (D-29) |
@@ -124,7 +164,8 @@ exercised by hand with a real browser and MQTT traffic.
 | Record → replay | E2E; replay timing matched the recording within ~25 ms at 5×. Size limit stops a recording by itself (unit test); replay streams the file (unit test: 25 MB file, peak memory under 5 MB) | No retention or upload |
 | Validator | Official VDA 5050 2.1.0 schemas (D-20); real and generated messages in every mission state pass them; planted bad messages flagged; e2e: all live traffic clean. 3.0.0 schemas on `v3` topics (D-15), tested with valid 3.0 messages and 2.1 messages on a `v3` topic | No offline validation of session files |
 | 10 robots, 6 concurrent missions | E2E screenshot | No load test |
-| Security (D-18, D-23–D-28) | E2E: MQTT logins and ACL (spoofing refused, incl. own serial under another manufacturer; old serial-only login refused), Host/Origin checks, nothing works without a session in login mode, plain ports unreachable from the LAN, TLS refuses clients that do not trust the CA | |
+| Dependencies and images | `pip-audit` (backend, simulator, e2e), `npm audit`, `bandit`, `trivy` images and Dockerfiles: 0 known HIGH/CRITICAL after the gate (11 Oct) | Not yet automated in CI |
+| Security (D-18, D-23–D-28, D-31, D-32) | E2E: MQTT logins and ACL (spoofing refused, incl. own serial under another manufacturer; old serial-only login refused), Host/Origin checks, nothing works without a session in login mode, plain ports unreachable from the LAN, TLS refuses clients that do not trust the CA | |
 | Near-collisions (D-22) | 8 unit tests (incl. 3.0 positions, offline robots, two robots sharing a serial); e2e: two robots at the same spot raise one warning | |
 
 ## Open issues and technical debt
@@ -138,6 +179,20 @@ Numbered so they can be referenced from commits. Remove an item only when it is 
 ## Session log
 
 Newest first. One entry per work session: what was done, what was learned, what is next.
+
+### Sun 11 Oct 2026 (night, later): Week 1 quality gate; new working rule (D-30)
+
+- Founder: dates don't matter; a week is done when its work is fully done (quality, bugs, security,
+  tests), then the next week starts. Recorded as D-30 (supersedes D-11) and in the working rule.
+- Gate: tools first (`pip-audit`, `npm audit`, `bandit`: clean; `trivy`: frontend image 43
+  HIGH/CRITICAL on end-of-life nginx 1.27, nginx as root). Then three independent reviews; every confirmed
+  finding fixed with a regression test (table above), the rest logged (issues 21–24).
+- nginx as uid 101 first tried ports 8080/8443 inside the container; this machine's firewall only lets
+  the host reach a few container ports (issue 15), so it keeps 80/443 via the namespaced
+  `ip_unprivileged_port_start` sysctl instead. Firewall untouched.
+- My own same-origin change initially failed one test: TestClient WebSockets send `Host: testserver`,
+  not the base URL; the tests now set Host as a browser would.
+- Week 1 is complete. Next: Week 2 quality gate (the robot with battery, pose and state), then Week 3.
 
 ### Sun 11 Oct 2026 (late): first outreach batch drafted
 

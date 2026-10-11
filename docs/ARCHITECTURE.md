@@ -51,7 +51,7 @@ request, so the backend can be restarted on its own (D-13).
 | Shared use | Login (API token → HttpOnly session cookie) required; backend refuses to start shared without it | D-25 |
 | Encryption | Only HTTPS 8443 and MQTT over TLS 8883 follow the bind address; plain ports always 127.0.0.1; local CA from `cert-init` | D-26 |
 | Commands | Orders go only where the request says or to the configured default, never inferred from traffic | D-21 |
-| Containers | Backend and simulator run as non-root users | D-12 |
+| Containers | Backend, simulator and nginx run as non-root users; nginx binds 80/443 via a namespaced sysctl; logs rotate (10 MB × 3) | D-12, D-31 |
 | Robot data | Treated as untrusted in the validator and the UI | D-9 |
 
 All parts of issue 12 are done; see README, "Sharing the lab".
