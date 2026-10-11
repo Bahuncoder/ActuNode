@@ -1,6 +1,7 @@
 import json
 import logging
 import queue
+import secrets
 
 import paho.mqtt.client as mqtt
 
@@ -32,19 +33,23 @@ class RobotConnection:
 
         self._client = mqtt.Client(
             callback_api_version=mqtt.CallbackAPIVersion.VERSION2,
-            client_id=f"actunode-sim-{robot.robot_id}",
+            # A fixed id lets any login that reuses it kick the robot off; a random suffix makes it unguessable.
+            client_id=f"actunode-sim-{robot.robot_id}-{secrets.token_hex(8)}",
         )
-        self._client.will_set(
-            self.connection_topic,
-            json.dumps(robot.connection_message("CONNECTIONBROKEN")),
-            qos=1,
-            retain=True,
-        )
+        self._set_will()
         if password is not None:
             self._client.username_pw_set(f"{MANUFACTURER}.{robot.robot_id}", password)
         self._client.on_connect = self._on_connect
         self._client.on_message = self._on_message
         self._client.reconnect_delay_set(min_delay=1, max_delay=10)
+
+    def _set_will(self) -> None:
+        self._client.will_set(
+            self.connection_topic,
+            json.dumps(self.robot.connection_message("CONNECTIONBROKEN")),
+            qos=1,
+            retain=True,
+        )
 
     def start(self) -> None:
         self._client.connect_async(self.host, self.port, keepalive=15)
@@ -73,14 +78,18 @@ class RobotConnection:
             except queue.Empty:
                 return processed
             processed = True
-            if topic_name == self.inject_topic:
-                log.warning(
-                    "%s: failure injection: %s", self.robot.robot_id, self.robot.handle_command_payload(payload)
-                )
-            elif self.robot.handle_order_payload(payload):
-                log.info("%s: accepted order %s", self.robot.robot_id, self.robot.order_id)
-            else:
-                log.warning("%s: rejected order: %s", self.robot.robot_id, self.robot.errors[-1]["errorDescription"])
+            try:
+                self._apply(topic_name, payload)
+            except Exception:  # no single message may stop the simulation loop
+                log.exception("%s: failed to apply message on %s", self.robot.robot_id, topic_name)
+
+    def _apply(self, topic_name: str, payload: bytes) -> None:
+        if topic_name == self.inject_topic:
+            log.warning("%s: failure injection: %s", self.robot.robot_id, self.robot.handle_command_payload(payload))
+        elif self.robot.handle_order_payload(payload):
+            log.info("%s: accepted order %s", self.robot.robot_id, self.robot.order_id)
+        else:
+            log.warning("%s: rejected order: %s", self.robot.robot_id, self.robot.errors[-1]["errorDescription"])
 
     def publish_state(self) -> None:
         if self._client.is_connected():
@@ -97,6 +106,9 @@ class RobotConnection:
         # VDA 5050 section 6.2: order at QoS 0. The inject topic is ActuNode's own; commands use QoS 1.
         client.subscribe([(self.order_topic, 0), (self.inject_topic, 1)])
         self._publish(self.connection_topic, self.robot.connection_message("ONLINE"), qos=1, retain=True)
+        # Reserve the next headerId and a current timestamp for the will. Any later OFFLINE gets a
+        # higher headerId, and the broker only sends the will after an ungraceful end, so ordering holds.
+        self._set_will()
 
     def _on_message(self, client, userdata, message):
         # Only act on our own topics, whatever the broker delivers.

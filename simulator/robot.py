@@ -25,6 +25,62 @@ FAILED = "FAILED"
 BLOCKED_PATH = "BLOCKED_PATH"
 
 
+def _is_int(value) -> bool:
+    return isinstance(value, int) and not isinstance(value, bool)
+
+
+def _is_number(value) -> bool:
+    return isinstance(value, int | float) and not isinstance(value, bool) and math.isfinite(value)
+
+
+def _check_actions(actions, path: str) -> tuple[str, str] | None:
+    if not isinstance(actions, list):
+        return f"{path} must be a list", path
+    for i, action in enumerate(actions):
+        where = f"{path}[{i}]"
+        if not isinstance(action, dict):
+            return f"{where} must be an object", where
+        for key in ("actionType", "actionId"):
+            if not isinstance(action.get(key), str):
+                return f"{where}.{key} must be a string", f"{where}.{key}"
+    return None
+
+
+def _check_node(node, path: str) -> tuple[str, str] | None:
+    if not isinstance(node, dict):
+        return f"{path} must be an object", path
+    if not isinstance(node.get("nodeId"), str):
+        return f"{path}.nodeId must be a string", f"{path}.nodeId"
+    if not _is_int(node.get("sequenceId")):
+        return f"{path}.sequenceId must be an integer", f"{path}.sequenceId"
+    if "released" in node and not isinstance(node["released"], bool):
+        return f"{path}.released must be a boolean", f"{path}.released"
+    position = node.get("nodePosition")
+    if not isinstance(position, dict):
+        return f"node {node['nodeId']} has no nodePosition", f"{path}.nodePosition"
+    for axis in ("x", "y"):
+        if not _is_number(position.get(axis)):
+            return f"{path}.nodePosition.{axis} must be a finite number", f"{path}.nodePosition.{axis}"
+    if "mapId" in position and not isinstance(position["mapId"], str):
+        return f"{path}.nodePosition.mapId must be a string", f"{path}.nodePosition.mapId"
+    return _check_actions(node.get("actions", []), f"{path}.actions")
+
+
+def _check_edge(edge, path: str) -> tuple[str, str] | None:
+    if not isinstance(edge, dict):
+        return f"{path} must be an object", path
+    if not isinstance(edge.get("edgeId"), str):
+        return f"{path}.edgeId must be a string", f"{path}.edgeId"
+    if not _is_int(edge.get("sequenceId")):
+        return f"{path}.sequenceId must be an integer", f"{path}.sequenceId"
+    if "released" in edge and not isinstance(edge["released"], bool):
+        return f"{path}.released must be a boolean", f"{path}.released"
+    for key in ("startNodeId", "endNodeId"):
+        if key in edge and not isinstance(edge[key], str):
+            return f"{path}.{key} must be a string", f"{path}.{key}"
+    return _check_actions(edge.get("actions", []), f"{path}.actions")
+
+
 def utc_timestamp() -> str:
     return datetime.now(UTC).isoformat(timespec="milliseconds").replace("+00:00", "Z")
 
@@ -79,10 +135,25 @@ class Robot:
         return self.accept_order(order)
 
     def accept_order(self, order: dict) -> bool:
+        """Validate, then replace the mission. Nothing is mutated before validation passes."""
         order_id = str(order.get("orderId", ""))
+        if order_id and order_id == self.order_id and isinstance(order.get("orderUpdateId", 0), int):
+            update_id = order.get("orderUpdateId", 0)
+            if update_id == self.order_update_id:
+                # VDA 5050 2.1: same orderId and orderUpdateId as the current order is a duplicate; ignore it.
+                return True
+            if update_id < self.order_update_id:
+                self._reject(
+                    order_id,
+                    f"orderUpdateId {update_id} is older than {self.order_update_id}",
+                    error_type="orderUpdateError",
+                )
+                return False
+            # A higher orderUpdateId falls through and is handled like a new order for now;
+            # real order updates (keeping progress, stitching at the base node) are a later feature.
         problem = self._check_order(order)
         if problem:
-            self._reject(order_id, problem)
+            self._reject(order_id, *problem)
             return False
 
         nodes = sorted(order["nodes"], key=lambda node: node["sequenceId"])
@@ -117,35 +188,51 @@ class Robot:
         self.mission_status = ACCEPTED
         return True
 
-    def _check_order(self, order: dict) -> str | None:
+    def _check_order(self, order: dict) -> tuple[str, str | None] | None:
+        """Return (description, offending field or None) for the first problem, else None."""
         if self.battery <= 0:
-            return "battery is empty; robot cannot drive"
+            return "battery is empty; robot cannot drive", None
         if self.busy:
-            return f"robot is busy with order {self.order_id}"
+            return f"robot is busy with order {self.order_id}", None
         if order.get("serialNumber") != self.robot_id:
-            return f"order is addressed to {order.get('serialNumber')!r}, not {self.robot_id!r}"
+            return f"order is addressed to {order.get('serialNumber')!r}, not {self.robot_id!r}", None
         if not order.get("orderId"):
-            return "order has no orderId"
+            return "order has no orderId", "orderId"
+        if not isinstance(order["orderId"], str):
+            return "orderId must be a string", "orderId"
+        if "orderUpdateId" in order and not _is_int(order["orderUpdateId"]):
+            return "orderUpdateId must be an integer", "orderUpdateId"
         nodes = order.get("nodes")
         if not isinstance(nodes, list) or not nodes:
-            return "order has no nodes"
-        for node in nodes:
-            if not isinstance(node, dict) or "nodeId" not in node or "sequenceId" not in node:
-                return "every node needs nodeId and sequenceId"
-            position = node.get("nodePosition")
-            if not isinstance(position, dict) or "x" not in position or "y" not in position:
-                return f"node {node['nodeId']} has no nodePosition"
+            return "order has no nodes", "nodes"
+        for i, node in enumerate(nodes):
+            problem = _check_node(node, f"nodes[{i}]")
+            if problem:
+                return problem
+        edges = order.get("edges", [])
+        if not isinstance(edges, list):
+            return "edges must be a list", "edges"
+        for i, edge in enumerate(edges):
+            problem = _check_edge(edge, f"edges[{i}]")
+            if problem:
+                return problem
         return None
 
-    def _reject(self, order_id: str, description: str) -> None:
+    def _reject(
+        self, order_id: str, description: str, field: str | None = None, error_type: str = "orderError"
+    ) -> None:
         # Replace an earlier rejection, but keep other errors (e.g. pathBlocked).
         self._drop_errors("orderError")
+        self._drop_errors("orderUpdateError")
+        references = [{"referenceKey": "orderId", "referenceValue": order_id}] if order_id else []
+        if field:
+            references.append({"referenceKey": "field", "referenceValue": field})
         self.errors.append(
             {
-                "errorType": "orderError",
+                "errorType": error_type,
                 "errorLevel": "WARNING",
                 "errorDescription": description,
-                "errorReferences": [{"referenceKey": "orderId", "referenceValue": order_id}] if order_id else [],
+                "errorReferences": references,
             }
         )
 

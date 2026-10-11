@@ -338,3 +338,89 @@ def test_robot_with_empty_battery_rejects_new_orders():
 
     assert not robot.accept_order(make_order())
     assert "battery" in robot.errors[-1]["errorDescription"]
+
+
+def _mutated(mutate):
+    order = make_order()
+    mutate(order)
+    return order
+
+
+MALFORMED = {
+    "edge-no-sequence": lambda o: o["edges"][0].pop("sequenceId"),
+    "edges-int": lambda o: o.update(edges=5),
+    "mixed-sequence": lambda o: o["nodes"][0].update(sequenceId="0"),
+    "action-no-type": lambda o: o["nodes"][0]["actions"][0].pop("actionType"),
+    "actions-str": lambda o: o["nodes"][0].update(actions="pick"),
+    "nodeid-list": lambda o: o["nodes"][0].update(nodeId=["a"]),
+    "x-str": lambda o: o["nodes"][0]["nodePosition"].update(x="1"),
+    "x-null": lambda o: o["nodes"][0]["nodePosition"].update(x=None),
+    "x-nan": lambda o: o["nodes"][0]["nodePosition"].update(x=float("nan")),
+    "y-inf": lambda o: o["nodes"][0]["nodePosition"].update(y=float("inf")),
+    "update-bool": lambda o: o.update(orderUpdateId=True),
+    "orderid-int": lambda o: o.update(orderId=7),
+    "released-str": lambda o: o["nodes"][0].update(released="yes"),
+    "edge-action-bad": lambda o: o["edges"][0].update(actions=[{"actionId": 1}]),
+}
+
+
+@pytest.mark.parametrize("mutate", MALFORMED.values(), ids=MALFORMED.keys())
+def test_malformed_order_is_rejected_without_state_change(mutate):
+    robot = Robot("robot_01")
+
+    assert robot.accept_order(_mutated(mutate)) is False
+
+    assert robot.mission_status == IDLE
+    assert robot.order_id == ""
+    assert robot.node_states == []
+    assert robot.errors[0]["errorType"] == "orderError"
+    assert any(ref["referenceKey"] == "field" for ref in robot.errors[0]["errorReferences"]) or "orderId" in str(
+        robot.errors[0]["errorReferences"]
+    )
+    robot.update(1.0)  # must not raise
+
+
+def test_rejection_names_the_offending_field():
+    robot = Robot("robot_01")
+    robot.accept_order(_mutated(MALFORMED["x-nan"]))
+
+    assert {"referenceKey": "field", "referenceValue": "nodes[0].nodePosition.x"} in robot.errors[0]["errorReferences"]
+
+
+def test_duplicate_order_is_ignored():
+    robot = Robot("robot_01")
+    robot.accept_order(make_order())
+    robot.update(0.1)
+    robot.update(1.0)
+    before = robot.state_message()["nodeStates"], robot.mission_status
+
+    assert robot.accept_order(make_order()) is True
+
+    assert (robot.state_message()["nodeStates"], robot.mission_status) == before
+    assert robot.errors == []
+
+
+def test_duplicate_order_after_completion_does_not_redrive():
+    robot = Robot("robot_01")
+    robot.accept_order(make_order())
+    run_until_done(robot)
+
+    robot.accept_order(make_order())
+
+    assert robot.mission_status == COMPLETED
+
+
+def test_stale_order_update_is_rejected():
+    robot = Robot("robot_01")
+    first = make_order()
+    first["orderUpdateId"] = 3
+    robot.accept_order(first)
+    run_until_done(robot)
+    stale = make_order()
+    stale["orderUpdateId"] = 2
+
+    assert robot.accept_order(stale) is False
+
+    assert robot.errors[0]["errorType"] == "orderUpdateError"
+    assert robot.order_update_id == 3
+    assert robot.mission_status == COMPLETED
