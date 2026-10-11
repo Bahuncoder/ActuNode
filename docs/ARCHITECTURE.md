@@ -32,10 +32,10 @@ Four processes, each its own Docker Compose service:
 
 | Service | Code | Port | Role |
 |---|---|---|---|
-| `mosquitto` | [mosquitto/config](../mosquitto/config/mosquitto.conf) | 1883 (MQTT), 9001 (WebSocket) | Message broker |
+| `mosquitto` | [mosquitto/config](../mosquitto/config/mosquitto.conf) | 1883 (MQTT), 9001 (WebSocket), 8883 (MQTT over TLS) | Message broker |
 | `simulator` | [simulator/](../simulator) | none | Simulated AMRs speaking VDA 5050 |
 | `backend` | [backend/app](../backend/app) | 8000 | REST + WebSocket API, validation, recording, replay |
-| `frontend` | [frontend/src](../frontend/src) | 8080 (nginx) / 5173 (dev) | Lab UI; nginx proxies `/api` to the backend |
+| `frontend` | [frontend/src](../frontend/src) | 8080 HTTP, 8443 HTTPS (nginx) / 5173 (dev) | Lab UI; nginx proxies `/api` to the backend |
 
 Backend and simulator run as an unprivileged user; Compose runs the backend as the host user so
 session files in `./sessions` belong to them (D-12). nginx re-resolves the backend's name per
@@ -49,11 +49,12 @@ request, so the backend can be restarted on its own (D-13).
 | MQTT | No anonymous clients; per-robot topic permissions (`mosquitto/config/acl`); generated passwords in the `mqtt-secrets` volume, one read-only subfolder per service | D-23 |
 | Browser | API answers only allowed `Host` names; cross-site WebSockets and state-changing requests refused | D-24 |
 | Shared use | Login (API token → HttpOnly session cookie) required; backend refuses to start shared without it | D-25 |
+| Encryption | Only HTTPS 8443 and MQTT over TLS 8883 follow the bind address; plain ports always 127.0.0.1; local CA from `cert-init` | D-26 |
 | Commands | Orders go only where the request says or to the configured default, never inferred from traffic | D-21 |
 | Containers | Backend and simulator run as non-root users | D-12 |
 | Robot data | Treated as untrusted in the validator and the UI | D-9 |
 
-Not yet: TLS for shared networks (issue 12 part C2).
+All parts of issue 12 are done; see README, "Sharing the lab".
 
 ## MQTT topics
 
@@ -227,7 +228,8 @@ can go first).
 | `ACTUNODE_VDA_VERSION` | simulator (`--vda-version`): robots speak VDA 5050 2.1.0 (`2`) or 3.0.0 (`3`) | `2` |
 | `ACTUNODE_API_URL` | frontend dev server | `http://localhost:8000` |
 | `ACTUNODE_UID`, `ACTUNODE_GID` | Docker Compose (backend user) | `1000`, `1000` |
-| `ACTUNODE_BIND_ADDRESS` | Docker Compose (interface the ports are published on, D-18); backend refuses non-loopback without login (D-25) | `127.0.0.1` |
+| `ACTUNODE_BIND_ADDRESS` | Docker Compose: interface for HTTPS 8443 and MQTT/TLS 8883 (plain ports are always 127.0.0.1, D-26); backend refuses non-loopback without login (D-25) | `127.0.0.1` |
+| `ACTUNODE_UI_TLS_HOST_PORT`, `ACTUNODE_MQTTS_HOST_PORT` | Docker Compose (HTTPS and MQTT over TLS host ports) | `8443`, `8883` |
 | `ACTUNODE_UI_HOST_PORT`, `ACTUNODE_API_HOST_PORT` | Docker Compose (host ports) | `8080`, `8000` |
 | `ACTUNODE_MQTT_HOST_PORT`, `ACTUNODE_MQTT_WS_HOST_PORT` | Docker Compose (host ports) | `1883`, `9001` |
 | `ACTUNODE_SESSIONS_HOST_DIR` | Docker Compose (recordings on the host) | `./sessions` |

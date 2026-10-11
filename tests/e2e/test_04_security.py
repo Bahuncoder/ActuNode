@@ -4,7 +4,7 @@ import json
 import threading
 import time
 
-from conftest import HOST, LOGIN, MQTT_PORT, VDA, wait_for
+from conftest import HOST, LOCAL_HOST, LOGIN, MQTT_PORT, SHARED, UI_PORT, VDA, wait_for
 from websockets.exceptions import InvalidStatus
 
 
@@ -13,7 +13,7 @@ def connect(stack, username, password):
     done, result = threading.Event(), {}
     client = stack.mqtt_client(username, password)
     client.on_connect = lambda c, u, f, reason_code, p: (result.update(rc=str(reason_code)), done.set())
-    client.connect(HOST, MQTT_PORT, 10)
+    client.connect(HOST, stack.mqtt_port, 10)
     client.loop_start()
     done.wait(10)
     return client, result.get("rc")
@@ -70,20 +70,23 @@ def test_other_web_pages_cannot_use_the_api_through_nginx(stack):
 
     import httpx
     import websockets
-    from conftest import UI_PORT
 
-    base = f"http://{HOST}:{UI_PORT}/api"
-    assert httpx.get(f"{base}/robots", headers={"Host": "attacker.example"}).status_code == 400
-    cross_site = httpx.post(f"{base}/recording/start", headers={"Origin": "https://attacker.example"})
+    base = f"{stack.http_base}/api"
+    verify = stack.ssl_context or True
+    assert httpx.get(f"{base}/robots", headers={"Host": "attacker.example"}, verify=verify).status_code == 400
+    cross_site = httpx.post(f"{base}/recording/start", headers={"Origin": "https://attacker.example"}, verify=verify)
     assert cross_site.status_code == 403
     assert stack.api.get("/recording").json()["recording"] is None
 
     async def open_feed(origin):
-        url = f"ws://{HOST}:{UI_PORT}/api/ws"
-        async with websockets.connect(url, origin=origin, additional_headers=stack.session_cookie()) as ws:
+        url = f"{stack.ws_base}/api/ws"
+        ssl_options = {"ssl": stack.ssl_context} if stack.ssl_context else {}
+        async with websockets.connect(
+            url, origin=origin, additional_headers=stack.session_cookie(), **ssl_options
+        ) as ws:
             return (await asyncio.wait_for(ws.recv(), 5))[:20]
 
-    assert asyncio.run(open_feed(f"http://{HOST}:{UI_PORT}")).startswith('{"type"')
+    assert asyncio.run(open_feed(stack.http_base)).startswith('{"type"')
     try:
         asyncio.run(open_feed("https://attacker.example"))
         raise AssertionError("cross-site WebSocket was accepted")
@@ -98,18 +101,50 @@ def test_with_login_required_nothing_works_without_a_session(stack):
     import httpx
     import pytest
     import websockets
-    from conftest import UI_PORT
 
     if not LOGIN:
         pytest.skip("stack runs without login")
-    base = f"http://{HOST}:{UI_PORT}/api"
-    assert httpx.get(f"{base}/robots").status_code == 401
-    assert httpx.post(f"{base}/login", json={"token": "wrong"}).status_code == 401
-    assert httpx.get(f"{base}/health").status_code == 200
+    base = f"{stack.http_base}/api"
+    verify = stack.ssl_context or True
+    assert httpx.get(f"{base}/robots", verify=verify).status_code == 401
+    assert httpx.post(f"{base}/login", json={"token": "wrong"}, verify=verify).status_code == 401
+    assert httpx.get(f"{base}/health", verify=verify).status_code == 200
 
     async def open_feed():
-        async with websockets.connect(f"ws://{HOST}:{UI_PORT}/api/ws") as ws:
+        ssl_options = {"ssl": stack.ssl_context} if stack.ssl_context else {}
+        async with websockets.connect(f"{stack.ws_base}/api/ws", **ssl_options) as ws:
             await ws.recv()
 
     with pytest.raises(InvalidStatus):
         asyncio.run(open_feed())
+
+
+def test_shared_mode_offers_only_encrypted_ports_to_the_network(stack):
+    """D-26: plain HTTP and MQTT are published on 127.0.0.1 only. Checkable only when the tests reach
+    the stack over the network (ACTUNODE_E2E_HOST is not this machine's loopback)."""
+    import socket
+
+    import pytest
+
+    if LOCAL_HOST:
+        pytest.skip("tests run on loopback; nothing to check from the network side")
+    for port in (UI_PORT, MQTT_PORT):
+        with pytest.raises(OSError):
+            socket.create_connection((HOST, port), timeout=3).close()
+
+
+def test_tls_endpoints_reject_clients_that_do_not_trust_the_ca(stack):
+    """The certificate is really in use and checked: a client trusting only the system CAs fails."""
+    import socket
+    import ssl
+
+    import pytest
+
+    if not SHARED:
+        pytest.skip("stack runs without TLS endpoints")
+    from conftest import MQTTS_PORT, UI_TLS_PORT
+
+    system_only = ssl.create_default_context()
+    for port in (UI_TLS_PORT, MQTTS_PORT):
+        with socket.create_connection((HOST, port), timeout=5) as raw, pytest.raises(ssl.SSLCertVerificationError):
+            system_only.wrap_socket(raw, server_hostname=HOST)

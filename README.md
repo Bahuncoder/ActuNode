@@ -26,7 +26,7 @@ docker compose up --build
 
 | Service | URL |
 |---|---|
-| Lab UI | http://localhost:8080 |
+| Lab UI | http://localhost:8080 (or https://localhost:8443) |
 | API docs | http://localhost:8000/docs |
 | MQTT broker | `localhost:1883` (WebSocket `9001`) |
 
@@ -57,9 +57,12 @@ ACTUNODE_BIND_ADDRESS=0.0.0.0 ACTUNODE_REQUIRE_LOGIN=1 \
 ACTUNODE_ALLOWED_HOSTS=localhost,127.0.0.1,::1,<this machine's name or IP> \
 docker compose up --build
 docker compose run --rm mqtt-init show api-token      # the token people enter in the browser
+docker compose run --rm cert-init show ca > actunode-ca.crt   # the certificate authority to trust
 ```
 
-Not encrypted yet (TLS is issue 12 part C2): share only on a network you trust.
+Others open `https://<this machine>:8443` (import `actunode-ca.crt` in the browser to avoid the
+certificate warning). Real robots connect with TLS to `<this machine>:8883`, trusting the same CA, with a
+login from `mqtt-init add-robot`. Plain HTTP and MQTT ports never leave this computer (D-26).
 
 ## Local development (without Docker)
 

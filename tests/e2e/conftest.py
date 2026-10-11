@@ -13,6 +13,7 @@ machine's LAN address in sandboxes where loopback connections to Docker ports ha
 import json
 import os
 import pathlib
+import ssl
 import subprocess
 import threading
 import time
@@ -29,11 +30,16 @@ HOST = os.environ.get("ACTUNODE_E2E_HOST", "localhost")
 # VDA 5050 major version the simulated robots speak in this run (CI runs both): "2" or "3".
 VDA = os.environ.get("ACTUNODE_VDA_VERSION", "2")
 CONNECTION_BROKEN = "CONNECTIONBROKEN" if VDA == "2" else "CONNECTION_BROKEN"
-# Web login (D-25): on when asked for, and necessarily when the stack is reached over the network.
-LOGIN = os.environ.get("ACTUNODE_REQUIRE_LOGIN", "") in ("1", "true") or HOST not in ("localhost", "127.0.0.1")
+# Shared mode: web login (D-25) and TLS endpoints (D-26). On when asked for, and necessarily when the
+# stack is reached over the network (plain ports are published on 127.0.0.1 only).
+LOCAL_HOST = HOST in ("localhost", "127.0.0.1")
+LOGIN = os.environ.get("ACTUNODE_REQUIRE_LOGIN", "") in ("1", "true") or not LOCAL_HOST
+SHARED = LOGIN
 ORDER_TOPIC = f"uagv/v{VDA}/ActuNode/{{}}/order"
-UI_PORT = 18080
-MQTT_PORT = 11883
+UI_PORT = 18080  # plain HTTP, 127.0.0.1 only
+UI_TLS_PORT = 18443  # HTTPS, bind address
+MQTT_PORT = 11883  # plain MQTT, 127.0.0.1 only
+MQTTS_PORT = 18883  # MQTT over TLS, bind address
 ROBOTS = ("robot_01", "robot_02", "robot_03")
 STATE_TOPIC = f"uagv/v{os.environ.get('ACTUNODE_VDA_VERSION', '2')}/ActuNode/{{}}/state"
 
@@ -42,8 +48,19 @@ class Stack:
     def __init__(self, env: dict, sessions_dir: pathlib.Path):
         self.env = env
         self.sessions_dir = sessions_dir
-        self.api = httpx.Client(base_url=f"http://{HOST}:{UI_PORT}/api", timeout=10)
         self.tools_password: str | None = None  # read-only MQTT login, set once the stack is up
+        self.ca_file: pathlib.Path | None = None  # local CA (D-26), set in shared mode
+        self.ssl_context: ssl.SSLContext | None = None
+        self.http_base = f"https://{HOST}:{UI_TLS_PORT}" if SHARED else f"http://{HOST}:{UI_PORT}"
+        self.ws_base = self.http_base.replace("http", "ws", 1)
+        self.mqtt_port = MQTTS_PORT if SHARED else MQTT_PORT
+        self.api = httpx.Client(base_url=f"{self.http_base}/api", timeout=10)
+
+    def trust_ca(self, ca_file: pathlib.Path) -> None:
+        """Verify HTTPS and MQTT over TLS against the stack's own CA (never switch verification off)."""
+        self.ca_file = ca_file
+        self.ssl_context = ssl.create_default_context(cafile=str(ca_file))
+        self.api = httpx.Client(base_url=f"{self.http_base}/api", timeout=10, verify=self.ssl_context)
 
     # --- Docker -----------------------------------------------------------------
 
@@ -52,15 +69,20 @@ class Stack:
         value = self.api.cookies.get("actunode_session")
         return {"Cookie": f"actunode_session={value}"} if value else {}
 
+    def secret_text(self, path: str) -> str:
+        """A generated file from the secrets volume (mosquitto/init-secrets.sh, tls/init-certs.sh)."""
+        return self.compose("run", "--rm", "--no-deps", "--entrypoint", "cat", "mqtt-init", f"/secrets/{path}")
+
     def secret(self, path: str) -> str:
-        """Read a generated credential from the mqtt-secrets volume (see mosquitto/init-secrets.sh)."""
-        output = self.compose("run", "--rm", "--no-deps", "--entrypoint", "cat", "mqtt-init", f"/secrets/{path}")
-        return output.strip().splitlines()[-1]
+        """A one-line credential from the secrets volume."""
+        return self.secret_text(path).strip().splitlines()[-1]
 
     def mqtt_client(self, username: str | None, password: str | None) -> mqtt.Client:
         client = mqtt.Client(callback_api_version=mqtt.CallbackAPIVersion.VERSION2)
         if username:
             client.username_pw_set(username, password)
+        if SHARED:
+            client.tls_set(ca_certs=str(self.ca_file))
         return client
 
     def compose(self, *args: str, timeout: float = 600) -> str:
@@ -172,7 +194,7 @@ class Stack:
             messages.append((time.monotonic(), message.topic, payload, message.retain))
 
         client.on_connect, client.on_subscribe, client.on_message = on_connect, on_subscribe, on_message
-        client.connect(HOST, MQTT_PORT)
+        client.connect(HOST, self.mqtt_port)
         client.loop_start()
         assert ready.wait(10), "MQTT subscription did not complete"
         try:
@@ -209,6 +231,8 @@ def stack(tmp_path_factory):
         "ACTUNODE_API_HOST_PORT": "18000",
         "ACTUNODE_MQTT_HOST_PORT": str(MQTT_PORT),
         "ACTUNODE_MQTT_WS_HOST_PORT": "19001",
+        "ACTUNODE_UI_TLS_HOST_PORT": str(UI_TLS_PORT),
+        "ACTUNODE_MQTTS_HOST_PORT": str(MQTTS_PORT),
         "ACTUNODE_SESSIONS_HOST_DIR": str(sessions_dir),
         "ACTUNODE_UID": str(os.getuid()),
         "ACTUNODE_GID": str(os.getgid()),
@@ -220,6 +244,10 @@ def stack(tmp_path_factory):
     stack = Stack(env, sessions_dir)
     stack.compose("up", "-d", "--build", "--wait", "--wait-timeout", "180")
     try:
+        if SHARED:
+            ca_file = tmp_path_factory.mktemp("tls") / "ca.crt"
+            ca_file.write_text(stack.secret_text("people/ca.crt"))
+            stack.trust_ca(ca_file)
         stack.tools_password = stack.secret("people/tools.password")
         assert stack.login()
         wait_for(stack.all_online, 30, "all robots ONLINE")

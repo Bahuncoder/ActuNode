@@ -319,3 +319,20 @@ backend refuses to start when `ACTUNODE_BIND_ADDRESS` is not a loopback address 
 lab cannot be shared by accident. The UI shows a login screen when needed and a Log out button.
 **Consequences.** Shared mode is authenticated; local mode unchanged (no token to paste). Without TLS the
 token and session cookie still cross the network in clear text: TLS is part C2.
+
+## D-26 · TLS for everything that leaves the computer; plain ports pinned to 127.0.0.1
+11 Oct 2026 · Accepted (issue 12, part C2)
+
+**Context.** With login (D-25) and MQTT logins (D-23), shared use still sent the API token, session
+cookie and MQTT passwords unencrypted across the network.
+**Decision.** One rule: unencrypted ports never leave this computer. Plain HTTP 8080, the direct API
+8000 and plain MQTT 1883/9001 are published on 127.0.0.1 always; HTTPS (nginx, 8443) and MQTT over TLS
+(mosquitto, 8883, TLS ≥ 1.2) follow `ACTUNODE_BIND_ADDRESS`. A `cert-init` step (python:3.12-slim,
+which has openssl; the broker image does not) creates a local CA once (P-256, 10 years) and a server
+certificate (825 days) for localhost, 127.0.0.1, ::1, mosquitto and every name in
+`ACTUNODE_ALLOWED_HOSTS`, renewed when that list changes or within 30 days of expiry. The CA key stays
+in the `secrets` volume; browsers and robots trust the CA certificate (`cert-init show ca`). Session
+cookies are Secure under HTTPS. Inside the Docker network the backend and simulator keep using 1883.
+**Consequences.** Shared mode is encrypted end to end on the network side; verified that plain ports are
+unreachable from the LAN and that clients not trusting the CA are refused. Browsers warn until the CA
+is imported. Issue 12 closed.
