@@ -20,7 +20,7 @@ PARKING_ORIGIN = (1.2, 1.2)
 PARKING_SPACING = (2.2, 2.0)
 MAX_ROBOTS = 50
 
-# Physics step. State is published every --interval and on every mission status change.
+# Physics step. State is published every --interval and on every state event.
 TICK_S = 0.1
 
 
@@ -61,6 +61,20 @@ def _robot_password() -> str | None:
     return Path(path).read_text().strip() if path else None
 
 
+def step(connections, tick: int, ticks_per_publish: int) -> None:
+    """One physics tick for every robot. State goes out periodically and, at most once per tick,
+    on any VDA 5050 state event (see Robot.event_signature)."""
+    periodic = tick % ticks_per_publish == 0
+    for connection in connections:
+        # Update before applying orders, so a fresh ACCEPTED is published
+        # and held for one tick before the robot starts MOVING.
+        before = connection.robot.event_signature()
+        connection.robot.update(TICK_S)
+        connection.apply_pending_messages()
+        if periodic or connection.robot.event_signature() != before:
+            connection.publish_state()
+
+
 def main() -> None:
     args = parse_args()
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
@@ -94,17 +108,7 @@ def main() -> None:
     tick = 0
     next_tick = time.monotonic()
     while running:
-        periodic = tick % ticks_per_publish == 0
-        for connection in connections:
-            # Update before applying orders, so a fresh ACCEPTED is published
-            # and held for one tick before the robot starts MOVING.
-            before = connection.robot.mission_status
-            connection.robot.update(TICK_S)
-            changed = connection.robot.mission_status != before
-            if connection.apply_pending_messages():
-                changed = True
-            if periodic or changed:
-                connection.publish_state()
+        step(connections, tick, ticks_per_publish)
         tick += 1
         next_tick += TICK_S
         time.sleep(max(0.0, next_tick - time.monotonic()))

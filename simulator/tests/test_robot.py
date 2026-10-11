@@ -1,6 +1,9 @@
 import json
+import math
+from pathlib import Path
 
 import pytest
+from jsonschema import Draft202012Validator
 
 from simulator.robot import ACCEPTED, BLOCKED, COMPLETED, IDLE, MOVING, Robot
 from simulator.topics import control_topic, topic
@@ -215,9 +218,9 @@ def test_errors_clear_on_next_accepted_order():
 
 
 def test_battery_never_goes_negative():
-    robot = Robot("robot_01")
+    robot = Robot("robot_01", x=20, y=10)  # outside the charging area
     robot.battery = 0.1
-    robot.accept_order(make_order(points=((100, 0),)))
+    robot.accept_order(make_order(points=((100, 10),)))
 
     for _ in range(100):
         robot.update(0.1)
@@ -314,15 +317,15 @@ def test_control_topic_is_separate_from_vda5050():
 
 
 def test_empty_battery_stops_the_robot_and_fails_the_mission():
-    robot = Robot("robot_01")
+    robot = Robot("robot_01", x=20, y=10)  # outside the charging area
     robot.battery = 0.2  # 1 m of driving left at 0.2 % per metre
-    robot.accept_order(make_order(order_id="order-9", points=((100, 0),)))
+    robot.accept_order(make_order(order_id="order-9", points=((100, 10),)))
 
     for _ in range(50):  # 5 simulated seconds at 1 m/s
         robot.update(0.1)
 
     assert robot.battery == 0
-    assert robot.x == pytest.approx(1.0)
+    assert robot.x == pytest.approx(21.0)
     state = robot.state_message()
     assert state["actunode"]["missionStatus"] == "FAILED"
     assert state["driving"] is False
@@ -424,3 +427,136 @@ def test_stale_order_update_is_rejected():
     assert robot.errors[0]["errorType"] == "orderUpdateError"
     assert robot.order_update_id == 3
     assert robot.mission_status == COMPLETED
+
+
+def charging_flags(robot):
+    """`charging` as reported by the 2.1 and 3.0 state messages."""
+    v3 = Robot(robot.robot_id, vda_major="v3")
+    v3.charging = robot.charging
+    return robot.state_message()["batteryState"]["charging"], v3.state_message()["powerSupply"]["charging"]
+
+
+def test_idle_robot_in_charging_area_charges_until_full():
+    robot = Robot("robot_01", x=1.2, y=1.2)
+    robot.battery = 50
+
+    robot.update(1.0)
+
+    assert robot.battery == 51.0
+    assert charging_flags(robot) == (True, True)
+    robot.battery = 99.5
+    robot.update(1.0)
+    assert robot.battery == 100.0
+    assert charging_flags(robot) == (False, False)
+
+
+def test_charging_state_is_reported_in_v3_power_supply():
+    robot = Robot("robot_01", x=1.2, y=1.2, vda_major="v3")
+    robot.battery = 50
+
+    robot.update(1.0)
+
+    assert robot.state_message()["powerSupply"] == {"stateOfCharge": 51.0, "charging": True}
+
+
+def test_robot_outside_charging_area_does_not_charge():
+    robot = Robot("robot_01", x=30, y=10)
+    robot.battery = 50
+
+    robot.update(1.0)
+
+    assert robot.battery == 50
+    assert robot.charging is False
+
+
+def test_driving_robot_does_not_charge_in_charging_area():
+    robot = Robot("robot_01", x=1, y=1)
+    robot.battery = 50
+    robot.accept_order(make_order(points=((10, 1),)))
+    robot.update(1.0)  # ACCEPTED -> MOVING
+    robot.update(1.0)
+
+    assert robot.battery == pytest.approx(50 - 0.2)
+    assert robot.charging is False
+
+
+def test_completed_robot_in_charging_area_charges():
+    robot = Robot("robot_01")
+    robot.battery = 50
+    robot.accept_order(make_order(points=((3, 0),)))
+    run_until_done(robot)
+    before = robot.battery
+
+    robot.update(1.0)
+
+    assert robot.mission_status == COMPLETED
+    assert robot.battery == pytest.approx(before + 1.0)
+    assert robot.charging is True
+
+
+def test_charging_clears_battery_empty_error_and_robot_takes_orders_again():
+    robot = Robot("robot_01", x=10, y=2)
+    robot.battery = 0.2
+    robot.accept_order(make_order(order_id="order-9", points=((100, 2),)))
+    while robot.mission_status != "FAILED":
+        robot.update(0.1)
+    assert [e["errorType"] for e in robot.errors] == ["batteryEmpty"]
+
+    robot.update(1.0)
+
+    assert robot.battery > 0
+    assert robot.errors == []
+    assert robot.accept_order(make_order(order_id="order-10", points=((11, 2),)))
+
+
+def test_theta_stays_within_pi_after_rounding():
+    for version, key in (("v2", "agvPosition"), ("v3", "mobileRobotPosition")):
+        for theta in (math.pi, -math.pi):
+            robot = Robot("robot_01", vda_major=version)
+            robot.theta = theta
+            assert -math.pi <= robot.state_message()[key]["theta"] <= math.pi
+
+
+def test_zero_distance_order_is_not_reported_as_driving():
+    robot = Robot("robot_01", x=3, y=0)
+    robot.accept_order(make_order(points=((3, 0),)))
+    robot.update(0.1)  # ACCEPTED -> MOVING: status says moving, but the robot has not moved
+
+    state = robot.state_message()
+    assert state["actunode"]["missionStatus"] == "MOVING"
+    assert state["driving"] is False
+    assert state["velocity"]["vx"] == 0.0
+
+
+def test_moving_robot_reports_driving_and_speed():
+    robot = Robot("robot_01")
+    robot.accept_order(make_order(points=((30, 0),)))
+    robot.update(0.1)
+    robot.update(0.1)
+
+    state = robot.state_message()
+    assert state["driving"] is True
+    assert state["velocity"]["vx"] == pytest.approx(1.0)
+
+
+def test_event_signature_changes_on_node_traversal_and_not_while_driving_between_nodes():
+    robot = Robot("robot_01")
+    robot.accept_order(make_order(points=((0.25, 0), (30, 0))))
+    robot.update(0.1)
+    robot.update(0.1)
+    before = robot.event_signature()
+    robot.update(0.1)
+    assert robot.event_signature() == before
+    robot.update(0.1)  # passes N0 at x=0.25
+    assert robot.event_signature() != before
+
+
+@pytest.mark.parametrize("major,version", [("v2", "2.1.0"), ("v3", "3.0.0")])
+def test_factsheet_validates_against_official_schema(major, version):
+    schema_path = Path(__file__).parents[2] / f"backend/app/schemas/vda5050-{version}/factsheet.schema"
+    robot = Robot("robot_01", vda_major=major)
+
+    errors = list(Draft202012Validator(json.loads(schema_path.read_text())).iter_errors(robot.factsheet_message()))
+
+    assert errors == []
+    assert robot.factsheet_message()["headerId"] == 2

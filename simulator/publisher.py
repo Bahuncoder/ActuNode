@@ -27,6 +27,7 @@ class RobotConnection:
         self.port = port
         self.state_topic = topic(MANUFACTURER, robot.robot_id, "state", robot.vda_major)
         self.connection_topic = topic(MANUFACTURER, robot.robot_id, "connection", robot.vda_major)
+        self.factsheet_topic = topic(MANUFACTURER, robot.robot_id, "factsheet", robot.vda_major)
         self.order_topic = topic(MANUFACTURER, robot.robot_id, "order", robot.vda_major)
         self.inject_topic = control_topic(robot.robot_id, "inject")
         self.inbox: queue.Queue[tuple[str, bytes]] = queue.Queue()
@@ -106,8 +107,12 @@ class RobotConnection:
         # VDA 5050 section 6.2: order at QoS 0. The inject topic is ActuNode's own; commands use QoS 1.
         client.subscribe([(self.order_topic, 0), (self.inject_topic, 1)])
         self._publish(self.connection_topic, self.robot.connection_message("ONLINE"), qos=1, retain=True)
-        # Reserve the next headerId and a current timestamp for the will. Any later OFFLINE gets a
-        # higher headerId, and the broker only sends the will after an ungraceful end, so ordering holds.
+        # The factsheet is mandatory: retained (a master that connects later still gets it), QoS 0 like every
+        # topic except connection (2.1 §6.15 and §6.4, 3.0 §6.10).
+        self._publish(self.factsheet_topic, self.robot.factsheet_message(), qos=0, retain=True)
+        # Refresh the will's headerId and timestamp. paho only uses a will_set in the NEXT connect, so the will
+        # active during this session is older than this session's ONLINE; the spec allows that (2.1 section 6.14:
+        # the last will's timestamp and headerId "will always be outdated").
         self._set_will()
 
     def _on_message(self, client, userdata, message):

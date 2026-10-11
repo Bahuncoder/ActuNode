@@ -10,6 +10,11 @@ MAP_ID = "warehouse"
 
 SPEED_M_PER_S = 1.0
 BATTERY_PER_METER = 0.2
+# (x_min, y_min, x_max, y_max) of the warehouse map's charging zone, same as
+# frontend/src/WarehouseMap.tsx and backend/app/warehouse.py.
+CHARGING_AREA = (0.0, 0.0, 12.0, 4.0)
+# % per second; fast so a demo robot is full again within two minutes.
+CHARGE_PER_S = 1.0
 
 # Mission state machine: IDLE -> ACCEPTED -> MOVING -> COMPLETED
 # Failure injection can put a robot on a route into BLOCKED until cleared;
@@ -113,6 +118,9 @@ class Robot:
         self._actions_by_node: dict[str, list[str]] = {}
 
         self.errors: list[dict] = []
+        # Speed over the last update (m/s); 0 at standstill, so `driving` is only true when the robot moved.
+        self._velocity = 0.0
+        self._moved = 0.0
         # VDA 5050: headerId counts up per topic, starting at 1.
         self._header_ids: dict[str, int] = {}
 
@@ -239,6 +247,7 @@ class Robot:
     def stop(self) -> None:
         """Abandon the current mission and stand still."""
         self.mission_status = IDLE
+        self._velocity = 0.0
         self.node_states = []
         self.edge_states = []
         self._drop_errors("pathBlocked")
@@ -289,6 +298,7 @@ class Robot:
             }
         )
         self.mission_status = BLOCKED
+        self._velocity = 0.0
         return True
 
     def clear_blocked_path(self) -> bool:
@@ -305,12 +315,16 @@ class Robot:
 
     def update(self, dt: float) -> None:
         """Advance the simulation by `dt` seconds."""
+        self._moved = 0.0
+        self._velocity = 0.0
         if self.mission_status == ACCEPTED:
             self.mission_status = MOVING
             return
         if self.mission_status != MOVING:
+            self._charge(dt)
             return
 
+        self.charging = False
         # Never drive further than the remaining battery allows.
         budget = min(SPEED_M_PER_S * dt, self.battery / BATTERY_PER_METER)
         while self.node_states and budget > 0:
@@ -333,12 +347,28 @@ class Robot:
             budget -= distance
             self._arrive(node_id)
 
+        self._velocity = self._moved / dt
         if not self.node_states:
             self.mission_status = COMPLETED
             # Rejections of orders sent while busy no longer apply.
             self._drop_errors("orderError")
         elif self.battery <= 0:
             self._fail_battery_empty()
+        if self.mission_status != MOVING:
+            self._velocity = 0.0  # arrived or stopped: standing still
+
+    def _charge(self, dt: float) -> None:
+        x_min, y_min, x_max, y_max = CHARGING_AREA
+        in_area = x_min <= self.x <= x_max and y_min <= self.y <= y_max
+        self.charging = not self.busy and self.battery < 100 and in_area
+        if not self.charging:
+            return
+        self.battery = min(100.0, self.battery + CHARGE_PER_S * dt)
+        self.charging = self.battery < 100  # full: stop reporting charging
+        if self.battery > 0:
+            # The FATAL error means "needs a human"; once charged the robot can work again, and
+            # keeping it would make a fleet manager stop sending orders.
+            self._drop_errors("batteryEmpty")
 
     def _fail_battery_empty(self) -> None:
         next_node = self.node_states[0]["nodeId"]
@@ -370,6 +400,7 @@ class Robot:
                 action["actionStatus"] = "FINISHED"
 
     def _drain(self, meters: float) -> None:
+        self._moved += meters
         remaining = self.battery - meters * BATTERY_PER_METER
         # Snap float residue (e.g. 1e-17) to exactly empty.
         self.battery = remaining if remaining > 1e-9 else 0.0
@@ -393,9 +424,26 @@ class Robot:
             "serialNumber": self.robot_id,
         }
 
+    def event_signature(self) -> tuple:
+        """What VDA 5050 says must trigger a state message when it changes (2.1 section 6.10, 3.0 section 6.6)."""
+        return (
+            self.mission_status,
+            self.last_node_id,
+            self.last_node_sequence_id,
+            len(self.node_states),
+            len(self.edge_states),
+            tuple((action["actionId"], action["actionStatus"]) for action in self.action_states),
+            tuple(error["errorType"] for error in self.errors),
+            self._velocity > 0,
+            self.order_id,
+            self.order_update_id,
+        )
+
     def state_message(self) -> dict:
         """VDA 5050 `state` message in the robot's version. ActuNode-specific fields go under `actunode`."""
-        position = {"x": round(self.x, 3), "y": round(self.y, 3), "theta": round(self.theta, 3), "mapId": MAP_ID}
+        # Rounding can push pi up to 3.142; the spec range is [-pi, pi].
+        theta = max(-math.pi, min(math.pi, round(self.theta, 3)))
+        position = {"x": round(self.x, 3), "y": round(self.y, 3), "theta": theta, "mapId": MAP_ID}
         state = {
             **self.header("state"),
             "orderId": self.order_id,
@@ -404,9 +452,9 @@ class Robot:
             "lastNodeSequenceId": self.last_node_sequence_id,
             "nodeStates": [{**node, "nodePosition": dict(node["nodePosition"])} for node in self.node_states],
             "edgeStates": [dict(edge) for edge in self.edge_states],
-            "driving": self.mission_status == MOVING,
+            "driving": self._velocity > 0,
             "operatingMode": "AUTOMATIC",
-            "velocity": {"vx": SPEED_M_PER_S if self.mission_status == MOVING else 0.0, "vy": 0.0, "omega": 0.0},
+            "velocity": {"vx": round(self._velocity, 3), "vy": 0.0, "omega": 0.0},
             "actionStates": [dict(action) for action in self.action_states],
             "errors": [dict(error) for error in self.errors],
             "actunode": {"missionStatus": self.mission_status},
@@ -422,6 +470,86 @@ class Robot:
             state["batteryState"] = {"batteryCharge": round(self.battery, 1), "charging": self.charging}
             state["safetyState"] = {"eStop": "NONE", "fieldViolation": False}
         return state
+
+    def factsheet_message(self) -> dict:
+        """VDA 5050 `factsheet` in the robot's version. Only what the simulator really does; the schemas
+        require every section below, so numbers it has no model for are nominal and noted."""
+        v3 = self.vda_major == "v3"
+        # Nominal body size and no acceleration model: speed changes instantly, so acceleration is a stand-in.
+        body = {"width": 0.6, "length": 0.8}
+        # pick and drop at nodes; the backend tags the load with an optional loadId.
+        pick_drop = [
+            {
+                "actionType": action_type,
+                "actionScopes": ["NODE"],
+                "actionParameters": [{"key": "loadId", "valueDataType": "STRING", "isOptional": True}],
+                # The 3.0.0 text says boolean, but the official schema types these two as string.
+                **({"pauseAllowed": "false", "cancelAllowed": "false"} if v3 else {}),
+            }
+            for action_type in ("pick", "drop")
+        ]
+        # The simulator handles no instantActions yet, so none are listed.
+        features = {"optionalParameters": [], "mobileRobotActions" if v3 else "agvActions": pick_drop}
+        if v3:
+            return {
+                **self.header("factsheet"),
+                "typeSpecification": {
+                    "seriesName": "ActuNode simulated AMR",
+                    # The schema requires mobileRobotKinematic but only defines mobileRobotKinematics: send both.
+                    "mobileRobotKinematic": "DIFFERENTIAL",
+                    "mobileRobotKinematics": "DIFFERENTIAL",
+                    "mobileRobotClass": "CARRIER",
+                    "maximumLoadMass": 100,  # nominal: the simulator has no mass model, but it does carry loads
+                    "localizationTypes": ["NATURAL"],
+                    "navigationTypes": ["VIRTUAL_LINE_GUIDED"],
+                },
+                "physicalParameters": {
+                    "minimumSpeed": 0.0,
+                    "maximumSpeed": SPEED_M_PER_S,
+                    "maximumAcceleration": 10.0,
+                    "maximumDeceleration": 10.0,
+                    "minimumHeight": 0.3,
+                    "maximumHeight": 0.3,
+                    **body,
+                },
+                "protocolLimits": {
+                    "maximumStringLengths": {},
+                    "maximumArrayLengths": {},
+                    "timing": {"minimumOrderInterval": 0.1, "minimumStateInterval": 0.1},
+                },
+                "protocolFeatures": features,
+                "mobileRobotGeometry": {},
+                "loadSpecification": {},
+            }
+        return {
+            **self.header("factsheet"),
+            "typeSpecification": {
+                "seriesName": "ActuNode simulated AMR",
+                # A point robot that turns to face its heading: the closest allowed kinematics is DIFF.
+                "agvKinematic": "DIFF",
+                "agvClass": "CARRIER",
+                "maxLoadMass": 100,  # nominal: the simulator has no mass model, but it does carry loads
+                "localizationTypes": ["NATURAL"],
+                "navigationTypes": ["VIRTUAL_LINE_GUIDED"],
+            },
+            "physicalParameters": {
+                "speedMin": 0.0,
+                "speedMax": SPEED_M_PER_S,
+                "accelerationMax": 10.0,
+                "decelerationMax": 10.0,
+                "heightMin": 0.3,
+                "heightMax": 0.3,
+                **body,
+            },
+            "protocolLimits": {
+                "maxStringLens": {},
+                "maxArrayLens": {},
+                "timing": {"minOrderInterval": 0.1, "minStateInterval": 0.1},
+            },
+            "protocolFeatures": features,
+            "agvGeometry": {},
+            "loadSpecification": {},
+        }
 
     def connection_message(self, connection_state: str) -> dict:
         """VDA 5050 `connection` message: ONLINE, OFFLINE or CONNECTIONBROKEN (CONNECTION_BROKEN in 3.0)."""

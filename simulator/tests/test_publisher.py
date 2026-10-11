@@ -81,3 +81,29 @@ def test_bad_order_in_inbox_does_not_stop_the_loop():
 
     assert connection.apply_pending_messages() is True
     assert connection.inbox.empty()
+
+
+def test_factsheet_is_published_retained_qos0_after_online():
+    robot = Robot("robot_01")
+    connection = RobotConnection(robot, "127.0.0.1", 1)
+    published = []
+
+    class FakeClient:
+        def subscribe(self, topics):
+            pass
+
+        def publish(self, topic_name, payload, **kwargs):
+            published.append((topic_name, json.loads(payload), kwargs))
+
+        def will_set(self, *args, **kwargs):
+            pass
+
+    connection._client = FakeClient()
+    connection._on_connect(connection._client, None, None, type("RC", (), {"is_failure": False})(), None)
+
+    assert published[0][1]["connectionState"] == "ONLINE"
+    topic_name, message, kwargs = published[1]
+    assert topic_name == "uagv/v2/ActuNode/robot_01/factsheet"
+    assert message["serialNumber"] == "robot_01"
+    assert kwargs["retain"] is True
+    assert kwargs["qos"] == 0
