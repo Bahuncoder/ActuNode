@@ -336,3 +336,21 @@ cookies are Secure under HTTPS. Inside the Docker network the backend and simula
 **Consequences.** Shared mode is encrypted end to end on the network side; verified that plain ports are
 unreachable from the LAN and that clients not trusting the CA are refused. Browsers warn until the CA
 is imported. Issue 12 closed.
+
+## D-27 · A robot is (version, manufacturer, serial number)
+11 Oct 2026 · Accepted (issue 19)
+
+**Context.** VDA 5050 makes serial numbers unique per manufacturer only, and the topic carries version,
+manufacturer and serial. The live hub keyed robots by serial alone, so robots from two vendors with the
+same serial (or one robot heard under v2 and v3) shared one entry: the table, map and near-collision
+check showed whichever spoke last, and two such robots could never be reported as too close.
+**Decision.** The hub keeps one entry per `(major, manufacturer, serial)`, with a `key` field
+`"<major>/<manufacturer>/<serial>"` (e.g. `v2/ActuNode/robot_01`); `robotId` stays the serial. Proximity
+pairs (`GET /api/proximity`, WebSocket, snapshot) name robots by key. Lookups that only have a serial
+(failure injection, the "robot is live" check before replay, the mission warning) use every entry with
+that serial. The per-robot `identities` list is gone: the UI derives it from the entries sharing a
+serial, and routing is unchanged: orders go only where the request says (D-21). The 1,000-robot cap
+now also bounds the identities a publisher can create.
+**Consequences.** Mixed fleets with colliding serials show as separate rows (with manufacturer and
+version when serials collide) and markers. Breaking change for API clients reading proximity pairs or
+`identities`. Broker logins are still per serial (issue 20).

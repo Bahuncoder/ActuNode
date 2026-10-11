@@ -31,6 +31,26 @@ def test_hub_tracks_latest_state_and_connection_per_robot():
     assert robot["state"]["actunode"]["missionStatus"] == "MOVING"
 
 
+def test_same_serial_under_another_manufacturer_or_version_is_another_robot():
+    """Serial numbers are unique per manufacturer only (issue 19)."""
+    live = LiveHub()
+
+    live.handle_mqtt("uagv/v2/VendorA/robot_01/state", state("robot_01", "MOVING", x=1.0))
+    live.handle_mqtt("uagv/v2/VendorB/robot_01/state", state("robot_01", "IDLE", x=5.0))
+    live.handle_mqtt("uagv/v3/VendorA/robot_01/state", state("robot_01", "IDLE", x=9.0))
+
+    robots = live.snapshot()["robots"]
+    assert [r["key"] for r in robots] == ["v2/VendorA/robot_01", "v2/VendorB/robot_01", "v3/VendorA/robot_01"]
+    assert {r["robotId"] for r in robots} == {"robot_01"}
+    by_key = {r["key"]: r for r in robots}
+    assert by_key["v2/VendorA/robot_01"]["state"]["actunode"]["missionStatus"] == "MOVING"
+    assert by_key["v2/VendorB/robot_01"]["state"]["agvPosition"]["x"] == 5.0
+    assert by_key["v3/VendorA/robot_01"]["vdaMajor"] == "v3"
+    # Lookups by serial: every entry, most recently heard first.
+    assert [r["key"] for r in live.robots_for("robot_01")][0] == "v3/VendorA/robot_01"
+    assert live.robot("robot_01")["key"] == "v3/VendorA/robot_01"
+
+
 def test_hub_keeps_invalid_json_in_the_log_without_touching_robots():
     live = LiveHub()
 

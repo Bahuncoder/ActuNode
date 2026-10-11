@@ -33,7 +33,12 @@ export default function WarehouseMap({
   proximity?: ProximityPair[]
 }) {
   const near = new Set(proximity.flatMap((pair) => pair.robots))
-  const poses = new Map(robots.map((robot) => [robot.robotId, robotPose(robot)]))
+  const poses = new Map(robots.map((robot) => [robot.key, robotPose(robot)]))
+  // Pairs carry robot keys; show the plain serial unless another robot shares it.
+  const label = (key: string) => {
+    const robot = robots.find((candidate) => candidate.key === key)
+    return robot && robots.filter((other) => other.robotId === robot.robotId).length === 1 ? robot.robotId : key
+  }
   return (
     <svg
       className="warehouse-map"
@@ -78,19 +83,19 @@ export default function WarehouseMap({
       ))}
 
       {robots.map((robot) => (
-        <RobotRoute key={`route-${robot.robotId}`} robot={robot} />
+        <RobotRoute key={`route-${robot.key}`} robot={robot} />
       ))}
       {proximity.map((pair) => {
-        const [a, b] = pair.robots.map((id) => poses.get(id))
+        const [a, b] = pair.robots.map((key) => poses.get(key))
         if (!a || !b) return null
         return (
           <line key={pair.robots.join('-')} className="proximity" x1={px(a.x)} y1={py(a.y)} x2={px(b.x)} y2={py(b.y)}>
-            <title>{`${pair.robots.join(' and ')}: ${pair.distance} m apart`}</title>
+            <title>{`${pair.robots.map(label).join(' and ')}: ${pair.distance} m apart`}</title>
           </line>
         )
       })}
       {robots.map((robot) => (
-        <RobotMarker key={robot.robotId} robot={robot} near={near.has(robot.robotId)} />
+        <RobotMarker key={robot.key} robot={robot} near={near.has(robot.key)} />
       ))}
     </svg>
   )

@@ -16,7 +16,14 @@ export default function FailurePanel({ robots, failures }: { robots: Robot[]; fa
   // Default to a robot that is actually on a route, since that is what can be blocked.
   const onRoute = robots.find((robot) => ['ACCEPTED', 'MOVING'].includes(missionStatus(robot)))
   const robotId = chosen || onRoute?.robotId || robots[0]?.robotId || ''
-  const robot = robots.find((candidate) => candidate.robotId === robotId)
+  // Failures address the simulator by serial: one entry per serial, showing its most recently seen robot.
+  const bySerial = new Map<string, Robot>()
+  for (const candidate of robots) {
+    const seen = bySerial.get(candidate.robotId)
+    if (!seen || (candidate.lastSeen ?? '') > (seen.lastSeen ?? '')) bySerial.set(candidate.robotId, candidate)
+  }
+  const serials = [...bySerial.values()]
+  const robot = bySerial.get(robotId)
   const status = robot ? missionStatus(robot) : '—'
 
   async function run(action: 'inject' | 'clear') {
@@ -40,7 +47,7 @@ export default function FailurePanel({ robots, failures }: { robots: Robot[]; fa
         <label>
           Robot
           <select value={robotId} onChange={(e) => setChosen(e.target.value)} disabled={robots.length === 0}>
-            {robots.map((candidate) => (
+            {serials.map((candidate) => (
               <option key={candidate.robotId} value={candidate.robotId}>
                 {candidate.robotId} · {missionStatus(candidate)}
               </option>

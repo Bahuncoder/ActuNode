@@ -63,8 +63,9 @@ VDA 5050 layout: `interfaceName/majorVersion/manufacturer/serialNumber/topic`, e
 validator picks the official schema set by the topic, and replay restores each robot on its own topic.
 Orders go exactly where the mission request says (`manufacturer`, `vda_version`) or to the configured
 default (`ActuNode`, `ACTUNODE_VDA_MAJOR_VERSION`); they are **never routed from observed traffic**
-(D-21). Observed identities (at most 8 per robot, 1,000 robots) are shown in the UI and produce a
-`warning` in the mission response when they do not match.
+(D-21). The live hub tracks one robot per `(major, manufacturer, serial)`, keyed
+`v2/ActuNode/robot_01` (D-27, at most 1,000); the identities a serial was seen under are shown in the UI
+and produce a `warning` in the mission response when they do not match.
 
 | Topic | Publisher | Subscriber | QoS | Retained | Content |
 |---|---|---|---|---|---|
@@ -139,7 +140,7 @@ WebSocket client's queue → `send_json`.
 | GET | `/api/locations` | Named warehouse locations |
 | POST | `/api/missions` | Send a mission (robot, source, destination, load; optional `manufacturer`, `vda_version`) |
 | GET | `/api/robots` | Latest connection + state per robot |
-| GET | `/api/proximity` | Pairs of live robots currently closer than `ACTUNODE_PROXIMITY_M` (D-22) |
+| GET | `/api/proximity` | Pairs of live robots (by key, e.g. `v2/ActuNode/robot_01`) currently closer than `ACTUNODE_PROXIMITY_M` (D-22, D-27) |
 | GET | `/api/messages` | Recent MQTT messages with validation issues |
 | GET / POST | `/api/failures` | Failure log / inject or clear `BLOCKED_PATH` |
 | GET | `/api/validation` | Validation counters per rule |

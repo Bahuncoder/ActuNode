@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import {
   batteryCharge,
+  identitiesOf,
   missionStatus,
   num,
   point,
@@ -32,7 +33,7 @@ function message(id: number, issues: MqttMessage['issues'] = []): MqttMessage {
 
 // Robot data arrives from any MQTT client, so build deliberately wrong shapes.
 function robotWith(state: unknown): Robot {
-  return { robotId: 'r1', connection: 'ONLINE', state: state as Robot['state'], lastSeen: null }
+  return { key: 'v2/ActuNode/r1', robotId: 'r1', connection: 'ONLINE', state: state as Robot['state'], lastSeen: null }
 }
 
 describe('defensive readers for robot data', () => {
@@ -140,6 +141,27 @@ describe('VDA 5050 3.0 robots', () => {
     const bare = robotWith({ version: '3.0.0' })
     expect(robotPose(bare)).toBeUndefined()
     expect(batteryCharge(bare)).toBeUndefined()
+  })
+})
+
+describe('robots per (version, manufacturer, serial)', () => {
+  const a: Robot = { ...robotWith(null), key: 'v2/VendorA/r1', vdaMajor: 'v2', manufacturer: 'VendorA', lastSeen: '2026-10-10T12:00:00Z' }
+  const b: Robot = { ...robotWith(null), key: 'v3/VendorB/r1', vdaMajor: 'v3', manufacturer: 'VendorB', lastSeen: '2026-10-10T12:00:09Z' }
+
+  it('keeps both entries when two manufacturers share a serial', () => {
+    const feed = reducer(empty, {
+      type: 'event',
+      event: { ...empty, type: 'snapshot', robots: [a, b], messages: [], validation: empty.validation! },
+    })
+
+    expect(Object.keys(feed.robots)).toEqual(['v2/VendorA/r1', 'v3/VendorB/r1'])
+  })
+
+  it('lists identities most recent first, unseen last', () => {
+    const never: Robot = { ...a, key: 'v2/VendorC/r1', manufacturer: 'VendorC', lastSeen: null }
+    const other: Robot = { ...a, key: 'v2/VendorA/r2', robotId: 'r2' }
+
+    expect(identitiesOf([never, a, other, b], 'r1').map((i) => i.manufacturer)).toEqual(['VendorB', 'VendorA', 'VendorC'])
   })
 })
 

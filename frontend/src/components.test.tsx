@@ -8,6 +8,7 @@ afterEach(cleanup)
 
 // Regression: a state with batteryCharge as a string once blanked the whole UI (D-9).
 const malformed: Robot = {
+  key: 'v2/ActuNode/amr_7',
   robotId: 'amr_7',
   connection: 'ONLINE',
   lastSeen: null,
@@ -21,6 +22,7 @@ const malformed: Robot = {
 }
 
 const healthy: Robot = {
+  key: 'v2/ActuNode/robot_01',
   robotId: 'robot_01',
   connection: 'ONLINE',
   lastSeen: null,
@@ -48,6 +50,8 @@ describe('RobotTable', () => {
 })
 
 const v3robot: Robot = {
+  key: 'v3/ActuNode/robot_31',
+  manufacturer: 'ActuNode',
   robotId: 'robot_31',
   connection: 'ONLINE',
   lastSeen: null,
@@ -67,9 +71,9 @@ const v3robot: Robot = {
 
 describe('WarehouseMap near-misses', () => {
   it('highlights robots that are too close and joins them with a line', () => {
-    const close: Robot = { ...v3robot, robotId: 'robot_02', state: { ...v3robot.state!, mobileRobotPosition: { x: 1.5, y: 2, theta: 0 } } }
+    const close: Robot = { ...v3robot, key: 'v3/ActuNode/robot_02', robotId: 'robot_02', state: { ...v3robot.state!, mobileRobotPosition: { x: 1.5, y: 2, theta: 0 } } }
     const { container } = render(
-      <WarehouseMap robots={[healthy, close]} locations={{}} proximity={[{ robots: ['robot_01', 'robot_02'], distance: 0.25 }]} />,
+      <WarehouseMap robots={[healthy, close]} locations={{}} proximity={[{ robots: ['v2/ActuNode/robot_01', 'v3/ActuNode/robot_02'], distance: 0.25 }]} />,
     )
 
     expect(container.querySelectorAll('g.robot.near')).toHaveLength(2)
@@ -119,9 +123,7 @@ describe('MissionSender target', () => {
   }
 
   it('preselects nothing: observed identities are a choice, not a default (D-21)', async () => {
-    const one: Robot = { ...v3robot, identities: [{ vdaMajor: 'v3', manufacturer: 'ActuNode', lastSeen: 'x' }] }
-
-    const body = await sentBody(one, null)
+    const body = await sentBody(v3robot, null)
 
     expect(body.manufacturer).toBeUndefined()
     expect(body.vda_version).toBeUndefined()
@@ -129,20 +131,39 @@ describe('MissionSender target', () => {
   })
 
   it('sends exactly the identity that was chosen', async () => {
-    const one: Robot = { ...v3robot, identities: [{ vdaMajor: 'v3', manufacturer: 'ActuNode', lastSeen: 'x' }] }
-
-    const body = await sentBody(one, '0')
+    const body = await sentBody(v3robot, '0')
 
     expect(body).toMatchObject({ manufacturer: 'ActuNode', vda_version: '3' })
   })
 
   it('cannot be tricked by a manufacturer name containing the old separator', async () => {
-    const tricky: Robot = { ...v3robot, identities: [{ vdaMajor: 'v2', manufacturer: 'Evil|v3', lastSeen: 'x' }] }
+    const tricky: Robot = { ...v3robot, key: 'v2/Evil|v3/robot_31', vdaMajor: 'v2', manufacturer: 'Evil|v3' }
     const { default: MissionSender } = await import('./MissionSender')
     render(<MissionSender robots={[tricky]} locations={locations} />)
 
     const option = screen.getByRole('option', { name: /Evil\|v3/ }) as HTMLOptionElement
     expect(option.disabled).toBe(true)
+  })
+})
+
+describe('robots sharing a serial', () => {
+  const vendorA: Robot = { ...healthy, key: 'v2/VendorA/robot_01', vdaMajor: 'v2', manufacturer: 'VendorA', lastSeen: '2026-10-10T12:00:00Z' }
+  const vendorB: Robot = { ...healthy, key: 'v2/VendorB/robot_01', vdaMajor: 'v2', manufacturer: 'VendorB', lastSeen: '2026-10-10T12:00:05Z' }
+
+  it('tells them apart in the table, and only then', () => {
+    const { rerender } = render(<RobotTable robots={[vendorA, vendorB]} />)
+    expect(screen.getByText(/VendorA v2/)).toBeTruthy()
+    expect(screen.getByText(/VendorB v2/)).toBeTruthy()
+
+    rerender(<RobotTable robots={[vendorA]} />)
+    expect(screen.queryByText(/VendorA/)).toBeNull()
+  })
+
+  it('are listed once in the failure injection select', async () => {
+    const { default: FailurePanel } = await import('./FailurePanel')
+    render(<FailurePanel robots={[vendorA, vendorB]} failures={[]} />)
+
+    expect(screen.getAllByRole('option')).toHaveLength(1)
   })
 })
 

@@ -1,6 +1,6 @@
 import { useState, type FormEvent } from 'react'
 import { sendMission, type Location } from './api'
-import type { Robot } from './live'
+import { identitiesOf, type Robot } from './live'
 
 // Used until the live feed has seen any robots.
 const DEFAULT_ROBOTS = ['robot_01', 'robot_02', 'robot_03']
@@ -28,7 +28,7 @@ export default function MissionSender({
   robots: Robot[]
   locations: Record<string, Location>
 }) {
-  const robotChoices = robots.length > 0 ? robots.map((robot) => robot.robotId) : DEFAULT_ROBOTS
+  const robotChoices = robots.length > 0 ? [...new Set(robots.map((robot) => robot.robotId))] : DEFAULT_ROBOTS
   const [chosenRobot, setChosenRobot] = useState(DEFAULT_ROBOTS[0])
   // What the select shows is what gets sent: fall back to the first listed robot if the chosen one is gone.
   const robotId = robotChoices.includes(chosenRobot) ? chosenRobot : robotChoices[0]
@@ -43,7 +43,7 @@ export default function MissionSender({
 
   // Observed identities are offered so a person picks where the order goes. Nothing is preselected:
   // they come from anonymous traffic and may be spoofed (D-21).
-  const identities = robots.find((robot) => robot.robotId === robotId)?.identities ?? []
+  const identities = identitiesOf(robots, robotId)
   const targetIndex = chosenTarget
     ? identities.findIndex((i) => i.manufacturer === chosenTarget.manufacturer && i.vdaMajor === chosenTarget.vdaMajor)
     : -1

@@ -32,14 +32,25 @@ export type RobotState = {
 }
 
 export type Robot = {
+  // "v2/ActuNode/robot_01": one robot is one (vdaMajor, manufacturer, serial); robotId is the serial.
+  key: string
   robotId: string
   connection: string | null
   state: RobotState | null
   lastSeen: string | null
   vdaMajor?: string
   manufacturer?: string
-  // Observed (version, manufacturer) pairs, most recent first. Advice only: anyone can publish as a robot.
-  identities?: { vdaMajor: string; manufacturer: string; lastSeen: string }[]
+}
+
+/** Every (version, manufacturer) seen for a serial, most recent first. Display and advice only, never routing (D-21). */
+export function identitiesOf(
+  robots: Robot[],
+  robotId: string,
+): { vdaMajor: string; manufacturer: string; lastSeen: string }[] {
+  return robots
+    .filter((robot) => robot.robotId === robotId && robot.vdaMajor && robot.manufacturer)
+    .sort((a, b) => (b.lastSeen ?? '').localeCompare(a.lastSeen ?? ''))
+    .map((robot) => ({ vdaMajor: robot.vdaMajor!, manufacturer: robot.manufacturer!, lastSeen: robot.lastSeen ?? '' }))
 }
 
 export type Issue = {
@@ -158,7 +169,7 @@ function applyEvent(feed: Feed, event: LiveEvent): Feed {
   if (event.type === 'snapshot') {
     return {
       ...feed,
-      robots: Object.fromEntries(event.robots.map((robot) => [robot.robotId, robot])),
+      robots: Object.fromEntries(event.robots.map((robot) => [robot.key, robot])),
       messages: event.messages,
       failures: event.failures,
       recording: event.recording,
@@ -193,7 +204,7 @@ function applyEvent(feed: Feed, event: LiveEvent): Feed {
   const lastId = feed.messages.at(-1)?.id ?? 0
   if (event.message.id <= lastId) return feed
 
-  const robots = event.robot ? { ...feed.robots, [event.robot.robotId]: event.robot } : feed.robots
+  const robots = event.robot ? { ...feed.robots, [event.robot.key]: event.robot } : feed.robots
   return {
     ...feed,
     robots,

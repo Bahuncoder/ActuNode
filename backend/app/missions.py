@@ -73,7 +73,7 @@ def _address(mission: MissionRequest) -> tuple[str, str]:
 
 def _identity_warning(robot_id: str, major: str, manufacturer: str) -> str | None:
     """Advice only: say so if the robot has been seen, but never under the identity the order uses."""
-    seen = (hub.robot(robot_id) or {}).get("identities", [])
+    seen = hub.robots_for(robot_id)
     if not seen or any(i["vdaMajor"] == major and i["manufacturer"] == manufacturer for i in seen):
         return None
     options = ", ".join(f"{i['manufacturer']} {i['vdaMajor']}" for i in seen)

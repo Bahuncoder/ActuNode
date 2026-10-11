@@ -93,7 +93,8 @@ def test_two_robots_at_the_same_spot_raise_a_near_collision_warning(stack):
     stack.run_mission("robot_02", "CHARGING")
 
     pairs = wait_for(lambda: stack.api.get("/proximity").json(), 5, "an active near-miss pair")
-    assert ["robot_01", "robot_02"] in [pair["robots"] for pair in pairs]
+    # Pairs name robots by key "<major>/<manufacturer>/<serial>" (issue 19).
+    assert [f"v{VDA}/ActuNode/robot_01", f"v{VDA}/ActuNode/robot_02"] in [pair["robots"] for pair in pairs]
     rules = {rule["rule"]: rule for rule in stack.api.get("/validation").json()["byRule"]}
     assert rules["proximity"]["severity"] == "warning"
     assert "robot_0" in rules["proximity"]["last"]["message"]

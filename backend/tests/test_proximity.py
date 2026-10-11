@@ -74,7 +74,15 @@ def test_hub_attaches_the_warning_counts_it_and_reports_active_pairs():
     last = hub.snapshot()["messages"][-1]
     assert "proximity" in [issue["rule"] for issue in last["issues"]]
     assert any(rule["rule"] == "proximity" for rule in hub.validation()["byRule"])
-    assert hub.snapshot()["proximity"] == [{"robots": ["r1", "r2"], "distance": 0.5}]
+    assert hub.snapshot()["proximity"] == [{"robots": ["v2/ActuNode/r1", "v2/ActuNode/r2"], "distance": 0.5}]
+
+
+def test_same_serial_from_two_manufacturers_is_two_robots_that_can_collide():
+    hub = LiveHub()
+    for manufacturer, x in (("VendorA", 0.0), ("VendorB", 0.5)):
+        hub.handle_mqtt(f"uagv/v2/{manufacturer}/r1/state", json.dumps(state(x, 0)).encode())
+
+    assert hub.snapshot()["proximity"] == [{"robots": ["v2/VendorA/r1", "v2/VendorB/r1"], "distance": 0.5}]
 
 
 def test_disconnect_removes_the_robot_from_proximity():

@@ -14,7 +14,7 @@ the status line, the schedule table, the session log, and the open issues.
 |---|---|
 | **Calendar** | Week 1 of 8 (Fri 9 Oct – Thu 15 Oct 2026) |
 | **Last updated** | Sun 11 Oct 2026 |
-| **Status** | Ahead on features; spare time goes into hardening (D-11). End-to-end tests run in CI for VDA 5050 2.1 and 3.0 and for the shared (login + TLS) mode. Open: issues 6 and 19. |
+| **Status** | Ahead on features; spare time goes into hardening (D-11). End-to-end tests run in CI for VDA 5050 2.1 and 3.0 and for the shared (login + TLS) mode. Open: issues 6 and 20. |
 | **Working rule** | Follow the calendar. Being ahead is not a reason to start the next week's features: spare time goes into hardening, verification, documentation and user conversations. |
 
 ## Schedule
@@ -109,10 +109,10 @@ exercised by hand with a real browser and MQTT traffic.
 
 | Area | How it was verified | Gaps |
 |---|---|---|
-| Backend API | 137 unit/API tests (pytest), run in CI, including a shutdown test under a real uvicorn server | |
+| Backend API | 139 unit/API tests (pytest), run in CI, including a shutdown test under a real uvicorn server | |
 | Simulator | 43 tests (pytest, incl. conformance against the official 2.1.0 and 3.0.0 schemas), run in CI | |
 | Python style | `ruff check` + `ruff format --check` in CI (backend, simulator) | |
-| Frontend | Type check, lint, 24 unit/component tests (`npm test`, incl. malformed robot data, both VDA versions, login) and production build, in CI | No real-browser tests (issue 6) |
+| Frontend | Type check, lint, 28 unit/component tests (`npm test`, incl. malformed robot data, both VDA versions, login) and production build, in CI | No real-browser tests (issue 6) |
 | MQTT flow | Automated against Mosquitto in Docker (`tests/e2e`) | |
 | Shutdown | Automated in `tests/e2e` (broker first, then backend; recording gets its end line) and `backend/tests/test_shutdown.py` | |
 | Docker stack, end to end | **Automated** (`tests/e2e`, 18 tests, in CI for VDA 2.1, 3.0 and 2.1 with login): health, state every second, mission state machine, BLOCKED_PATH, near-collision warning, validation clean, record/replay, last will on kill, broker restart recovery, shutdown with open recording | No frontend/browser tests (issue 6) |
@@ -121,20 +121,38 @@ exercised by hand with a real browser and MQTT traffic.
 | Validator | Official VDA 5050 2.1.0 schemas (D-20); real and generated messages in every mission state pass them; planted bad messages flagged; e2e: all live traffic clean. 3.0.0 schemas on `v3` topics (D-15), tested with valid 3.0 messages and 2.1 messages on a `v3` topic | No offline validation of session files |
 | 10 robots, 6 concurrent missions | E2E screenshot | No load test |
 | Security (D-18, D-23–D-26) | E2E: MQTT logins and ACL (spoofing refused), Host/Origin checks, nothing works without a session in login mode, plain ports unreachable from the LAN, TLS refuses clients that do not trust the CA | |
-| Near-collisions (D-22) | 7 unit tests (incl. 3.0 positions, offline robots); e2e: two robots at the same spot raise one warning | |
+| Near-collisions (D-22) | 8 unit tests (incl. 3.0 positions, offline robots, two robots sharing a serial); e2e: two robots at the same spot raise one warning | |
 
 ## Open issues and technical debt
 
-Numbered so they can be referenced from commits. Remove an item only when it is fixed and verified; numbers are never reused (fixed: 1, 2, 3, 4, 5, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18).
+Numbered so they can be referenced from commits. Remove an item only when it is fixed and verified; numbers are never reused (fixed: 1, 2, 3, 4, 5, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19).
 
 | # | Issue | Impact | Plan |
 |---|---|---|---|
 | 6 | No real-browser tests (component and logic tests exist since D-19, but run in jsdom, not a browser) | Browser-only issues (layout, WebSocket in a real browser) are caught by hand | Add Playwright tests against the e2e stack |
-| 19 | The live robot list is keyed by serial number only: robots with the same serial under different manufacturers or versions share one entry in the UI | Confusing display in mixed fleets with colliding serials (missions are safe since the ambiguity check) | Key robots by (version, manufacturer, serial) in hub and UI |
+| 20 | Broker logins are per serial number (username = serial, ACL `uagv/+/+/%u/...`): two robots from different manufacturers with the same serial cannot both get a login, and one robot's login may publish under any manufacturer or version | Mixed fleets with colliding serials cannot all connect in login mode; the hub (D-27) is ready for them, the broker is not | Decide a login name scheme that includes the manufacturer (e.g. `manufacturer.serial`) and update `add-robot`, ACL and docs |
 
 ## Session log
 
 Newest first. One entry per work session: what was done, what was learned, what is next.
+
+### Sun 11 Oct 2026 (later): issue 19, robots keyed by (version, manufacturer, serial)
+
+- **#19 closed (D-27).** The live hub now keeps one robot per `(major, manufacturer, serial)` with a
+  `key` like `v2/ActuNode/robot_01`; `robotId` stays the serial. Proximity pairs use keys (before, two
+  robots sharing a serial could never be reported as too close: they were one entry). Serial-only
+  lookups (failure injection, live check before replay, mission warning) now see every entry with that
+  serial; the `identities` list is gone and the UI derives it. UI: rows, markers and map keyed by `key`;
+  the table shows manufacturer and version only when serials collide; the Robot selects list each
+  serial once. D-21 routing unchanged (test: a serial seen as VendorA v2 and VendorB v3 still gets its
+  order on the default topic, with a warning naming both).
+- Tests first for the hub: same serial under two manufacturers and two versions gives three robots;
+  proximity across a shared serial. Backend 139, frontend 28. E2E 15/15 (+3 login-only skipped) for 2.1
+  and 3.0; the e2e run caught that `GET /api/proximity` changed shape (now keys), so the test and the
+  changelog say so.
+- **New issue 20:** broker logins are still per serial (`%u` in the ACL), so colliding serials cannot
+  all log in. Needs a decision on the login name scheme, not a quick patch.
+- Next: issue 6 (real-browser tests) or issue 20; Week 1 still has customer outreach open.
 
 ### Sun 11 Oct 2026: open issues one by one (12, 17, 15, 3)
 

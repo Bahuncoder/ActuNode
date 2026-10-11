@@ -28,8 +28,13 @@ export default function RobotTable({ robots }: { robots: Robot[] }) {
             const pose = robotPose(robot)
             const errors = robotErrors(robot)
             return (
-              <tr key={robot.robotId}>
-                <td className="mono">{robot.robotId}</td>
+              <tr key={robot.key}>
+                <td className="mono">
+                  {robot.robotId}
+                  {robots.some((other) => other !== robot && other.robotId === robot.robotId) && (
+                    <span className="muted">{` · ${robot.manufacturer ?? '—'} ${robot.vdaMajor ?? ''}`}</span>
+                  )}
+                </td>
                 <td>
                   <span className={`badge ${isOnline(robot) ? 'ok' : 'down'}`}>{robot.connection ?? '—'}</span>
                 </td>

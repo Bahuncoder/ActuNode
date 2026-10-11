@@ -20,12 +20,16 @@ from app.validator import RULES, Validator
 log = logging.getLogger(__name__)
 
 MESSAGE_BUFFER = 500
-MAX_IDENTITIES = 8
 # Far above any real fleet; stops a flood of fake serial numbers from growing memory and the snapshot.
 MAX_ROBOTS = 1000
 FAILURE_BUFFER = 200
 SNAPSHOT_MESSAGES = 200
 CLIENT_QUEUE = 1000
+
+
+def robot_key(parts: vda5050.TopicParts) -> str:
+    """Identity of one robot: "<major>/<manufacturer>/<serial>", e.g. "v2/ActuNode/robot_01"."""
+    return f"{parts.major}/{parts.manufacturer}/{parts.serial_number}"
 
 
 def _now() -> str:
@@ -101,41 +105,41 @@ class LiveHub:
         if parts is None or not isinstance(body, dict):
             return []
         if parts.name == "state":
-            return self._proximity.observe(parts.serial_number, body)
+            return self._proximity.observe(robot_key(parts), body)
         if parts.name == "connection" and body.get("connectionState") != "ONLINE":
-            self._proximity.forget(parts.serial_number)
+            self._proximity.forget(robot_key(parts))
         return []
 
     def _update_robot(self, topic: str, body, received_at: str) -> dict | None:
         parsed = vda5050.topic_parts(topic)
         if parsed is None or not isinstance(body, dict):
             return None
-        serial_number, name = parsed.serial_number, parsed.name
+        # A robot is (version, manufacturer, serial): VDA 5050 serial numbers are unique per manufacturer
+        # only, so the same serial under another manufacturer or version is another robot (issue 19).
+        key = robot_key(parsed)
         # _robots is kept in order of the last message (dicts keep insertion order): re-insert on every
         # message, so the first key is always the robot heard from longest ago. O(1), no timestamp ties.
-        if serial_number in self._robots:
-            self._robots[serial_number] = self._robots.pop(serial_number)
+        if key in self._robots:
+            self._robots[key] = self._robots.pop(key)
         elif len(self._robots) >= MAX_ROBOTS:
             del self._robots[next(iter(self._robots))]
         robot = self._robots.setdefault(
-            serial_number,
-            {"robotId": serial_number, "connection": None, "state": None, "lastSeen": None, "lastStateAt": None},
+            key,
+            {
+                "key": key,
+                "robotId": parsed.serial_number,
+                "vdaMajor": parsed.major,
+                "manufacturer": parsed.manufacturer,
+                "connection": None,
+                "state": None,
+                "lastSeen": None,
+                "lastStateAt": None,
+            },
         )
-        robot["vdaMajor"] = parsed.major
-        robot["manufacturer"] = parsed.manufacturer
-        # The (version, manufacturer) pairs this serial number has used, most recent first. Display and
-        # advice only: never used to route commands (D-21). Capped so a publisher cannot grow it.
-        identities = [
-            i
-            for i in robot.get("identities", [])
-            if (i["vdaMajor"], i["manufacturer"]) != (parsed.major, parsed.manufacturer)
-        ]
-        identities.insert(0, {"vdaMajor": parsed.major, "manufacturer": parsed.manufacturer, "lastSeen": received_at})
-        robot["identities"] = identities[:MAX_IDENTITIES]
-        if name == "state":
+        if parsed.name == "state":
             robot["state"] = body
             robot["lastStateAt"] = received_at
-        elif name == "connection":
+        elif parsed.name == "connection":
             robot["connection"] = body.get("connectionState")
         else:
             return None
@@ -178,17 +182,23 @@ class LiveHub:
 
     # --- Reads ---------------------------------------------------------------
 
-    def robot(self, robot_id: str) -> dict | None:
+    def robots_for(self, serial_number: str) -> list[dict]:
+        """Every robot with this serial number (one per version and manufacturer), most recently heard
+        first. Display and advice only: never used to route commands (D-21)."""
         with self._lock:
-            robot = self._robots.get(robot_id)
-            return dict(robot) if robot else None
+            return [dict(r) for r in reversed(self._robots.values()) if r["robotId"] == serial_number]
+
+    def robot(self, serial_number: str) -> dict | None:
+        """The most recently heard robot with this serial number, or None."""
+        found = self.robots_for(serial_number)
+        return found[0] if found else None
 
     def snapshot(self) -> dict:
         validation = self.validation()
         with self._lock:
             return {
                 "validation": validation,
-                "robots": sorted((dict(r) for r in self._robots.values()), key=lambda r: r["robotId"]),
+                "robots": sorted((dict(r) for r in self._robots.values()), key=lambda r: (r["robotId"], r["key"])),
                 "messages": list(self._messages)[-SNAPSHOT_MESSAGES:],
                 "failures": list(self._failures),
                 "proximity": self._proximity.active_pairs(),

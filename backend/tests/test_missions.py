@@ -175,14 +175,12 @@ def test_explicit_manufacturer_cannot_inject_topic_levels(client, published, man
     assert published == []
 
 
-def test_identities_per_robot_are_capped():
-    """Observed identities are display-only now, but still bounded."""
-    from app.live import MAX_IDENTITIES, LiveHub
+def test_warning_lists_every_identity_the_serial_was_seen_under(client, published):
+    _seen("uagv/v2/VendorA/robot_dup/state", {"serialNumber": "robot_dup"})
+    _seen("uagv/v3/VendorB/robot_dup/state", {"serialNumber": "robot_dup"})
 
-    live = LiveHub()
-    for i in range(50):
-        live.handle_mqtt(f"uagv/v2/Vendor{i}/robot_cap/state", b'{"serialNumber": "robot_cap"}')
+    response = client.post("/api/missions", json={**P1042, "robot_id": "robot_dup"})
 
-    identities = live.robot("robot_cap")["identities"]
-    assert len(identities) == MAX_IDENTITIES
-    assert identities[0]["manufacturer"] == "Vendor49"
+    [(topic, _)] = published
+    assert topic == "uagv/v2/ActuNode/robot_dup/order"  # still the default: observations never route (D-21)
+    assert "VendorB v3" in response.json()["warning"] and "VendorA v2" in response.json()["warning"]

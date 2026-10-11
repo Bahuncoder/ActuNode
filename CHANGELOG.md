@@ -29,6 +29,10 @@ What changed, per commit, newest first. Status and plans are in [docs/PROGRESS.m
 - [docs/PLAN.md](docs/PLAN.md) is now the plan reference with calendar dates; status moved to PROGRESS.md.
 
 ### Changed
+- A robot is now `(version, manufacturer, serial)`: robots with the same serial from different
+  manufacturers or versions get their own row, marker and near-collision check. Robot entries carry a
+  `key` (`v2/ActuNode/robot_01`); **proximity pairs name robots by key**; the per-robot `identities`
+  list is removed (D-27, #19).
 - API docs moved to `/api/docs` (and `/api/openapi.json`), so they are reachable through the UI port.
 - The credentials volume is now called `secrets` (was `mqtt-secrets`); it also holds the web login token.
 - Validator uses the official VDA 5050 2.1.0 schemas (vendored, MIT) for all six topics instead of a

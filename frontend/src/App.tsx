@@ -73,7 +73,7 @@ function Lab({ onLogout }: { onLogout?: () => void }) {
   }, [apiUp, locations])
 
   const mqttUp = apiUp === null ? null : (health?.mqtt.connected ?? false)
-  const robots = Object.values(feed.robots).sort((a, b) => a.robotId.localeCompare(b.robotId))
+  const robots = Object.values(feed.robots).sort((a, b) => a.robotId.localeCompare(b.robotId) || a.key.localeCompare(b.key))
 
   return (
     <div className="app">

@@ -156,10 +156,10 @@ def stop_replay() -> dict:
 def _is_live(robot_id: str) -> bool:
     # Only state messages count: connection messages are retained by the broker
     # and re-delivered on every reconnect, long after a robot has gone.
-    robot = hub.robot(robot_id)
-    if not robot or not robot.get("lastStateAt"):
+    seen = [robot["lastStateAt"] for robot in hub.robots_for(robot_id) if robot.get("lastStateAt")]
+    if not seen:
         return False
-    last_seen = datetime.fromisoformat(robot["lastStateAt"])
+    last_seen = max(datetime.fromisoformat(at) for at in seen)
     if replayer.ended_at and last_seen <= replayer.ended_at + REPLAY_ECHO:
         return False  # the last thing we heard came from a replay
     return datetime.now(UTC) - last_seen < LIVE_WINDOW
