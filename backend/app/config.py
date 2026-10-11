@@ -1,4 +1,5 @@
 import os
+import secrets
 from dataclasses import dataclass, field
 from pathlib import Path
 
@@ -10,7 +11,9 @@ _REPO_ROOT = Path(__file__).resolve().parents[2]
 class Settings:
     mqtt_host: str = os.getenv("ACTUNODE_MQTT_HOST", "localhost")
     mqtt_port: int = int(os.getenv("ACTUNODE_MQTT_PORT", "1883"))
-    mqtt_client_id: str = os.getenv("ACTUNODE_MQTT_CLIENT_ID", "actunode-backend")
+    # The default carries a random suffix, fixed per process: with a fixed id any broker login could
+    # connect under it and make Mosquitto drop the backend's session. The env override stays as is.
+    mqtt_client_id: str = os.getenv("ACTUNODE_MQTT_CLIENT_ID", f"actunode-backend-{secrets.token_hex(8)}")
     # Broker login (D-23). Without a username the backend connects anonymously (local development
     # broker). The password is read from a file (ACTUNODE_MQTT_PASSWORD_FILE), never an env value.
     mqtt_username: str | None = os.getenv("ACTUNODE_MQTT_USERNAME") or None

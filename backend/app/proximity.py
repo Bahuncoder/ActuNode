@@ -48,13 +48,20 @@ class ProximityMonitor:
             return []
         path, x, y, map_id = position
         now = self._now()
+        # Forget robots silent for longer than stale_after: they cannot be near anyone, and this keeps
+        # both memory and this loop proportional to the robots that are live.
+        for stale in [r for r, p in self._positions.items() if now - p[3] > self.stale_after]:
+            self.forget(stale)
         self._positions[robot_id] = (x, y, map_id, now)
 
         issues = []
-        for other, (ox, oy, other_map, seen_at) in list(self._positions.items()):
-            if other == robot_id or other_map != map_id or now - seen_at > self.stale_after:
+        for other, (ox, oy, other_map, _seen_at) in list(self._positions.items()):
+            if other == robot_id:
                 continue
             pair = tuple(sorted((robot_id, other)))
+            if other_map != map_id:
+                self._near.pop(pair, None)  # on another map: no longer close, so re-report on return
+                continue
             distance = math.hypot(x - ox, y - oy)
             if distance < self.min_distance:
                 if pair not in self._near:

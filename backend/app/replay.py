@@ -21,7 +21,7 @@ from app import vda5050
 log = logging.getLogger("actunode.replay")
 
 STATUS_EVERY_S = 0.5
-COMMAND_SUFFIXES = ("/order", "/instantActions")
+COMMAND_SUFFIXES = ("/order", "/instantActions", "/zoneSet", "/responses")
 
 
 class ReplayError(Exception):
@@ -68,7 +68,7 @@ def scan_session(path: Path) -> dict:
             topic = record["topic"]
             parts = topic.split("/")
             if len(parts) == 5 and parts[0] != "actunode":
-                robot_ids.add(parts[3])
+                robot_ids.add("/".join(parts[1:4]))
             for include_commands in (False, True):
                 if include_commands or not is_command(topic):
                     count[include_commands] += 1
@@ -77,7 +77,7 @@ def scan_session(path: Path) -> dict:
         raise ReplayError(f"{path.name} is not an ActuNode session (no session header)")
     if header.get("formatVersion") != 1:
         raise ReplayError(f"Unsupported session format version: {header.get('formatVersion')}")
-    robot_ids.update(robot["robotId"] for robot in robots)
+    robot_ids.update(_robot_key(robot) for robot in robots)
     return {
         "header": header,
         "robots": robots,
@@ -88,6 +88,20 @@ def scan_session(path: Path) -> dict:
     }
 
 
+def _robot_key(robot: dict) -> str:
+    """ "<major>/<manufacturer>/<serial>" of a snapshot robot (old recordings: v2, manufacturer from state)."""
+    if robot.get("key"):
+        return robot["key"]
+    major, manufacturer = _identity(robot)
+    return f"{major}/{manufacturer}/{robot['robotId']}"
+
+
+def _identity(robot: dict) -> tuple[str, str]:
+    """(major, manufacturer) of a snapshot robot (sessions recorded before vdaMajor existed are 2.x)."""
+    state = robot.get("state") or {}
+    return robot.get("vdaMajor") or "v2", robot.get("manufacturer") or state.get("manufacturer", "ActuNode")
+
+
 def snapshot_plan(robots: list[dict]) -> list[tuple[float, str, str]]:
     """Messages that put each robot back where it was when recording started."""
     plan = []
@@ -96,8 +110,7 @@ def snapshot_plan(robots: list[dict]) -> list[tuple[float, str, str]]:
         if not state:
             continue
         # Each robot on its own topic version (sessions recorded before vdaMajor existed are 2.x).
-        major = robot.get("vdaMajor") or "v2"
-        manufacturer = robot.get("manufacturer") or state.get("manufacturer", "ActuNode")
+        major, manufacturer = _identity(robot)
         prefix = f"{vda5050.INTERFACE_NAME}/{major}/{manufacturer}/{robot['robotId']}"
         if robot.get("connection"):
             header = {

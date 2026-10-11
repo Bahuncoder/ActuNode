@@ -6,6 +6,7 @@ suspicious in sequence (a restarted sender, a skipped state, ...).
 """
 
 import json
+from collections import OrderedDict
 from datetime import datetime
 from pathlib import Path
 
@@ -19,6 +20,9 @@ SCHEMA_DIR = Path(__file__).parent / "schemas"
 # 3.0.0 is unchanged except 7 trailing commas removed to make it valid JSON (see schemas/README.md).
 OFFICIAL_SCHEMA_DIRS = {"v2": SCHEMA_DIR / "vda5050-2.1.0", "v3": SCHEMA_DIR / "vda5050-3.0.0"}
 MAX_SCHEMA_ISSUES = 5
+# Per-robot/per-topic history is capped (least recently used dropped) so a flood of made-up
+# serial numbers cannot grow memory without bound.
+MAX_HISTORY = 2000
 
 # ActuNode mission status machine (IDLE is always allowed: robot stopped or restarted).
 ALLOWED_TRANSITIONS = {
@@ -32,6 +36,10 @@ ALLOWED_TRANSITIONS = {
 
 RULES = {
     "invalid-json": "Payload is not valid JSON",
+    "payload-too-large": "Payload is larger than the 256 KiB ActuNode accepts (not parsed)",
+    "non-finite-number": "Payload contains NaN or Infinity, which JSON does not allow",
+    "too-deep": "Payload is nested deeper than 32 levels (rejected)",
+    "validator-error": "ActuNode's own validator failed on this message (a bug to report; message kept)",
     "schema": "Payload does not match the message schema",
     "topic-mismatch": "serialNumber/manufacturer differ from the topic",
     "version-mismatch": "Protocol version does not match the topic's major version",
@@ -68,12 +76,31 @@ def issue(severity: str, rule: str, message: str, path: str = "") -> dict:
     return {"severity": severity, "rule": rule, "message": message, "path": path}
 
 
+def _dict(value) -> dict:
+    """`value` if it is a JSON object, else {}: lets semantic checks survive wrong-shaped payloads
+    (the schema check reports the wrong shape itself)."""
+    return value if isinstance(value, dict) else {}
+
+
+def _list(value) -> list:
+    return value if isinstance(value, list) else []
+
+
+def _remember(history: OrderedDict, key: str, value) -> None:
+    history[key] = value
+    history.move_to_end(key)
+    if len(history) > MAX_HISTORY:
+        history.popitem(last=False)
+
+
 class Validator:
+    # Not thread-safe by itself: LiveHub only calls it from paho's single network thread.
     def __init__(self):
         self._validators = _load_validators()
-        self._last_header_id: dict[str, int] = {}
-        self._last_status: dict[str, str] = {}
-        self._last_node: dict[str, tuple[str, int]] = {}
+        self._last_header_id: OrderedDict[str, int] = OrderedDict()
+        # Keyed by robot identity "<major>/<manufacturer>/<serial>" (D-27), not by serial alone.
+        self._last_status: OrderedDict[str, str] = OrderedDict()
+        self._last_node: OrderedDict[str, tuple[str, int]] = OrderedDict()
 
     def check(self, topic: str, payload, valid_json: bool, retained: bool = False) -> list[dict]:
         if not valid_json:
@@ -93,7 +120,7 @@ class Validator:
         if kind == "order":
             issues += self._order_issues(payload)
         elif kind == "state" and not retained:
-            issues += self._state_issues(serial_number, payload)
+            issues += self._state_issues(f"{major}/{manufacturer}/{serial_number}", payload)
         return issues
 
     # --- Classification --------------------------------------------------------
@@ -163,12 +190,13 @@ class Validator:
                         "/headerId",
                     )
                 )
-            self._last_header_id[topic] = header_id
+            _remember(self._last_header_id, topic, header_id)
         return issues
 
     def _order_issues(self, payload: dict) -> list[dict]:
-        nodes = [n for n in payload.get("nodes") or [] if isinstance(n, dict) and isinstance(n.get("sequenceId"), int)]
-        edges = [e for e in payload.get("edges") or [] if isinstance(e, dict) and isinstance(e.get("sequenceId"), int)]
+        raw_nodes, raw_edges = payload.get("nodes"), payload.get("edges")
+        nodes = [n for n in _list(raw_nodes) if isinstance(n, dict) and isinstance(n.get("sequenceId"), int)]
+        edges = [e for e in _list(raw_edges) if isinstance(e, dict) and isinstance(e.get("sequenceId"), int)]
         if not nodes:
             return []
         nodes.sort(key=lambda node: node["sequenceId"])
@@ -208,12 +236,12 @@ class Validator:
         # The official 2.1.0 schema limits batteryHealth to 0-100 but not batteryCharge ("in %");
         # 3.0 renamed it powerSupply.stateOfCharge.
         for container, field in (("batteryState", "batteryCharge"), ("powerSupply", "stateOfCharge")):
-            charge = (payload.get(container) or {}).get(field)
+            charge = _dict(payload.get(container)).get(field)
             if isinstance(charge, int | float) and not isinstance(charge, bool) and not 0 <= charge <= 100:
                 issues.append(
                     issue("warning", "value-range", f"{field} {charge} is outside 0-100 %", f"/{container}/{field}")
                 )
-        status = (payload.get("actunode") or {}).get("missionStatus")
+        status = _dict(payload.get("actunode")).get("missionStatus")
         if isinstance(status, str):
             previous = self._last_status.get(robot_id)
             if (
@@ -230,7 +258,7 @@ class Validator:
                         "/actunode/missionStatus",
                     )
                 )
-            self._last_status[robot_id] = status
+            _remember(self._last_status, robot_id, status)
 
             driving = payload.get("driving")
             if isinstance(driving, bool) and driving != (status == "MOVING"):
@@ -252,7 +280,7 @@ class Validator:
                         "/lastNodeSequenceId",
                     )
                 )
-            self._last_node[robot_id] = (order_id, sequence)
+            _remember(self._last_node, robot_id, (order_id, sequence))
         return issues
 
 

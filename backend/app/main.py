@@ -89,9 +89,16 @@ def recent_messages() -> list[dict]:
     return hub.snapshot()["messages"]
 
 
+# Longest time an open live feed goes without re-checking its session.
+SESSION_CHECK_S = 5
+
+
 @app.websocket("/api/ws")
 async def live_feed(websocket: WebSocket):
     """Snapshot on connect, then every MQTT message as it arrives."""
+    # The session is checked at the handshake (SessionGuard) and again while the feed runs, so a logout or
+    # an expired session also ends feeds that are already open.
+    session_id = auth.session_from_cookie_header(websocket.headers.get("cookie"))
     await websocket.accept()
     queue = hub.subscribe()  # before the snapshot, so nothing falls in between
     # Watch for the close separately: with no events flowing (e.g. broker down) a handler
@@ -101,17 +108,26 @@ async def live_feed(websocket: WebSocket):
         await websocket.send_json(
             {
                 "type": "snapshot",
-                **hub.snapshot(),
+                **await asyncio.to_thread(hub.snapshot),
                 "recording": sessions.recorder.status(),
                 "replay": sessions.replayer.status(),
             }
         )
         while True:
             next_event = asyncio.create_task(queue.get())
-            done, _ = await asyncio.wait({next_event, closed}, return_when=asyncio.FIRST_COMPLETED)
+            done, _ = await asyncio.wait(
+                {next_event, closed}, timeout=SESSION_CHECK_S, return_when=asyncio.FIRST_COMPLETED
+            )
             if closed in done:
                 next_event.cancel()
                 break
+            if not auth.sessions.valid(session_id):
+                next_event.cancel()
+                await websocket.close(code=1008, reason="Session ended")
+                break
+            if next_event not in done:
+                next_event.cancel()  # nothing arrived; only the session was checked
+                continue
             await websocket.send_json(next_event.result())
     except (WebSocketDisconnect, RuntimeError):
         pass

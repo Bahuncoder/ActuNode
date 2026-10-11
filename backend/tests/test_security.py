@@ -40,9 +40,37 @@ def test_same_site_and_non_browser_requests_still_work(client, monkeypatch, tmp_
     from app import sessions
 
     monkeypatch.setattr(sessions.recorder, "directory", tmp_path)  # never write into the real sessions/
-    for headers in ({"Origin": "http://localhost:8080"}, {"Origin": "http://localhost:5173"}, {}):
+    for headers in (
+        {"Origin": "http://localhost:8080"},
+        {"Origin": "http://localhost:5173", "Host": "localhost:5173"},  # Vite dev proxy keeps the Host header
+        {"Origin": "https://localhost:8443", "Host": "localhost:8443", "X-Forwarded-Proto": "https"},  # nginx TLS
+        {"Origin": "http://localhost", "Host": "localhost:80"},  # default port written or not
+        {},
+    ):
         assert client.post("/api/recording/start", headers=headers).status_code == 201
         assert client.post("/api/recording/stop", headers=headers).status_code == 200
+
+
+@pytest.mark.parametrize(
+    "origin",
+    [
+        "http://localhost:5173",  # another web app on the same host, other port (dev server, Jupyter, ...)
+        "https://localhost:8080",  # same host and port, other scheme
+        "http://127.0.0.1:8080",  # another allowed host name is still another origin
+        "http://localhost:99999",  # unparsable port
+    ],
+)
+def test_same_host_but_other_origin_is_refused(client, origin):
+    response = client.post("/api/recording/start", headers={"Origin": origin})
+
+    assert response.status_code == 403
+    assert client.get("/api/recording").json()["recording"] is None
+
+
+def test_websocket_from_another_port_on_the_same_host_is_refused(client):
+    with pytest.raises(WebSocketDisconnect):
+        with client.websocket_connect("/api/ws", headers={"Origin": "http://localhost:3000"}) as ws:
+            ws.receive_json()
 
 
 def test_cross_site_reads_are_still_served_without_cors(client):
@@ -61,7 +89,9 @@ def test_cross_site_websocket_is_refused(client):
 
 
 def test_same_site_websocket_works(client):
-    with client.websocket_connect("/api/ws", headers={"Origin": "http://localhost:8080"}) as ws:
+    with client.websocket_connect(
+        "/api/ws", headers={"Origin": "http://localhost:8080", "Host": "localhost:8080"}
+    ) as ws:
         assert ws.receive_json()["type"] == "snapshot"
 
 

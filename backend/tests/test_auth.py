@@ -101,3 +101,31 @@ def test_sharing_beyond_this_machine_requires_login(bind, required, ok):
     else:
         with pytest.raises(RuntimeError, match="ACTUNODE_REQUIRE_LOGIN"):
             auth.check_sharing(bind_address=bind, login_required=required)
+
+
+def test_logout_ends_a_live_feed_that_is_already_open(client, monkeypatch):
+    """The session is checked again while the feed runs, not only at the handshake."""
+    from app import main
+
+    monkeypatch.setattr(main, "SESSION_CHECK_S", 0.05)
+    client.post("/api/login", json={"token": TOKEN})
+    cookie = {"Cookie": f"{auth.COOKIE}={client.cookies[auth.COOKIE]}"}  # TestClient WebSockets skip the jar
+    with client.websocket_connect("/api/ws", headers=cookie) as ws:
+        assert ws.receive_json()["type"] == "snapshot"
+        client.post("/api/logout", headers=cookie)
+        with pytest.raises(WebSocketDisconnect) as closed:
+            ws.receive_json()
+    assert (closed.value.code, closed.value.reason) == (1008, "Session ended")
+
+
+def test_failed_login_memory_is_bounded(monkeypatch):
+    """Rotating client addresses must not grow the failure table without limit."""
+    monkeypatch.setattr(auth, "MAX_FAILURE_CLIENTS", 50)
+    sessions = auth.Sessions()
+    sessions._token = TOKEN
+    for i in range(500):
+        sessions.login(f"10.0.{i // 256}.{i % 256}", "wrong")
+
+    assert len(sessions._failures) <= 50
+    assert sessions.login("10.9.9.9", TOKEN) is not None
+    assert "10.9.9.9" not in sessions._failures  # a successful login leaves no entry behind

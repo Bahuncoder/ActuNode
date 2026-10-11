@@ -97,3 +97,35 @@ def test_failure_is_pushed_to_live_clients(client, published):
             event = ws.receive_json()
 
     assert event["failure"]["robotId"] == "fail_05"
+
+
+def test_injection_targets_the_actunode_robot_not_a_foreign_one_with_the_same_serial(client, published):
+    report("fail_05", "MOVING")
+    hub.handle_mqtt("uagv/v3/Other/fail_05/state", b"{}")  # heard last
+
+    response = client.post("/api/failures", json={"robot_id": "fail_05"})
+
+    assert response.status_code == 202
+    assert published[0][0] == "actunode/v1/sim/fail_05/inject"
+
+
+def test_foreign_robot_alone_cannot_be_injected(client, published):
+    hub.handle_mqtt("uagv/v2/Other/fail_06/connection", b'{"connectionState": "ONLINE"}')
+    hub.handle_mqtt("uagv/v2/Other/fail_06/state", b"{}")
+
+    response = client.post("/api/failures", json={"robot_id": "fail_06"})
+
+    assert response.status_code == 409
+    assert "not a simulated" in response.json()["detail"]
+    assert published == []
+
+
+@pytest.mark.parametrize("state", ['{"actunode": null}', '{"actunode": 5}', "[]"])
+def test_malformed_state_is_refused_not_a_server_error(client, published, state):
+    hub.handle_mqtt("uagv/v2/ActuNode/fail_07/connection", b'{"connectionState": "ONLINE"}')
+    hub.handle_mqtt("uagv/v2/ActuNode/fail_07/state", state.encode())
+
+    response = client.post("/api/failures", json={"robot_id": "fail_07"})
+
+    assert response.status_code == 409
+    assert published == []

@@ -30,6 +30,9 @@ OPEN_PATHS = {"/api/health", "/api/login", "/api/logout", "/api/session"}
 MAX_SESSIONS = 1000
 FAILURE_WINDOW_S = 60
 MAX_FAILURES = 5
+# Clients with recent failed logins remembered at most (each entry is tiny; the cap stops address rotation
+# from growing memory without bound).
+MAX_FAILURE_CLIENTS = 10_000
 
 
 def check_sharing(bind_address: str, login_required: bool) -> None:
@@ -73,20 +76,32 @@ class Sessions:
         """A new session id for the right token, None for a wrong one; RateLimited after repeated failures."""
         now = time.monotonic()
         with self._lock:
-            failures = self._failures.setdefault(client, deque())
+            failures = self._failures.get(client, deque())
             while failures and now - failures[0] > FAILURE_WINDOW_S:
                 failures.popleft()
             if len(failures) >= MAX_FAILURES:
                 raise RateLimited
             if not self._token or not hmac.compare_digest(token.encode(), self._token.encode()):
                 failures.append(now)
+                self._failures[client] = failures
+                self._sweep_failures(now)
                 return None
-            failures.clear()
+            self._failures.pop(client, None)
             if len(self._sessions) >= MAX_SESSIONS:
                 del self._sessions[min(self._sessions, key=self._sessions.get)]
             session_id = secrets.token_urlsafe(32)
             self._sessions[session_id] = now + self.lifetime
             return session_id
+
+    def _sweep_failures(self, now: float) -> None:
+        """Over the cap: forget clients whose failures are outside the window, then the oldest."""
+        if len(self._failures) <= MAX_FAILURE_CLIENTS:
+            return
+        for client, failures in list(self._failures.items()):
+            if not failures or now - failures[-1] > FAILURE_WINDOW_S:
+                del self._failures[client]
+        while len(self._failures) > MAX_FAILURE_CLIENTS:
+            del self._failures[min(self._failures, key=lambda c: self._failures[c][-1])]
 
     def valid(self, session_id: str | None) -> bool:
         if not self.required:
@@ -114,7 +129,7 @@ sessions = Sessions()
 sessions.configure(settings.require_login, settings.api_token_file)
 
 
-def _cookie(header: str | None) -> str | None:
+def session_from_cookie_header(header: str | None) -> str | None:
     if not header:
         return None
     jar = SimpleCookie()
@@ -136,7 +151,7 @@ class SessionGuard:
         path = scope.get("path", "")
         if scope["type"] in ("http", "websocket") and path.startswith("/api") and path not in OPEN_PATHS:
             headers = {k.decode("latin-1").lower(): v.decode("latin-1") for k, v in scope["headers"]}
-            if not sessions.valid(_cookie(headers.get("cookie"))):
+            if not sessions.valid(session_from_cookie_header(headers.get("cookie"))):
                 if scope["type"] == "websocket":
                     await receive()
                     await send({"type": "websocket.close", "code": 1008, "reason": "Login required"})

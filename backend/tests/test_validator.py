@@ -324,3 +324,46 @@ def test_hub_shows_3_0_robots_and_their_version():
     robot = live.robot("robot_31")
     assert robot is not None, "a 3.0 robot must appear in the robot list"
     assert robot["vdaMajor"] == "v3"
+
+
+@pytest.mark.parametrize(
+    "topic, payload",
+    [
+        ("uagv/v2/ActuNode/r1/state", {"batteryState": "x"}),
+        ("uagv/v2/ActuNode/r1/state", {"actunode": 1}),
+        ("uagv/v3/ActuNode/r1/state", {"powerSupply": [1]}),
+        ("uagv/v2/ActuNode/r1/order", {"nodes": 5}),
+        ("uagv/v2/ActuNode/r1/order", {"nodes": [1, "x"], "edges": 3}),
+    ],
+)
+def test_wrong_shaped_payloads_are_reported_not_crashed_on(topic, payload):
+    issues = Validator().check(topic, payload, valid_json=True)
+
+    assert "schema" in rules(issues)
+
+
+def test_history_is_per_robot_identity_not_per_serial():
+    """Same serial under two manufacturers is two robots (D-27): no cross-talk in the sequence checks."""
+    validator = Validator()
+    moving = {"actunode": {"missionStatus": "MOVING"}, "orderId": "o", "lastNodeSequenceId": 4}
+    accepted = {"actunode": {"missionStatus": "ACCEPTED"}, "orderId": "o", "lastNodeSequenceId": 0}
+
+    validator.check("uagv/v2/VendorA/robot_01/state", moving, valid_json=True)
+    issues = validator.check("uagv/v2/VendorB/robot_01/state", accepted, valid_json=True)
+
+    assert not {"mission-transition", "last-node-regression"} & set(rules(issues))
+
+
+def test_validator_history_is_capped(monkeypatch):
+    from app import validator as validator_module
+
+    monkeypatch.setattr(validator_module, "MAX_HISTORY", 5)
+    validator = Validator()
+    for i in range(20):
+        validator.check(
+            f"uagv/v2/ActuNode/r{i}/state",
+            {"headerId": 1, "orderId": "o", "lastNodeSequenceId": 1, "actunode": {"missionStatus": "IDLE"}},
+            valid_json=True,
+        )
+
+    assert len(validator._last_header_id) == len(validator._last_status) == len(validator._last_node) == 5

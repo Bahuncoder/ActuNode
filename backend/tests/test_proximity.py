@@ -93,3 +93,42 @@ def test_disconnect_removes_the_robot_from_proximity():
     hub.handle_mqtt("uagv/v2/ActuNode/r2/connection", b'{"connectionState": "CONNECTIONBROKEN"}')
 
     assert hub.snapshot()["proximity"] == []
+
+
+def test_pair_is_dropped_when_a_robot_changes_map_and_re_reported_on_return():
+    clock = {"t": 0.0}
+    monitor = ProximityMonitor(min_distance=1.0, now=lambda: clock["t"])
+    monitor.observe("A", state(0, 0, "m1"))
+    monitor.observe("B", state(0.5, 0, "m1"))
+    assert monitor.active_pairs()
+
+    monitor.observe("B", state(0.5, 0, "m2"))
+    clock["t"] = 1.0
+    monitor.observe("A", state(0, 0, "m1"))
+
+    assert monitor.active_pairs() == []
+    assert len(monitor.observe("B", state(0.2, 0, "m1"))) == 1
+
+
+def test_pair_is_dropped_when_the_other_robot_goes_stale():
+    clock = {"t": 0.0}
+    monitor = ProximityMonitor(min_distance=1.0, stale_after=3.0, now=lambda: clock["t"])
+    monitor.observe("A", state(0, 0))
+    monitor.observe("B", state(0.5, 0))
+    clock["t"] = 10.0
+    monitor.observe("A", state(0, 0))
+    clock["t"] = 11.0
+    monitor.observe("B", state(0.2, 0))  # B is back; the old pair must not suppress a fresh report
+
+    assert monitor._near == {("A", "B"): 0.2}
+
+
+def test_stale_positions_are_forgotten():
+    clock = {"t": 0.0}
+    monitor = ProximityMonitor(min_distance=1.0, stale_after=3.0, now=lambda: clock["t"])
+    for i in range(50):
+        monitor.observe(f"r{i}", state(i * 10, 0))
+    clock["t"] = 10.0
+    monitor.observe("fresh", state(999, 0))
+
+    assert list(monitor._positions) == ["fresh"]

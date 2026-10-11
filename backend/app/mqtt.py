@@ -1,9 +1,13 @@
 import logging
+import time
 from collections.abc import Callable
 
 import paho.mqtt.client as mqtt
 
 log = logging.getLogger(__name__)
+
+# At most one handler-error traceback per this many seconds, so a robot cannot flood the log.
+ERROR_LOG_EVERY_S = 60
 
 
 class MqttBridge:
@@ -28,6 +32,8 @@ class MqttBridge:
         self.connected = False
         self.subscriptions = subscriptions
         self.message_handler = on_message
+        self._last_error_log = float("-inf")
+        self._suppressed = 0
         self._client = mqtt.Client(
             callback_api_version=mqtt.CallbackAPIVersion.VERSION2,
             client_id=client_id,
@@ -67,4 +73,10 @@ class MqttBridge:
         try:
             self.message_handler(message.topic, message.payload, message.retain)
         except Exception:
-            log.exception("Failed to handle message on %s", message.topic)
+            now = time.monotonic()
+            if now - self._last_error_log < ERROR_LOG_EVERY_S:
+                self._suppressed += 1
+                return
+            more = f" ({self._suppressed} more message handler errors suppressed)" if self._suppressed else ""
+            self._last_error_log, self._suppressed = now, 0
+            log.exception("Failed to handle message on %s%s", message.topic, more)

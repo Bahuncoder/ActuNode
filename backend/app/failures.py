@@ -40,13 +40,20 @@ def inject_failure(request: FailureRequest) -> dict:
     if not mqtt_bridge.connected:
         raise HTTPException(503, "MQTT broker is not connected")
 
-    robot = hub.robot(request.robot_id)
-    if robot is None:
+    heard = hub.robots_for(request.robot_id)
+    if not heard:
         raise HTTPException(404, f"Unknown robot: {request.robot_id}")
+    # The inject topic only reaches ActuNode's simulated robots; a same-serial robot of another
+    # manufacturer must neither block nor receive it. Most recently heard first.
+    robot = next((r for r in heard if r["manufacturer"] == vda5050.MANUFACTURER), None)
+    if robot is None:
+        raise HTTPException(409, f"{request.robot_id} is not a simulated ActuNode robot; failures reach only those")
     if robot["connection"] != "ONLINE":
         raise HTTPException(409, f"{request.robot_id} is {robot['connection'] or 'not connected'}")
 
-    status = (robot["state"] or {}).get("actunode", {}).get("missionStatus", "UNKNOWN")
+    state = robot["state"] if isinstance(robot["state"], dict) else {}
+    extra = state.get("actunode") if isinstance(state.get("actunode"), dict) else {}
+    status = extra.get("missionStatus", "UNKNOWN")
     if request.action == "inject" and status not in ON_ROUTE:
         raise HTTPException(409, f"{request.robot_id} is {status}; {request.failure} needs a robot on a route")
     if request.action == "clear" and status != "BLOCKED":

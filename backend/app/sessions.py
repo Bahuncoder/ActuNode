@@ -1,3 +1,4 @@
+import asyncio
 import re
 from datetime import UTC, datetime, timedelta
 
@@ -126,11 +127,11 @@ async def start_replay(session_id: str, request: ReplayRequest | None = None) ->
         raise HTTPException(503, "MQTT broker is not connected")
 
     try:
-        scan = scan_session(path)
+        scan = await asyncio.to_thread(scan_session, path)
     except ReplayError as error:
         raise HTTPException(422, str(error)) from error
 
-    live = sorted(robot_id for robot_id in scan["robotIds"] if _is_live(robot_id))
+    live = sorted(key for key in scan["robotIds"] if _is_live(key))
     if live:
         raise HTTPException(
             409,
@@ -153,10 +154,15 @@ def stop_replay() -> dict:
     return {"stopping": True}
 
 
-def _is_live(robot_id: str) -> bool:
+def _is_live(key: str) -> bool:
+    """Is the robot with exactly this key ("<major>/<manufacturer>/<serial>") publishing state now?"""
     # Only state messages count: connection messages are retained by the broker
     # and re-delivered on every reconnect, long after a robot has gone.
-    seen = [robot["lastStateAt"] for robot in hub.robots_for(robot_id) if robot.get("lastStateAt")]
+    seen = [
+        robot["lastStateAt"]
+        for robot in hub.robots_for(key.rsplit("/", 1)[-1])
+        if robot["key"] == key and robot.get("lastStateAt")
+    ]
     if not seen:
         return False
     last_seen = max(datetime.fromisoformat(at) for at in seen)

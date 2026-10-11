@@ -15,7 +15,7 @@ from datetime import UTC, datetime
 from app import vda5050
 from app.config import settings
 from app.proximity import ProximityMonitor
-from app.validator import RULES, Validator
+from app.validator import RULES, Validator, issue
 
 log = logging.getLogger(__name__)
 
@@ -25,15 +25,62 @@ MAX_ROBOTS = 1000
 FAILURE_BUFFER = 200
 SNAPSHOT_MESSAGES = 200
 CLIENT_QUEUE = 1000
-
-
-def robot_key(parts: vda5050.TopicParts) -> str:
-    """Identity of one robot: "<major>/<manufacturer>/<serial>", e.g. "v2/ActuNode/robot_01"."""
-    return f"{parts.major}/{parts.manufacturer}/{parts.serial_number}"
+# Untrusted MQTT payload limits. MAX_PAYLOAD_BYTES equals the broker's max_packet_size.
+MAX_PAYLOAD_BYTES = 256 * 1024
+MAX_DEPTH = 32
+# Bigger payloads are shown (message log, WebSocket) as a text preview; the recorder still gets them whole.
+DISPLAY_PAYLOAD_BYTES = 16 * 1024
+PREVIEW_BYTES = 1024
 
 
 def _now() -> str:
     return datetime.now(UTC).isoformat(timespec="milliseconds").replace("+00:00", "Z")
+
+
+class _NonFinite(ValueError):
+    pass
+
+
+def _reject_constant(name: str):
+    raise _NonFinite(name)
+
+
+def _too_deep(body) -> bool:
+    """True if `body` nests containers deeper than MAX_DEPTH. Iterative: recursion is what deep payloads attack."""
+    level = [body] if isinstance(body, dict | list) else []
+    depth = 1
+    while level:
+        if depth > MAX_DEPTH:
+            return True
+        level = [
+            c
+            for item in level
+            for c in (item.values() if isinstance(item, dict) else item)
+            if isinstance(c, dict | list)
+        ]
+        depth += 1
+    return False
+
+
+def _preview(raw: bytes) -> str:
+    return f"{raw[:PREVIEW_BYTES].decode('utf-8', errors='replace')}… ({len(raw)} bytes, truncated for display)"
+
+
+def parse_payload(payload: bytes) -> tuple[object, str | None]:
+    """(body, None) for a usable JSON payload, else (text kept for display, rule that rejected it)."""
+    if len(payload) > MAX_PAYLOAD_BYTES:
+        return _preview(payload), "payload-too-large"
+    try:
+        body = json.loads(payload, parse_constant=_reject_constant)
+    except RecursionError:
+        return payload.decode("utf-8", errors="replace"), "too-deep"
+    except _NonFinite:
+        return payload.decode("utf-8", errors="replace"), "non-finite-number"
+    except ValueError:  # JSONDecodeError and UnicodeDecodeError
+        return payload.decode("utf-8", errors="replace"), "invalid-json"
+    if _too_deep(body):
+        return payload.decode("utf-8", errors="replace"), "too-deep"
+    return body, None
 
 
 def _empty_validation() -> dict:
@@ -64,15 +111,21 @@ class LiveHub:
     # --- MQTT side (network thread) ----------------------------------------
 
     def handle_mqtt(self, topic: str, payload: bytes, retained: bool = False) -> None:
+        # Parse and validate outside the lock (slow on hostile input). Validator state is only touched
+        # here, and MQTT callbacks all come from paho's single network thread, so it needs no lock;
+        # the lock below guards what readers (API, WebSocket) share: robots, messages, stats, proximity.
+        body, rejected = parse_payload(payload)
+        valid_json = rejected is None
         try:
-            body = json.loads(payload)
-            valid_json = True
-        except (json.JSONDecodeError, UnicodeDecodeError):
-            body = payload.decode("utf-8", errors="replace")
-            valid_json = False
+            if rejected is None:
+                issues = self._validator.check(topic, body, True, retained)
+            else:
+                issues = [issue("error", rejected, RULES[rejected])]
+        except Exception as error:
+            log.exception("Validator failed on %s", topic)
+            issues = [issue("error", "validator-error", f"{RULES['validator-error']}: {type(error).__name__}: {error}")]
 
         with self._lock:
-            issues = self._validator.check(topic, body, valid_json, retained)
             pairs_before = self._proximity.active_pairs()
             if valid_json and not retained:
                 issues += self._observe_proximity(topic, body)
@@ -88,7 +141,10 @@ class LiveHub:
             }
             self._next_id += 1
             self._count_issues(message)
-            self._messages.append(message)
+            shown = message
+            if len(payload) > DISPLAY_PAYLOAD_BYTES:
+                shown = {**message, "payload": _preview(payload)}
+            self._messages.append(shown)
             robot = self._update_robot(topic, body, message["receivedAt"]) if valid_json else None
 
         for listener in self._listeners:
@@ -96,7 +152,7 @@ class LiveHub:
                 listener(message)
             except Exception:
                 log.exception("Message listener failed")
-        self.broadcast({"type": "message", "message": message, "robot": robot})
+        self.broadcast({"type": "message", "message": shown, "robot": robot})
         if pairs_after != pairs_before:
             self.broadcast({"type": "proximity", "pairs": pairs_after})
 
@@ -105,18 +161,18 @@ class LiveHub:
         if parts is None or not isinstance(body, dict):
             return []
         if parts.name == "state":
-            return self._proximity.observe(robot_key(parts), body)
+            return self._proximity.observe(vda5050.robot_key(parts), body)
         if parts.name == "connection" and body.get("connectionState") != "ONLINE":
-            self._proximity.forget(robot_key(parts))
+            self._proximity.forget(vda5050.robot_key(parts))
         return []
 
     def _update_robot(self, topic: str, body, received_at: str) -> dict | None:
         parsed = vda5050.topic_parts(topic)
-        if parsed is None or not isinstance(body, dict):
-            return None
+        if parsed is None or not isinstance(body, dict) or parsed.name not in ("state", "connection"):
+            return None  # command traffic (our own orders echoed back, ...) must not create or evict robots
         # A robot is (version, manufacturer, serial): VDA 5050 serial numbers are unique per manufacturer
         # only, so the same serial under another manufacturer or version is another robot (issue 19).
-        key = robot_key(parsed)
+        key = vda5050.robot_key(parsed)
         # _robots is kept in order of the last message (dicts keep insertion order): re-insert on every
         # message, so the first key is always the robot heard from longest ago. O(1), no timestamp ties.
         if key in self._robots:
@@ -139,10 +195,8 @@ class LiveHub:
         if parsed.name == "state":
             robot["state"] = body
             robot["lastStateAt"] = received_at
-        elif parsed.name == "connection":
-            robot["connection"] = body.get("connectionState")
         else:
-            return None
+            robot["connection"] = body.get("connectionState")
         robot["lastSeen"] = received_at
         return dict(robot)
 

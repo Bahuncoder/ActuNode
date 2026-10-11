@@ -52,6 +52,8 @@ def test_commands_are_recognised():
     assert is_command("uagv/v2/ActuNode/r/order")
     assert is_command("uagv/v2/ActuNode/r/instantActions")
     assert is_command("actunode/v1/sim/r/inject")
+    assert is_command("uagv/v3/ActuNode/r/zoneSet")
+    assert is_command("uagv/v3/ActuNode/r/responses")
     assert not is_command("uagv/v2/ActuNode/r/state")
     assert not is_command("uagv/v2/ActuNode/r/connection")
 
@@ -77,9 +79,20 @@ def test_plan_with_commands_keeps_everything_in_order(tmp_path):
 
     assert [t for t, _, _ in plan] == [0.0, 0.0, 0.0, 0.02, 0.04, 0.06]
     scan = scan_session(path)
-    assert scan["robotIds"] == {"rp_01"}
+    assert scan["robotIds"] == {"v2/ActuNode/rp_01"}  # topics and an old snapshot entry without vdaMajor agree
     assert scan["count"] == {False: 2, True: 4}
     assert scan["lastT"] == {False: 0.06, True: 0.06}
+
+
+def test_scan_keeps_manufacturers_and_versions_apart(tmp_path):
+    messages = [
+        {"t": 0.0, "topic": "uagv/v3/Other/rp_01/state", "payload": {}},
+        {"t": 0.1, "topic": "uagv/v2/ActuNode/rp_02/state", "payload": {}},
+    ]
+    robots = [{"key": "v2/Acme/rp_03", "robotId": "rp_03", "vdaMajor": "v2", "manufacturer": "Acme", "state": {}}]
+    path = write_session(tmp_path / "20261009-120000.jsonl", messages, robots=robots)
+
+    assert scan_session(path)["robotIds"] == {"v3/Other/rp_01", "v2/ActuNode/rp_02", "v2/Acme/rp_03"}
 
 
 def test_file_without_header_is_rejected(tmp_path):
@@ -221,6 +234,17 @@ def test_replay_refused_while_robot_is_live(client, published, tmp_path):
     assert response.status_code == 409
     assert "rp_01 is publishing live state" in response.json()["detail"]
     assert published == []
+
+
+def test_same_serial_from_another_manufacturer_does_not_block_replay(client, published, tmp_path):
+    messages = [{"t": 0.0, "topic": "uagv/v2/ActuNode/rp_07/state", "payload": {}}]
+    write_session(tmp_path / "20261009-120000_other.jsonl", messages, robots=[])
+    hub.handle_mqtt("uagv/v3/Other/rp_07/state", b"{}")
+
+    response = client.post("/api/sessions/20261009-120000_other/replay", json={"speed": 20})
+
+    assert response.status_code == 202
+    wait_for_replay(client)
 
 
 def test_retained_offline_connection_does_not_count_as_live(client, published, tmp_path):

@@ -1,6 +1,7 @@
 """VDA 5050 message building for the backend (master control side)."""
 
 import os
+from collections import OrderedDict
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from itertools import count
@@ -12,7 +13,10 @@ MAP_ID = "warehouse"
 INTERFACE_NAME = os.getenv("ACTUNODE_VDA_INTERFACE", "uagv")
 MAJOR_VERSION = os.getenv("ACTUNODE_VDA_MAJOR_VERSION", "v2")
 
-_header_ids: dict[str, count] = {}
+# One counter per topic; capped (least recently used dropped) so orders to endless made-up serials
+# cannot grow memory. A dropped counter restarts at 1, which only matters after 2000 other topics.
+MAX_HEADER_COUNTERS = 2000
+_header_ids: OrderedDict[str, count] = OrderedDict()
 
 
 def topic(serial_number: str, name: str, major: str = MAJOR_VERSION, manufacturer: str = MANUFACTURER) -> str:
@@ -39,6 +43,11 @@ def topic_parts(topic_name: str) -> TopicParts | None:
     return TopicParts(parts[1], parts[2], parts[3], parts[4])
 
 
+def robot_key(parts: TopicParts) -> str:
+    """Identity of one robot: "<major>/<manufacturer>/<serial>", e.g. "v2/ActuNode/robot_01"."""
+    return f"{parts.major}/{parts.manufacturer}/{parts.serial_number}"
+
+
 def parse_topic(topic_name: str) -> tuple[str, str] | None:
     """Return (serialNumber, topic) for a VDA 5050 topic, or None if it is not one."""
     parts = topic_parts(topic_name)
@@ -51,7 +60,11 @@ def utc_timestamp() -> str:
 
 def header(serial_number: str, topic_name: str, major: str = MAJOR_VERSION, manufacturer: str = MANUFACTURER) -> dict:
     """headerId counts up per topic, as the spec requires."""
-    ids = _header_ids.setdefault(topic(serial_number, topic_name, major, manufacturer), count(1))
+    key = topic(serial_number, topic_name, major, manufacturer)
+    ids = _header_ids.setdefault(key, count(1))
+    _header_ids.move_to_end(key)
+    if len(_header_ids) > MAX_HEADER_COUNTERS:
+        _header_ids.popitem(last=False)
     return {
         "headerId": next(ids),
         "timestamp": utc_timestamp(),

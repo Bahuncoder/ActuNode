@@ -184,3 +184,16 @@ def test_warning_lists_every_identity_the_serial_was_seen_under(client, publishe
     [(topic, _)] = published
     assert topic == "uagv/v2/ActuNode/robot_dup/order"  # still the default: observations never route (D-21)
     assert "VendorB v3" in response.json()["warning"] and "VendorA v2" in response.json()["warning"]
+
+
+def test_every_mission_to_a_robot_seen_under_another_identity_carries_the_warning(client, published):
+    """Command traffic (our own orders echoed back over uagv/#) must not hide the D-21 warning."""
+    from app.live import hub
+
+    _seen("uagv/v2/Other/robot_w/state", {"serialNumber": "robot_w"})
+    for _ in range(2):
+        response = client.post("/api/missions", json={**P1042, "robot_id": "robot_w", "vda_version": "3"})
+        topic, order = published[-1]
+        hub.handle_mqtt(topic, json.dumps(order).encode())  # the broker echoes the order back
+
+        assert "Other v2" in response.json()["warning"]
