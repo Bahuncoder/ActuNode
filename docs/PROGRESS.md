@@ -75,6 +75,7 @@ Plan objective is done. Remaining work for this week is verification and documen
 - [x] Python linter and formatter (ruff, 120 columns) in CI (issue 16, D-14)
 - [x] Customer discovery kit: [outreach messages](discovery/OUTREACH.md), [interview guide](discovery/INTERVIEW_GUIDE.md), private tracker
 - [ ] Customer discovery: first outreach messages sent (plan: 30 conversations in 60 days)
+  - [x] First batch of 10 personalised drafts ready (private: `docs/company/outreach_batch_1.md`, tracker rows `to contact`); sending is the founder's
 
 Proposed focus for the coming weeks (each week's plan objective + hardening of what was built early).
 Struck-through items are already done:
@@ -98,6 +99,9 @@ anonymised learnings go here.
 | Week | Messages sent | Replies | Conversations | Total conversations |
 |---|---|---|---|---|
 | 1 (9–15 Oct) | 0 | 0 | 0 | 0 / 30 |
+
+**Pipeline:** 10 contacts drafted (3 AMR companies, 3 VDA 5050 fleet managers, 2 open-source
+maintainers, 2 developers who asked publicly for a VDA 5050 simulator or sample messages).
 
 **Learnings so far:** none yet. After every 5 conversations, add a summary of repeated pain points
 to the session log.
@@ -134,6 +138,18 @@ Numbered so they can be referenced from commits. Remove an item only when it is 
 ## Session log
 
 Newest first. One entry per work session: what was done, what was learned, what is next.
+
+### Sun 11 Oct 2026 (late): first outreach batch drafted
+
+- Found 10 contacts whose **public** work shows the pain ActuNode targets, each hook checked against
+  its source: the reporter of VDA5050#660 at Navifra (the same 3.0.0 schema bug we pinned around); two
+  ROS Discourse users who asked for a VDA 5050 fleet simulator and for sample messages (testing by hand
+  with MQTT Explorer); Seegrid (full VDA 5050 compliance target 2026); OTTO (certified with three
+  master controls in May 2026) and those three (idealworks, SYNAOS, NAiSE); InOrbit (ROS 2 connector);
+  Fraunhofer IML (libVDA5050++). Drafts and names stay private (`docs/company/`).
+- `OUTREACH.md` still said ActuNode speaks only 2.1: corrected to what is true today (2.1 and 3.0,
+  one failure type, no real robots tested).
+- Next: founder sends the batch and logs it in the tracker; follow-ups after 6 days.
 
 ### Sun 11 Oct 2026 (night): issue 6, real-browser tests (D-29)
 

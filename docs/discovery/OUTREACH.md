@@ -9,8 +9,9 @@ Rules for every message:
 - Ask about *their* experience, not about ActuNode. Mention the project only as context.
 - One clear ask: 15 minutes, their choice of time. Make it easy to say no.
 - Personalise the first line (their post, product, talk, repo). A generic message gets ignored.
-- Never overstate what ActuNode does. Today it is an open-source lab: simulated robots, VDA 5050
-  2.1 messages, failure injection, validation, record and replay. No real robots yet.
+- Never overstate what ActuNode does. Today it is an open-source lab: simulated robots speaking
+  VDA 5050 2.1 or 3.0, validation against the official schemas, one failure type (blocked path),
+  near-collision warnings, record and replay. No real robots tested yet.
 
 Replace `[...]` before sending. Log every message in the private tracker
 (`docs/company/discovery_tracker.csv`, not in git).
