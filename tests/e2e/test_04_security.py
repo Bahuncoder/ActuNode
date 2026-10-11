@@ -61,3 +61,29 @@ def test_tools_login_reads_but_cannot_publish(stack):
 
     messages = stack.api.get("/messages").json()
     assert not any(isinstance(m["payload"], dict) and m["payload"].get("SPOOF") == "tools" for m in messages)
+
+
+def test_other_web_pages_cannot_use_the_api_through_nginx(stack):
+    """D-24 on the real stack (browser -> nginx -> backend): DNS rebinding and cross-site requests."""
+    import asyncio
+
+    import httpx
+    import websockets
+    from conftest import UI_PORT
+
+    base = f"http://{HOST}:{UI_PORT}/api"
+    assert httpx.get(f"{base}/robots", headers={"Host": "attacker.example"}).status_code == 400
+    cross_site = httpx.post(f"{base}/recording/start", headers={"Origin": "https://attacker.example"})
+    assert cross_site.status_code == 403
+    assert stack.api.get("/recording").json()["recording"] is None
+
+    async def open_feed(origin):
+        async with websockets.connect(f"ws://{HOST}:{UI_PORT}/api/ws", origin=origin) as ws:
+            return (await asyncio.wait_for(ws.recv(), 5))[:20]
+
+    assert asyncio.run(open_feed(f"http://{HOST}:{UI_PORT}")).startswith('{"type"')
+    try:
+        asyncio.run(open_feed("https://attacker.example"))
+        raise AssertionError("cross-site WebSocket was accepted")
+    except websockets.exceptions.InvalidStatus as refused:
+        assert refused.response.status_code == 403

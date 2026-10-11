@@ -15,6 +15,12 @@ class Settings:
     # broker). The password is read from a file (ACTUNODE_MQTT_PASSWORD_FILE), never an env value.
     mqtt_username: str | None = os.getenv("ACTUNODE_MQTT_USERNAME") or None
     mqtt_password_file: str | None = os.getenv("ACTUNODE_MQTT_PASSWORD_FILE") or None
+    # Host names the API answers to (D-24): add the machine's name or address for shared use.
+    allowed_hosts: frozenset[str] = frozenset(
+        h.strip().lower()
+        for h in os.getenv("ACTUNODE_ALLOWED_HOSTS", "localhost,127.0.0.1,::1").split(",")
+        if h.strip()
+    )
     # Two live robots closer than this (metres) raise a `proximity` warning (D-22).
     proximity_m: float = float(os.getenv("ACTUNODE_PROXIMITY_M", "1.0"))
     # A recording stops itself at this size. Fractions allowed (useful for testing the limit).

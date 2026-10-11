@@ -206,3 +206,26 @@ def test_delete_session(client):
 @pytest.mark.parametrize("session_id", ["..%2F..%2Fetc%2Fpasswd", "nope"])
 def test_delete_rejects_unknown_and_unsafe_ids(client, session_id):
     assert client.delete(f"/api/sessions/{session_id}").status_code == 404
+
+
+def test_two_recordings_started_in_the_same_second_get_different_ids(tmp_path, monkeypatch):
+    """Session ids are timestamps to the second; stop-then-start within a second used to fail (409)."""
+    from app import recorder as recorder_module
+
+    class FrozenClock:
+        @staticmethod
+        def now(tz=None):
+            from datetime import datetime
+
+            return datetime(2026, 10, 11, 12, 0, 0, tzinfo=tz)
+
+    monkeypatch.setattr(recorder_module, "datetime", FrozenClock)
+    recorder = SessionRecorder(tmp_path)
+
+    ids = []
+    for name in (None, None, "demo", "demo"):
+        ids.append(recorder.start(name, [])["sessionId"])
+        recorder.stop()
+
+    assert ids == ["20261011-120000", "20261011-120000_2", "20261011-120000_demo", "20261011-120000_demo-2"]
+    assert all(recorder.path_for(i) for i in ids)

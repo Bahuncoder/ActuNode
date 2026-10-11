@@ -5,6 +5,7 @@ What changed, per commit, newest first. Status and plans are in [docs/PROGRESS.m
 ## Unreleased
 
 ### Added
+- Host and Origin checks for the API and live feed (`ACTUNODE_ALLOWED_HOSTS`): other web pages can no longer use it via DNS rebinding or cross-site requests (D-24, #12 part B).
 - MQTT logins with per-robot topic permissions; generated secrets in a Docker volume; `mqtt-init add-robot` / `show tools`; security e2e tests (D-23, #12 part A).
 - Near-collision detection: `proximity` warning, map highlight, `GET /api/proximity`, `ACTUNODE_PROXIMITY_M` (D-22, #5).
 - Simulator `--vda-version 3` (`ACTUNODE_VDA_VERSION`): robots speak VDA 5050 3.0.0 (part B of #8).
@@ -34,6 +35,8 @@ What changed, per commit, newest first. Status and plans are in [docs/PROGRESS.m
 - CI: the `compose` build job is replaced by the `e2e` job, which builds and runs the stack.
 
 ### Fixed
+- Starting a recording within the same second as the previous one failed (409, same session id); a
+  suffix (`_2`, `-2`) now keeps them apart.
 - Security: orders were routed by the identity a robot was last seen with, so any MQTT client could
   redirect them; two rounds of patches still left ways around it. Orders now go only where the request
   says (`manufacturer`, `vda_version`) or to the configured default; observed identities produce a

@@ -45,7 +45,8 @@ docker compose run --rm mqtt-init add-robot amr_7     # login for a real robot (
 docker compose up -d --force-recreate mqtt-init mosquitto   # apply a new robot login
 ```
 
-Each robot may publish only its own topics; only the backend may send orders. The API has no login yet,
+Each robot may publish only its own topics; only the backend may send orders. Other web pages in your
+browser cannot use the API (Host and Origin checks, D-24). The API has no login yet,
 so do not share the lab on a network (`ACTUNODE_BIND_ADDRESS=0.0.0.0`) until issue 12 is complete.
 
 ## Local development (without Docker)

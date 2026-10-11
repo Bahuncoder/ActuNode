@@ -66,11 +66,8 @@ class SessionRecorder:
                 raise RecorderError(f"Already recording {self._current['sessionId']}")
 
             self.directory.mkdir(parents=True, exist_ok=True)
-            stamp = datetime.now(UTC).strftime("%Y%m%d-%H%M%S")
-            session_id = f"{stamp}_{name}" if name else stamp
+            session_id = self._free_session_id(datetime.now(UTC).strftime("%Y%m%d-%H%M%S"), name)
             path = self.directory / f"{session_id}.jsonl"
-            if path.exists():
-                raise RecorderError(f"Session {session_id} already exists")
 
             self._file = path.open("w", encoding="utf-8")
             self._bytes = 0
@@ -84,6 +81,17 @@ class SessionRecorder:
             self._write({"type": "session", "formatVersion": FORMAT_VERSION, **self._session_fields()})
             self._write({"type": "snapshot", "robots": robots})
             return self._status()
+
+    def _free_session_id(self, stamp: str, name: str | None) -> str:
+        """Timestamp (to the second) plus name; a suffix keeps two starts in the same second apart."""
+        base = f"{stamp}_{name}" if name else stamp
+        candidate, n = base, 2
+        while (self.directory / f"{candidate}.jsonl").exists():
+            if n > 99:
+                raise RecorderError(f"Too many sessions named {base}")
+            candidate = f"{stamp}_{name[:37]}-{n}" if name else f"{stamp}_{n}"
+            n += 1
+        return candidate
 
     def stop(self) -> dict:
         with self._lock:

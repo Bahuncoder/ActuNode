@@ -47,12 +47,12 @@ request, so the backend can be restarted on its own (D-13).
 |---|---|---|
 | Network | All ports published on 127.0.0.1 unless `ACTUNODE_BIND_ADDRESS` is set | D-18 |
 | MQTT | No anonymous clients; per-robot topic permissions (`mosquitto/config/acl`); generated passwords in the `mqtt-secrets` volume, one read-only subfolder per service | D-23 |
+| Browser | API answers only allowed `Host` names; cross-site WebSockets and state-changing requests refused | D-24 |
 | Commands | Orders go only where the request says or to the configured default, never inferred from traffic | D-21 |
 | Containers | Backend and simulator run as non-root users | D-12 |
 | Robot data | Treated as untrusted in the validator and the UI | D-9 |
 
-Not yet: HTTP `Host`/`Origin` checks against DNS rebinding (issue 12 part B), API login and TLS for
-shared networks (part C).
+Not yet: API login and TLS for shared networks (issue 12 part C).
 
 ## MQTT topics
 
@@ -216,6 +216,7 @@ can go first).
 | `ACTUNODE_SESSIONS_DIR` | backend | `<repo>/sessions` |
 | `ACTUNODE_MAX_SESSION_MB` | backend (recording stops itself at this size; fractions allowed) | `200` |
 | `ACTUNODE_PROXIMITY_M` | backend (near-collision distance in metres, D-22) | `1.0` |
+| `ACTUNODE_ALLOWED_HOSTS` | backend (host names the API answers to, D-24) | `localhost,127.0.0.1,::1` |
 | `ACTUNODE_SIM_ROBOTS` | simulator | `3` (1–50) |
 | `ACTUNODE_VDA_INTERFACE` | backend, simulator | `uagv` |
 | `ACTUNODE_VDA_MAJOR_VERSION` | backend (topic version of orders it sends) | `v2` |

@@ -128,7 +128,7 @@ Numbered so they can be referenced from commits. Remove an item only when it is 
 |---|---|---|---|
 | 3 | CI `compose` job failed on Days 1–5, passes since Day 6. No build-relevant file changed in between; logs need a GitHub login | Probably transient (base image pulls), but unconfirmed | Check the job logs on GitHub Actions |
 | 6 | No real-browser tests (component and logic tests exist since D-19, but run in jsdom, not a browser) | Browser-only issues (layout, WebSocket in a real browser) are caught by hand | Add Playwright tests against the e2e stack |
-| 12 | Security for shared use not finished: MQTT logins and per-robot permissions done (part A, D-23); still missing: HTTP `Host`/`Origin` checks against DNS rebinding (part B), API login and TLS (part C) | A malicious web page could reach the local API via DNS rebinding; on a shared network the API is open and MQTT passwords are unencrypted | Parts B and C, next |
+| 12 | Security for shared use not finished: MQTT logins (part A, D-23) and Host/Origin checks (part B, D-24) done; still missing: API login and TLS (part C) | On a shared network the API is open and MQTT passwords travel unencrypted | Part C, next |
 | 15 | From the dev machine, `127.0.0.1:8000` (backend published port) accepts connections but never answers, while the LAN address `192.168.1.151:8000`, port 8080 on loopback, and container-to-container calls all work. Seen from the assistant's sandboxed shell; not yet checked from a normal terminal | API docs at localhost:8000/docs may be unreachable; the UI is unaffected (it uses 8080) | Seen again on 10 Oct for MQTT ports 1883/11883 from the same shell while the LAN address worked, so most likely the assistant's sandbox; on GitHub's CI machine the same e2e tests reach the stack via plain `localhost`. E2E tests take `ACTUNODE_E2E_HOST` for this. Still: run `curl -m 5 localhost:8000/api/health` in a normal terminal; if it hangs there too, investigate Docker's port forwarding |
 | 17 | Official VDA 5050 3.0.0 schemas are not valid JSON: trailing commas in `factsheet.schema` (4), `order.schema` (1, line 315), `visualization.schema` (2) | Any tool loading them as-is fails | Vendored with only those 7 commas removed (verified by diff); report upstream (needs your GitHub account) |
 | 19 | The live robot list is keyed by serial number only: robots with the same serial under different manufacturers or versions share one entry in the UI | Confusing display in mixed fleets with colliding serials (missions are safe since the ambiguity check) | Key robots by (version, manufacturer, serial) in hub and UI |
@@ -150,6 +150,12 @@ Newest first. One entry per work session: what was done, what was learned, what 
   own state arrives. `add-robot` for real robots works (invalid serials refused, exit 2). Found and
   fixed in the init script: noisy output burying the new login. Passwords stable across restarts.
 - E2E suite logs in as `tools`; 3 permanent security tests; 14/14 for VDA 2.1 and 3.0.
+- **Part B (D-24).** Demonstrated first on the running stack: DNS rebinding served (200), a cross-site
+  WebSocket streamed 34 KB of live data, a cross-site POST started a recording (201). Added Host and
+  Origin checks for HTTP and WebSocket; now 400/403/403 and the UI unaffected (browser check, 0 console
+  errors). Found and fixed on the way: two recordings started in the same second got the same session
+  id (409); and my own new test wrote into the real `sessions/` folder (two files removed, test fixed).
+  Backend 124 tests; e2e 15/15 for 2.1 and 3.0.
 
 ### Sat 10 Oct 2026 (night, continued)
 

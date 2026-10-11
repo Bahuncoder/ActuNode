@@ -60,6 +60,8 @@ services:
       ACTUNODE_SESSIONS_DIR: /app/sessions
       ACTUNODE_MAX_SESSION_MB: ${ACTUNODE_MAX_SESSION_MB:-200}
       ACTUNODE_PROXIMITY_M: ${ACTUNODE_PROXIMITY_M:-1.0}
+      # Host names the API answers to (D-24); add this machine's name/address when sharing the lab.
+      ACTUNODE_ALLOWED_HOSTS: ${ACTUNODE_ALLOWED_HOSTS:-localhost,127.0.0.1,::1}
     ports:
       - "${ACTUNODE_BIND_ADDRESS:-127.0.0.1}:${ACTUNODE_API_HOST_PORT:-8000}:8000"
     volumes:

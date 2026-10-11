@@ -5,8 +5,10 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect
 
 from app import failures, missions, sessions
+from app.config import settings
 from app.live import hub
 from app.mqtt_state import mqtt_bridge
+from app.security import LocalWebGuard
 
 VERSION = "0.1.0"
 
@@ -33,6 +35,7 @@ app = FastAPI(
     version=VERSION,
     lifespan=lifespan,
 )
+app.add_middleware(LocalWebGuard, allowed_hosts=settings.allowed_hosts)
 app.include_router(missions.router)
 app.include_router(failures.router)
 app.include_router(sessions.router)

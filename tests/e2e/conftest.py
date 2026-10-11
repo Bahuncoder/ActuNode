@@ -198,6 +198,7 @@ def stack(tmp_path_factory):
         "ACTUNODE_UID": str(os.getuid()),
         "ACTUNODE_GID": str(os.getgid()),
         "ACTUNODE_SIM_ROBOTS": str(len(ROBOTS)),
+        "ACTUNODE_ALLOWED_HOSTS": f"localhost,127.0.0.1,::1,{HOST}",
         "ACTUNODE_VDA_VERSION": VDA,
     }
     stack = Stack(env, sessions_dir)

@@ -288,3 +288,18 @@ Without a username configured, backend and simulator connect anonymously (local 
 broker (verified: 7 attempts blocked, own messages delivered; permanent e2e tests). Needs Docker ≥ 26
 for volume subpaths. Passwords still travel unencrypted on the wire: TLS is part C of issue 12 (shared
 mode); the default bind to 127.0.0.1 (D-18) keeps that off the network meanwhile.
+
+## D-24 · Refuse requests from other web pages: Host and Origin checks
+11 Oct 2026 · Accepted (issue 12, part B)
+
+**Context.** Binding to 127.0.0.1 keeps other machines out, not other *web pages* in the user's own
+browser. Demonstrated against the running stack: a request with `Host: attacker.example` (DNS
+rebinding) was served (200); a cross-site WebSocket was accepted and streamed 34 KB of live robot data;
+a cross-site `text/plain` POST started a recording (201).
+**Decision.** An ASGI middleware in front of the whole API (HTTP and WebSocket): the `Host` name must
+be in `ACTUNODE_ALLOWED_HOSTS` (default `localhost,127.0.0.1,::1`; add the machine's name when
+sharing), and WebSocket handshakes and state-changing requests (anything but GET/HEAD/OPTIONS) carrying
+an `Origin` of another host (or `null`) are refused. Requests without `Origin` (curl, scripts) are not
+browser pages and are allowed. No CORS headers are sent, so cross-site reads stay hidden from pages.
+**Consequences.** All three attacks now refused (400/403/403), the UI unaffected; unit tests and an e2e
+test through nginx. A real API login is still needed for shared networks (part C).
