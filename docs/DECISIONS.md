@@ -268,3 +268,23 @@ path planning or traffic control inside ActuNode.
 **Consequences.** Near-misses become evidence; later (stage 2, test infrastructure) a scenario can assert
 "no proximity warnings". The detector immediately found real near-misses in our own demo: robots leaving
 the parking grid for CHARGING pass within 0.5 m of parked neighbours.
+
+## D-23 · Broker logins with per-robot topic permissions; secrets in a Docker volume
+11 Oct 2026 · Accepted (issue 12, part A)
+
+**Context.** The broker accepted anonymous clients, so any process able to reach it could publish as
+any robot or send orders (D-21 explains why the backend cannot fix that by guessing). The real fix is
+authenticating publishers at the broker.
+**Decision.** `allow_anonymous false`. Logins: `actunode-backend` (full access: orders, failure commands,
+replay), `tools` (read only, for people), `healthcheck`, and one login per robot named after its serial
+number. The ACL lets a robot publish only its own `state`/`connection`/`visualization`/`factsheet` and
+read only its own `order`/`instantActions`/`zoneSet`/`responses`/inject topics. An `mqtt-init` service
+(same mosquitto image) generates random passwords on first start into the `mqtt-secrets` volume, never
+in git or on the host; each service mounts only its own subfolder read-only, files owned by that
+service's user (0400): the simulator cannot read the backend's password. Real robots get a login with
+`docker compose run --rm mqtt-init add-robot <serial>`; the tools password with `... show tools`.
+Without a username configured, backend and simulator connect anonymously (local development broker).
+**Consequences.** Spoofing another robot or sending orders without the backend's login is refused by the
+broker (verified: 7 attempts blocked, own messages delivered; permanent e2e tests). Needs Docker ≥ 26
+for volume subpaths. Passwords still travel unencrypted on the wire: TLS is part C of issue 12 (shared
+mode); the default bind to 127.0.0.1 (D-18) keeps that off the network meanwhile.

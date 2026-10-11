@@ -8,6 +8,7 @@ import logging
 import os
 import signal
 import time
+from pathlib import Path
 
 from simulator.publisher import RobotConnection
 from simulator.robot import VDA_VERSIONS, Robot
@@ -53,6 +54,13 @@ def parse_args() -> argparse.Namespace:
     return parser.parse_args()
 
 
+def _robot_password() -> str | None:
+    """Shared password of the simulated robots (ACTUNODE_MQTT_PASSWORD_FILE), or None to connect
+    anonymously to a development broker."""
+    path = os.getenv("ACTUNODE_MQTT_PASSWORD_FILE")
+    return Path(path).read_text().strip() if path else None
+
+
 def main() -> None:
     args = parse_args()
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
@@ -60,7 +68,8 @@ def main() -> None:
     robots = [
         Robot(f"robot_{i + 1:02d}", *parking_spot(i), vda_major=f"v{args.vda_version}") for i in range(args.robots)
     ]
-    connections = [RobotConnection(robot, args.host, args.port) for robot in robots]
+    password = _robot_password()
+    connections = [RobotConnection(robot, args.host, args.port, password) for robot in robots]
 
     running = True
 

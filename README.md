@@ -37,14 +37,23 @@ Recordings are written to `./sessions` as your user; if `id -u` / `id -g` are no
 Stop with `docker compose down`. Replay needs the simulator stopped: `docker compose stop simulator`.
 
 **Security:** the lab is reachable only from this computer (ports are published on `127.0.0.1`). The MQTT
-broker accepts anonymous clients and the API has no login, so do not expose it casually. To share it on
-a network you trust, start with `ACTUNODE_BIND_ADDRESS=0.0.0.0 docker compose up --build`; anyone on that
-network can then command the robots.
+broker requires a login: passwords are generated on first start and kept in a Docker volume (D-23).
+
+```bash
+docker compose run --rm mqtt-init show tools          # read-only login for MQTT tools (user: tools)
+docker compose run --rm mqtt-init add-robot amr_7     # login for a real robot (user = serial number)
+docker compose up -d --force-recreate mqtt-init mosquitto   # apply a new robot login
+```
+
+Each robot may publish only its own topics; only the backend may send orders. The API has no login yet,
+so do not share the lab on a network (`ACTUNODE_BIND_ADDRESS=0.0.0.0`) until issue 12 is complete.
 
 ## Local development (without Docker)
 
-You still need an MQTT broker on `localhost:1883`
-(e.g. `docker compose up mosquitto`, or `sudo apt install mosquitto`).
+You still need an MQTT broker on `localhost:1883`. Simplest: a local broker without logins
+(`sudo apt install mosquitto`); backend and simulator connect anonymously when no
+`ACTUNODE_MQTT_USERNAME` / `ACTUNODE_MQTT_PASSWORD_FILE` is set. To use the Compose broker instead, copy
+the backend password out of the volume and point `ACTUNODE_MQTT_PASSWORD_FILE` at it.
 
 ```bash
 # Backend

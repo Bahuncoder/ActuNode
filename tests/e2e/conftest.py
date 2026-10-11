@@ -41,8 +41,20 @@ class Stack:
         self.env = env
         self.sessions_dir = sessions_dir
         self.api = httpx.Client(base_url=f"http://{HOST}:{UI_PORT}/api", timeout=10)
+        self.tools_password: str | None = None  # read-only MQTT login, set once the stack is up
 
     # --- Docker -----------------------------------------------------------------
+
+    def secret(self, path: str) -> str:
+        """Read a generated credential from the mqtt-secrets volume (see mosquitto/init-secrets.sh)."""
+        output = self.compose("run", "--rm", "--no-deps", "--entrypoint", "cat", "mqtt-init", f"/secrets/{path}")
+        return output.strip().splitlines()[-1]
+
+    def mqtt_client(self, username: str | None, password: str | None) -> mqtt.Client:
+        client = mqtt.Client(callback_api_version=mqtt.CallbackAPIVersion.VERSION2)
+        if username:
+            client.username_pw_set(username, password)
+        return client
 
     def compose(self, *args: str, timeout: float = 600) -> str:
         print(f"[{datetime.now(UTC):%H:%M:%S.%f}] docker compose {' '.join(args)}", flush=True)
@@ -129,7 +141,7 @@ class Stack:
         """Collect (monotonic time, topic, payload dict or None, retained) while the block runs."""
         messages: list[tuple] = []
         ready = threading.Event()
-        client = mqtt.Client(callback_api_version=mqtt.CallbackAPIVersion.VERSION2)
+        client = self.mqtt_client("tools", self.tools_password)  # read-only login (D-23)
 
         def on_connect(c, userdata, flags, reason_code, properties):
             c.subscribe(topic, qos=1)
@@ -191,6 +203,7 @@ def stack(tmp_path_factory):
     stack = Stack(env, sessions_dir)
     stack.compose("up", "-d", "--build", "--wait", "--wait-timeout", "180")
     try:
+        stack.tools_password = stack.secret("people/tools.password")
         wait_for(stack.all_online, 30, "all robots ONLINE")
         yield stack
     finally:

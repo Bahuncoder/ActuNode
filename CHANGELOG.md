@@ -5,6 +5,7 @@ What changed, per commit, newest first. Status and plans are in [docs/PROGRESS.m
 ## Unreleased
 
 ### Added
+- MQTT logins with per-robot topic permissions; generated secrets in a Docker volume; `mqtt-init add-robot` / `show tools`; security e2e tests (D-23, #12 part A).
 - Near-collision detection: `proximity` warning, map highlight, `GET /api/proximity`, `ACTUNODE_PROXIMITY_M` (D-22, #5).
 - Simulator `--vda-version 3` (`ACTUNODE_VDA_VERSION`): robots speak VDA 5050 3.0.0 (part B of #8).
 - Orders and replay use each robot's own VDA 5050 version and manufacturer; UI reads 3.0 fields and shows a VDA column; e2e runs for 2.1 and 3.0 in CI (parts C–D of #8).

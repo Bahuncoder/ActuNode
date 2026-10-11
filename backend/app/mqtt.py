@@ -20,6 +20,8 @@ class MqttBridge:
         client_id: str,
         subscriptions: tuple[str, ...] = (),
         on_message: Callable[[str, bytes, bool], None] | None = None,
+        username: str | None = None,
+        password: str | None = None,
     ):
         self.host = host
         self.port = port
@@ -31,6 +33,8 @@ class MqttBridge:
             client_id=client_id,
         )
         self._client.on_connect = self._on_connect
+        if username:
+            self._client.username_pw_set(username, password)
         self._client.on_disconnect = self._on_disconnect
         self._client.on_message = self._on_message
         self._client.reconnect_delay_set(min_delay=1, max_delay=10)

@@ -11,6 +11,19 @@
 # (the end-to-end tests use this to run a second, isolated copy). Defaults are shown below.
 
 services:
+  # Creates MQTT logins on first start (kept in the mqtt-secrets volume) and rebuilds the broker's
+  # password file on every start (D-23). Tools password: docker compose run --rm mqtt-init show tools
+  mqtt-init:
+    image: eclipse-mosquitto:2
+    entrypoint: ["/bin/sh", "/init-secrets.sh"]
+    environment:
+      BACKEND_UID: ${ACTUNODE_UID:-1000}
+      SIMULATOR_UID: 1000
+      SIM_MAX_ROBOTS: 50
+    volumes:
+      - ./mosquitto/init-secrets.sh:/init-secrets.sh:ro
+      - mqtt-secrets:/secrets
+
   mosquitto:
     image: eclipse-mosquitto:2
     ports:
@@ -18,11 +31,21 @@ services:
       - "${ACTUNODE_BIND_ADDRESS:-127.0.0.1}:${ACTUNODE_MQTT_WS_HOST_PORT:-9001}:9001"
     volumes:
       - ./mosquitto/config/mosquitto.conf:/mosquitto/config/mosquitto.conf:ro
+      - ./mosquitto/config/acl:/mosquitto/config/acl:ro
+      - type: volume
+        source: mqtt-secrets
+        target: /mosquitto/secrets
+        read_only: true
+        volume:
+          subpath: broker
     healthcheck:
-      test: ["CMD", "mosquitto_sub", "-t", "$$SYS/broker/uptime", "-C", "1", "-W", "3"]
+      test: ["CMD-SHELL", "mosquitto_sub -u healthcheck -P \"$$(cat /mosquitto/secrets/healthcheck.password)\" -t '$$SYS/broker/uptime' -C 1 -W 3"]
       interval: 5s
       timeout: 5s
       retries: 10
+    depends_on:
+      mqtt-init:
+        condition: service_completed_successfully
 
   backend:
     build: ./backend
@@ -32,6 +55,8 @@ services:
     environment:
       ACTUNODE_MQTT_HOST: mosquitto
       ACTUNODE_MQTT_PORT: 1883
+      ACTUNODE_MQTT_USERNAME: actunode-backend
+      ACTUNODE_MQTT_PASSWORD_FILE: /run/secrets/mqtt/password
       ACTUNODE_SESSIONS_DIR: /app/sessions
       ACTUNODE_MAX_SESSION_MB: ${ACTUNODE_MAX_SESSION_MB:-200}
       ACTUNODE_PROXIMITY_M: ${ACTUNODE_PROXIMITY_M:-1.0}
@@ -39,6 +64,12 @@ services:
       - "${ACTUNODE_BIND_ADDRESS:-127.0.0.1}:${ACTUNODE_API_HOST_PORT:-8000}:8000"
     volumes:
       - ${ACTUNODE_SESSIONS_HOST_DIR:-./sessions}:/app/sessions
+      - type: volume
+        source: mqtt-secrets
+        target: /run/secrets/mqtt
+        read_only: true
+        volume:
+          subpath: backend
     healthcheck:
       test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/api/health', timeout=2)"]
       interval: 5s
@@ -57,6 +88,14 @@ services:
       ACTUNODE_MQTT_PORT: 1883
       ACTUNODE_SIM_ROBOTS: ${ACTUNODE_SIM_ROBOTS:-3}
       ACTUNODE_VDA_VERSION: ${ACTUNODE_VDA_VERSION:-2}
+      ACTUNODE_MQTT_PASSWORD_FILE: /run/secrets/mqtt/password
+    volumes:
+      - type: volume
+        source: mqtt-secrets
+        target: /run/secrets/mqtt
+        read_only: true
+        volume:
+          subpath: simulator
     depends_on:
       mosquitto:
         condition: service_healthy
@@ -73,3 +112,7 @@ services:
     depends_on:
       backend:
         condition: service_healthy
+
+volumes:
+  # MQTT logins (D-23). Kept across `docker compose down`; `down -v` deletes them (new ones are made).
+  mqtt-secrets:

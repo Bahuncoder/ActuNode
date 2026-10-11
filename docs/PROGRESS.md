@@ -128,7 +128,7 @@ Numbered so they can be referenced from commits. Remove an item only when it is 
 |---|---|---|---|
 | 3 | CI `compose` job failed on Days 1–5, passes since Day 6. No build-relevant file changed in between; logs need a GitHub login | Probably transient (base image pulls), but unconfirmed | Check the job logs on GitHub Actions |
 | 6 | No real-browser tests (component and logic tests exist since D-19, but run in jsdom, not a browser) | Browser-only issues (layout, WebSocket in a real browser) are caught by hand | Add Playwright tests against the e2e stack |
-| 12 | No authentication: Mosquitto allows anonymous clients, the API has no login, no TLS | Since D-18 the lab is reachable only from the same computer by default; with `ACTUNODE_BIND_ADDRESS=0.0.0.0` anyone on the network can command robots | Broker credentials with per-robot topic ACLs (the only way to know a robot's messages are really from it, D-21) + API auth + TLS before any shared deployment |
+| 12 | Security for shared use not finished: MQTT logins and per-robot permissions done (part A, D-23); still missing: HTTP `Host`/`Origin` checks against DNS rebinding (part B), API login and TLS (part C) | A malicious web page could reach the local API via DNS rebinding; on a shared network the API is open and MQTT passwords are unencrypted | Parts B and C, next |
 | 15 | From the dev machine, `127.0.0.1:8000` (backend published port) accepts connections but never answers, while the LAN address `192.168.1.151:8000`, port 8080 on loopback, and container-to-container calls all work. Seen from the assistant's sandboxed shell; not yet checked from a normal terminal | API docs at localhost:8000/docs may be unreachable; the UI is unaffected (it uses 8080) | Seen again on 10 Oct for MQTT ports 1883/11883 from the same shell while the LAN address worked, so most likely the assistant's sandbox; on GitHub's CI machine the same e2e tests reach the stack via plain `localhost`. E2E tests take `ACTUNODE_E2E_HOST` for this. Still: run `curl -m 5 localhost:8000/api/health` in a normal terminal; if it hangs there too, investigate Docker's port forwarding |
 | 17 | Official VDA 5050 3.0.0 schemas are not valid JSON: trailing commas in `factsheet.schema` (4), `order.schema` (1, line 315), `visualization.schema` (2) | Any tool loading them as-is fails | Vendored with only those 7 commas removed (verified by diff); report upstream (needs your GitHub account) |
 | 19 | The live robot list is keyed by serial number only: robots with the same serial under different manufacturers or versions share one entry in the UI | Confusing display in mixed fleets with colliding serials (missions are safe since the ambiguity check) | Key robots by (version, manufacturer, serial) in hub and UI |
@@ -138,6 +138,20 @@ Numbered so they can be referenced from commits. Remove an item only when it is 
 Newest first. One entry per work session: what was done, what was learned, what is next.
 
 ### Sat 10 Oct 2026: working through open issues one by one
+
+### Sun 11 Oct 2026: issue 12 part A, MQTT logins
+
+- Broker: no anonymous clients; logins for backend, tools (read only), healthcheck and one per robot
+  (serial = username); ACL lets a robot publish only its own topics (D-23). `mqtt-init` generates
+  passwords into a Docker volume; each service mounts only its own subfolder, owned by its user, 0400
+  (checked: simulator cannot read the backend password).
+- Verified against the real broker: anonymous, wrong password and crossed passwords refused; tools
+  reads but its publish is dropped; robot_01 cannot publish as robot_02, order it or inject into it; its
+  own state arrives. `add-robot` for real robots works (invalid serials refused, exit 2). Found and
+  fixed in the init script: noisy output burying the new login. Passwords stable across restarts.
+- E2E suite logs in as `tools`; 3 permanent security tests; 14/14 for VDA 2.1 and 3.0.
+
+### Sat 10 Oct 2026 (night, continued)
 
 - **#5 closed by decision D-22: detect near-collisions, never avoid them.** Agreed with the founder:
   stage 1 is the debugging lab; traffic control belongs to the fleet manager under test. Built a

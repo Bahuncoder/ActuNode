@@ -41,6 +41,19 @@ Backend and simulator run as an unprivileged user; Compose runs the backend as t
 session files in `./sessions` belong to them (D-12). nginx re-resolves the backend's name per
 request, so the backend can be restarted on its own (D-13).
 
+## Security
+
+| Layer | Protection | Decision |
+|---|---|---|
+| Network | All ports published on 127.0.0.1 unless `ACTUNODE_BIND_ADDRESS` is set | D-18 |
+| MQTT | No anonymous clients; per-robot topic permissions (`mosquitto/config/acl`); generated passwords in the `mqtt-secrets` volume, one read-only subfolder per service | D-23 |
+| Commands | Orders go only where the request says or to the configured default, never inferred from traffic | D-21 |
+| Containers | Backend and simulator run as non-root users | D-12 |
+| Robot data | Treated as untrusted in the validator and the UI | D-9 |
+
+Not yet: HTTP `Host`/`Origin` checks against DNS rebinding (issue 12 part B), API login and TLS for
+shared networks (part C).
+
 ## MQTT topics
 
 VDA 5050 layout: `interfaceName/majorVersion/manufacturer/serialNumber/topic`, e.g.
@@ -199,6 +212,7 @@ can go first).
 |---|---|---|
 | `ACTUNODE_MQTT_HOST`, `ACTUNODE_MQTT_PORT` | backend, simulator | `localhost`, `1883` |
 | `ACTUNODE_MQTT_CLIENT_ID` | backend | `actunode-backend` |
+| `ACTUNODE_MQTT_USERNAME`, `ACTUNODE_MQTT_PASSWORD_FILE` | backend (login; password read from the file); simulator uses the password file with each robot's serial as username | unset = anonymous |
 | `ACTUNODE_SESSIONS_DIR` | backend | `<repo>/sessions` |
 | `ACTUNODE_MAX_SESSION_MB` | backend (recording stops itself at this size; fractions allowed) | `200` |
 | `ACTUNODE_PROXIMITY_M` | backend (near-collision distance in metres, D-22) | `1.0` |

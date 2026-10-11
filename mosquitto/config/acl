@@ -1,0 +1,31 @@
+# ActuNode broker permissions (D-23). Anything not allowed here is denied.
+#
+# Users: actunode-backend, tools, healthcheck, and one user per robot named after its serial number
+# (simulated robots robot_01 ... robot_50; real robots added with `docker compose run --rm mqtt-init
+# add-robot <serial>`). Topics assume the interface name "uagv" (ACTUNODE_VDA_INTERFACE).
+
+# Backend: sends orders and failure commands, replays recordings (publishes robot topics), reads all.
+user actunode-backend
+topic readwrite uagv/#
+topic readwrite actunode/#
+
+# People and their tools (mosquitto_sub, MQTT Explorer): read only.
+user tools
+topic read uagv/#
+topic read actunode/#
+
+# Docker health check of the broker.
+user healthcheck
+topic read $SYS/broker/uptime
+
+# Every robot (%u = username = serial number): publish only its own robot-to-master topics and read
+# only its own commands. A robot can never publish as another robot or send orders.
+pattern write uagv/+/+/%u/state
+pattern write uagv/+/+/%u/connection
+pattern write uagv/+/+/%u/visualization
+pattern write uagv/+/+/%u/factsheet
+pattern read uagv/+/+/%u/order
+pattern read uagv/+/+/%u/instantActions
+pattern read uagv/+/+/%u/zoneSet
+pattern read uagv/+/+/%u/responses
+pattern read actunode/v1/sim/%u/inject

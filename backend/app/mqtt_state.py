@@ -1,5 +1,5 @@
 from app import vda5050
-from app.config import settings
+from app.config import read_secret, settings
 from app.live import hub
 from app.mqtt import MqttBridge
 
@@ -11,4 +11,6 @@ mqtt_bridge = MqttBridge(
     settings.mqtt_client_id,
     subscriptions=(f"{vda5050.INTERFACE_NAME}/#", "actunode/#"),
     on_message=hub.handle_mqtt,
+    username=settings.mqtt_username,
+    password=read_secret(settings.mqtt_password_file),
 )
