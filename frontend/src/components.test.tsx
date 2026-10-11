@@ -1,6 +1,7 @@
 import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import type { Robot } from './live'
+import MessageStream from './MessageStream'
 import RobotTable from './RobotTable'
 import WarehouseMap from './WarehouseMap'
 
@@ -174,5 +175,25 @@ describe('MissionSender robot', () => {
 
     const robotSelect = screen.getAllByRole('combobox')[0] as HTMLSelectElement
     expect(robotSelect.value).toBe('robot_31')
+  })
+})
+
+describe('payloads that are valid JSON but not what VDA 5050 says', () => {
+  const base = { id: 1, receivedAt: '2026-10-11T00:00:00Z', retained: false, validJson: true, issues: [] }
+
+  it('MessageStream renders null, number, array and string payloads on every topic kind', () => {
+    for (const kind of ['state', 'connection', 'order', 'inject', 'other']) {
+      for (const payload of [null, 5, [1], 'text']) {
+        render(<MessageStream messages={[{ ...base, topic: `uagv/v2/X/r1/${kind}`, payload }]} />)
+        expect(screen.getByText('r1')).toBeTruthy()
+        cleanup()
+      }
+    }
+  })
+
+  it('RobotTable renders an object where a string belongs', () => {
+    const robot = { key: 'v2/X/r1', robotId: 'r1', connection: { a: 1 }, lastSeen: null, state: null } as unknown as Robot
+    render(<RobotTable robots={[robot]} />)
+    expect(screen.getByText('r1')).toBeTruthy()
   })
 })

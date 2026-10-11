@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import {
   fetchHealth,
   fetchLocations,
@@ -145,10 +145,15 @@ export default function App() {
   // 'checking' until the first answer: nothing that needs a session may start before it (issue 6).
   const [session, setSession] = useState<SessionStatus | 'checking' | 'unreachable'>('checking')
 
+  const latest = useRef(0) // an older answer must not overwrite a newer one
   const refresh = useCallback(() => {
+    const sequence = ++latest.current
+    const apply = (next: SessionStatus | 'unreachable') => {
+      if (sequence >= latest.current) setSession(next)
+    }
     fetchSession()
-      .then(setSession)
-      .catch(() => setSession('unreachable')) // the lab shows that itself
+      .then(apply)
+      .catch(() => apply('unreachable')) // the lab shows that itself
   }, [])
 
   useEffect(() => {

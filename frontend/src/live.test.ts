@@ -1,4 +1,5 @@
-import { describe, expect, it } from 'vitest'
+import { renderHook, act } from '@testing-library/react'
+import { describe, expect, it, vi } from 'vitest'
 import {
   batteryCharge,
   identitiesOf,
@@ -11,6 +12,7 @@ import {
   routePoints,
   text,
   type Feed,
+  useLiveFeed,
   type MqttMessage,
   type Robot,
 } from './live'
@@ -176,5 +178,42 @@ describe('proximity', () => {
 
     feed = reducer(feed, { type: 'event', event: { type: 'proximity', pairs: [] } })
     expect(feed.proximity).toEqual([])
+  })
+})
+
+describe('live feed hardening', () => {
+  it('ignores a frame the browser cannot parse and keeps the connection', () => {
+    const sockets: { onmessage: (m: { data: string }) => void }[] = []
+    vi.stubGlobal('WebSocket', function (this: unknown) {
+      sockets.push(this as (typeof sockets)[number])
+    })
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
+    const { result } = renderHook(() => useLiveFeed())
+    const snap = { type: 'snapshot', robots: [robotWith(null)], messages: [], failures: [], recording: null, replay: null, validation: null }
+    act(() => {
+      sockets[0].onmessage({ data: '{"type":"snapshot","robots":[{"x":NaN}]}' })
+      sockets[0].onmessage({ data: JSON.stringify(snap) })
+    })
+    expect(Object.keys(result.current.robots)).toEqual(['v2/ActuNode/r1'])
+    expect(warn).toHaveBeenCalled()
+    warn.mockRestore()
+    vi.unstubAllGlobals()
+  })
+
+  it('caps robots at 1000 (least recently updated dropped) and failures at 200, like the backend', () => {
+    let feed = empty
+    for (let i = 1; i <= 1500; i++) {
+      const robot = { ...robotWith(null), key: `v2/X/s${i}`, robotId: `s${i}` }
+      feed = reducer(feed, { type: 'event', event: { type: 'message', robot, message: message(i) } })
+    }
+    expect(Object.keys(feed.robots)).toHaveLength(1000)
+    expect(feed.robots['v2/X/s1500']).toBeDefined()
+    expect(feed.robots['v2/X/s1']).toBeUndefined()
+    for (let i = 1; i <= 300; i++) {
+      const failure = { injectionId: `f${i}`, timestamp: '', robotId: 'r', failure: 'x', action: 'inject' as const, robotStatus: '' }
+      feed = reducer(feed, { type: 'event', event: { type: 'failure', failure } })
+    }
+    expect(feed.failures).toHaveLength(200)
+    expect(feed.failures.at(-1)?.injectionId).toBe('f300')
   })
 })

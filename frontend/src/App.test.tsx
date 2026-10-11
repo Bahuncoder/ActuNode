@@ -1,4 +1,4 @@
-import { cleanup, render, screen, waitFor } from '@testing-library/react'
+import { act, cleanup, render, screen, waitFor } from '@testing-library/react'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import App from './App'
 
@@ -62,5 +62,24 @@ describe('App', () => {
     render(<App />)
 
     await waitFor(() => expect(opened).toHaveBeenCalled())
+  })
+
+  it('ignores a slow older session answer that arrives after a newer one', async () => {
+    vi.useFakeTimers()
+    try {
+      const pending: ((body: unknown) => void)[] = []
+      stubFetch(() => new Promise((resolve) => pending.push((body) => resolve(answer(body)))))
+      stubWebSocket()
+
+      render(<App />)
+      await vi.advanceTimersByTimeAsync(3000) // second poll
+      expect(pending).toHaveLength(2)
+      await act(async () => pending[1]({ loginRequired: true, loggedIn: false }))
+      await act(async () => pending[0]({ loginRequired: true, loggedIn: true }))
+
+      expect(screen.getByLabelText(/Access token/)).toBeTruthy()
+    } finally {
+      vi.useRealTimers()
+    }
   })
 })

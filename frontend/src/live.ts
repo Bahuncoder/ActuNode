@@ -2,6 +2,9 @@ import { useEffect, useReducer } from 'react'
 
 const MAX_MESSAGES = 500
 const RECONNECT_MS = 2000
+// Same caps as the backend (backend/app/live.py MAX_ROBOTS, FAILURE_BUFFER).
+const MAX_ROBOTS = 1000
+const MAX_FAILURES = 200
 
 export type NodeState = {
   nodeId: string
@@ -198,13 +201,20 @@ function applyEvent(feed: Feed, event: LiveEvent): Feed {
   }
   if (event.type === 'failure') {
     if (feed.failures.some((entry) => entry.injectionId === event.failure.injectionId)) return feed
-    return { ...feed, failures: [...feed.failures, event.failure] }
+    return { ...feed, failures: [...feed.failures, event.failure].slice(-MAX_FAILURES) }
   }
   // The server subscribes us before sending the snapshot, so a message can arrive twice.
   const lastId = feed.messages.at(-1)?.id ?? 0
   if (event.message.id <= lastId) return feed
 
-  const robots = event.robot ? { ...feed.robots, [event.robot.key]: event.robot } : feed.robots
+  let robots = feed.robots
+  if (event.robot) {
+    // Delete first so an updated robot moves to the end; the oldest entry is the first key.
+    const { [event.robot.key]: _old, ...rest } = feed.robots
+    robots = { ...rest, [event.robot.key]: event.robot }
+    const keys = Object.keys(robots)
+    if (keys.length > MAX_ROBOTS) delete robots[keys[0]]
+  }
   return {
     ...feed,
     robots,
@@ -259,7 +269,13 @@ export function useLiveFeed(): Feed {
       const protocol = window.location.protocol === 'https:' ? 'wss' : 'ws'
       socket = new WebSocket(`${protocol}://${window.location.host}/api/ws`)
       socket.onopen = () => dispatch({ type: 'connected' })
-      socket.onmessage = (message) => dispatch({ type: 'event', event: JSON.parse(message.data) })
+      socket.onmessage = (message) => {
+        try {
+          dispatch({ type: 'event', event: JSON.parse(message.data) })
+        } catch {
+          console.warn('ActuNode: ignored a live frame the browser could not parse')
+        }
+      }
       socket.onclose = () => {
         dispatch({ type: 'disconnected' })
         if (!closed) retry = setTimeout(connect, RECONNECT_MS)

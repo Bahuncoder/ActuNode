@@ -36,7 +36,7 @@ export default function RobotTable({ robots }: { robots: Robot[] }) {
                   )}
                 </td>
                 <td>
-                  <span className={`badge ${isOnline(robot) ? 'ok' : 'down'}`}>{robot.connection ?? '—'}</span>
+                  <span className={`badge ${isOnline(robot) ? 'ok' : 'down'}`}>{text(robot.connection)}</span>
                 </td>
                 <td className="mono">{text(robot.state?.version)}</td>
                 <td>

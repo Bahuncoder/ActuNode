@@ -26,6 +26,9 @@ function rowClass(message: MqttMessage): string {
 
 function summary(message: MqttMessage): string {
   if (!message.validJson) return `invalid JSON: ${String(message.payload).slice(0, 80)}`
+  if (typeof message.payload !== 'object' || message.payload === null || Array.isArray(message.payload)) {
+    return (JSON.stringify(message.payload) ?? '').slice(0, 100)
+  }
   const p = message.payload as Record<string, any>
   switch (kindOf(message.topic)) {
     case 'state': {
