@@ -27,7 +27,10 @@ From the official repository, tag `3.0.0`, commit `e9ba560b0e2d3f66526550ad5d61b
 
 **One local change:** three upstream files are not valid JSON (trailing commas): `factsheet.schema` (4),
 `order.schema` (1), `visualization.schema` (2). Those 7 commas were removed; nothing else differs from
-upstream (checked with `diff`). Reported as PROGRESS issue 17. Re-check when updating to a newer tag.
+upstream (checked with `diff`; lines: factsheet 173, 178, 183, 188; order 314; visualization 54, 115).
+Already reported upstream as [VDA5050/VDA5050#660](https://github.com/VDA5050/VDA5050/issues/660) and
+fixed on their main branch, but not in a release yet (latest tag 3.0.0, checked 11 Oct 2026). When a
+fixed release (e.g. 3.0.1) is tagged, vendor it unchanged and drop this local fix.
 
 The validator picks the set by the topic's major version: `v2` → 2.1.0, `v3` → 3.0.0.
 
