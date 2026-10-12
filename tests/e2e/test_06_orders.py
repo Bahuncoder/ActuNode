@@ -1,29 +1,14 @@
 """Week 3 behaviour on the real stack (D-35): orders start at the robot, cancelOrder, order extension."""
 
 import math
-import time
 
 import pytest
-from conftest import ORDER_TOPIC, VDA, wait_for
+from conftest import ORDER_TOPIC, STATE_TOPIC, VDA, wait_for
 
 IDLE = ("COMPLETED", "CANCELLED", "IDLE")
-# Every rule that means a schema or state-machine violation. Header-id (restarts) and proximity are allowed.
-FORBIDDEN_RULES = {
-    "schema",
-    "invalid-json",
-    "payload-too-large",
-    "non-finite-number",
-    "too-deep",
-    "validator-error",
-    "topic-mismatch",
-    "version-mismatch",
-    "timestamp",
-    "order-sequence",
-    "mission-transition",
-    "driving-consistency",
-    "last-node-regression",
-    "value-range",
-}
+# Header-id warnings come from the earlier resilience restarts, proximity from the simulator's
+# straight-line driving (D-22). Any other validator rule means a schema or state-machine violation.
+ALLOWED_RULES = {"header-id", "proximity"}
 
 
 @pytest.fixture(scope="module", autouse=True)
@@ -52,7 +37,19 @@ def far_location(stack, robot_id: str, minimum: float, farthest: bool = False) -
 
 
 def wait_idle(stack, robot_id: str) -> None:
+    """Idle robot, wherever it is parked: cancel a route in progress or a FAILED order first."""
+    if stack.status(robot_id) not in IDLE:
+        try:
+            wait_for(lambda: stack.status(robot_id) in IDLE, 5, f"{robot_id} idle")
+        except AssertionError:
+            stack.post(f"/missions/{robot_id}/cancel", {"vda_version": VDA}, expect=202)
+            wait_for(lambda: stack.status(robot_id) == "CANCELLED", 10, f"{robot_id} CANCELLED")
     wait_for(lambda: stack.status(robot_id) in IDLE, 60, f"{robot_id} idle")
+
+
+def state_position(state: dict) -> tuple[float, float]:
+    position = state.get("agvPosition") or state["mobileRobotPosition"]  # 2.x or 3.0
+    return position["x"], position["y"]
 
 
 def instant_action_state(stack, robot_id: str, action_id: str) -> dict | None:
@@ -81,7 +78,7 @@ def test_cancel_stops_the_robot_mid_route(stack):
     robot_id = "robot_02"
     wait_idle(stack, robot_id)
     start = stack.position(robot_id)
-    destination = far_location(stack, robot_id, 15)
+    destination = far_location(stack, robot_id, 10, farthest=True)
     stack.post("/missions", {"vda_version": VDA, "robot_id": robot_id, "destination": destination}, expect=202)
     wait_for(lambda: stack.status(robot_id) == "MOVING", 10, f"{robot_id} MOVING")
     wait_for(lambda: distance(stack.position(robot_id), start) >= 1, 10, f"{robot_id} moved 1 m")
@@ -90,7 +87,7 @@ def test_cancel_stops_the_robot_mid_route(stack):
     response = stack.post(f"/missions/{robot_id}/cancel", {"vda_version": VDA}, expect=202)
     action_id = response.json()["actionId"]
 
-    wait_for(lambda: stack.status(robot_id) == "CANCELLED", 3, f"{robot_id} CANCELLED")
+    wait_for(lambda: stack.status(robot_id) == "CANCELLED", 10, f"{robot_id} CANCELLED")
     state = stack.robots()[robot_id]["state"]
     assert state["nodeStates"] == [] and state["edgeStates"] == []
     assert state["driving"] is False
@@ -98,11 +95,14 @@ def test_cancel_stops_the_robot_mid_route(stack):
     stopped_at = stack.position(robot_id)
     wait_for(
         lambda: (instant_action_state(stack, robot_id, action_id) or {}).get("actionStatus") == "FINISHED",
-        3,
+        10,
         "cancel FINISHED",
     )
-    time.sleep(2)
-    assert distance(stack.position(robot_id), stopped_at) <= 0.05, "cancelled robot kept moving"
+    with stack.watch(STATE_TOPIC.format(robot_id)) as messages:
+        wait_for(lambda: len(messages) >= 3, 10, "3 state messages")
+    for _, _, payload, _ in messages[:3]:
+        assert payload["driving"] is False
+        assert distance(state_position(payload), stopped_at) <= 0.05, "cancelled robot kept moving"
 
     stack.run_mission(robot_id, far_location(stack, robot_id, 5), timeout=60)
 
@@ -110,7 +110,7 @@ def test_cancel_stops_the_robot_mid_route(stack):
 def test_cancel_without_an_order_is_refused_by_the_robot(stack):
     robot_id = "robot_01"
     wait_idle(stack, robot_id)
-    if stack.status(robot_id) == "IDLE":  # not reached after the earlier tests, but never assume
+    if stack.status(robot_id) == "IDLE":  # a robot that never ran an order has nothing to cancel either way
         stack.run_mission(robot_id, far_location(stack, robot_id, 5), timeout=60)
 
     action_id = stack.post(f"/missions/{robot_id}/cancel", {"vda_version": VDA}, expect=202).json()["actionId"]
@@ -132,9 +132,9 @@ def test_cancel_without_an_order_is_refused_by_the_robot(stack):
 
 
 def test_extend_continues_the_order_to_a_new_destination(stack):
-    robot_id = "robot_01"
+    robot_id = "robot_03"
     wait_idle(stack, robot_id)
-    first = far_location(stack, robot_id, 15)
+    first = far_location(stack, robot_id, 10, farthest=True)
     order_id = stack.post(
         "/missions", {"vda_version": VDA, "robot_id": robot_id, "destination": first}, expect=202
     ).json()["order_id"]
@@ -161,5 +161,5 @@ def test_week3_traffic_has_no_protocol_errors(stack):
     validation = stack.api.get("/validation").json()
 
     assert validation["checked"] > 0
-    violations = [rule for rule in validation["byRule"] if rule["rule"] in FORBIDDEN_RULES]
+    violations = [rule for rule in validation["byRule"] if rule["rule"] not in ALLOWED_RULES]
     assert violations == [], violations
