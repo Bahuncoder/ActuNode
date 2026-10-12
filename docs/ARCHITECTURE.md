@@ -87,9 +87,14 @@ which is what puts them in the message stream and in recordings.
 
 | File | Responsibility |
 |---|---|
-| [robot.py](../simulator/robot.py) | `Robot`: pose, battery, mission state machine, order handling, failure injection, VDA 5050 message building. No I/O. |
-| [publisher.py](../simulator/publisher.py) | `RobotConnection`: one paho MQTT client per robot (own last will); queues incoming orders/commands |
-| [\_\_main\_\_.py](../simulator/__main__.py) | Main loop: 10 Hz physics tick; applies queued messages; publishes state every second and on change |
+| [robot.py](../simulator/robot.py) | `Robot`: pose, battery, charging, mission status, order acceptance, failure injection, event signature. No I/O. Re-exports the public names of the modules below. |
+| [protocol.py](../simulator/protocol.py) | `VersionProfile` per VDA 5050 version (error names, field names, rules that differ), status constants and the state machine summary, limits, payload parsing (D-31 limits) |
+| [validation.py](../simulator/validation.py) | Pure order validation: types, id lengths, duplicates, caps (300 nodes/edges/actions) → `Problem` |
+| [orders.py](../simulator/orders.py) | New orders, order updates (stitching at the decision point), horizon |
+| [instant.py](../simulator/instant.py) | Instant actions: cancelOrder, startPause/stopPause, stateRequest, factsheetRequest, clearInstantActions |
+| [messages.py](../simulator/messages.py) | State, connection and factsheet messages per version |
+| [publisher.py](../simulator/publisher.py) | `RobotConnection`: one paho MQTT client per robot (own last will); queues incoming orders and instant actions |
+| [\_\_main\_\_.py](../simulator/__main__.py) | Main loop (`step`): 10 Hz physics tick; applies queued messages; publishes state every second, on VDA 5050 events and on request; publishes the factsheet on request |
 | [topics.py](../simulator/topics.py) | Topic names |
 
 **Mission state machine** (`state.actunode.missionStatus`):
@@ -120,7 +125,8 @@ IDLE ──order──▶ ACCEPTED ──next tick──▶ MOVING ──last no
 | [validator.py](../backend/app/validator.py) + [schemas/](../backend/app/schemas) | JSON Schema checks + sequence rules; attaches `issues` to every message |
 | [proximity.py](../backend/app/proximity.py) | `ProximityMonitor`: near-collision detection between live robots (`proximity` warning) |
 | [vda5050.py](../backend/app/vda5050.py) | Topic names, headers, order building |
-| [missions.py](../backend/app/missions.py) | `POST /api/missions` → VDA 5050 order |
+| [missions.py](../backend/app/missions.py) | `POST /api/missions` → VDA 5050 order starting at the robot; `cancel` and `extend` (D-35) |
+| [sent_orders.py](../backend/app/sent_orders.py) | Memory of the orders ActuNode sent (node contents for order updates), capped, with the lock that serialises missions and extends |
 | [failures.py](../backend/app/failures.py) | `POST /api/failures` → inject command; failure log |
 | [recorder.py](../backend/app/recorder.py) | `SessionRecorder`: JSONL session files |
 | [replay.py](../backend/app/replay.py) | `Replayer`: republishes a session with original timing (asyncio task) |

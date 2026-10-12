@@ -4,6 +4,19 @@ What changed, per commit, newest first. Status and plans are in [docs/PROGRESS.m
 
 ## Unreleased
 
+### Week 3 second review (D-36)
+- Security: a robot could make the backend publish an order over the broker limit (disconnecting the
+  backend); a crafted session file could pass the replay live check and fake a live robot. Fixed: every
+  publish is size-checked, robot-reported values are validated before reuse, replay checks exactly the
+  topics it publishes.
+- `extend` no longer locks itself out after one rejected or lost update.
+- Simulator limits: ids ≤ 128 characters, ≤ 300 nodes/edges/actions per order, payload size/depth/NaN
+  limits on incoming messages; a hostile message can no longer make a state exceed the broker limit.
+- Simulator split into `protocol`, `validation`, `orders`, `instant`, `messages`, `robot` with one
+  version profile per VDA 5050 version (maintainability C → A).
+- UI: PAUSED badge; per-robot cancel state and errors.
+- The offline demo `python3 main.py` works again (broken by the Week 3 start-node rule) and is tested.
+
 ### Week 3: orders, order updates, instant actions (D-35)
 - Simulator follows VDA 5050 2.1 and 3.0 order handling: version-specific errors kept until a new order,
   start node must be reachable, never drives into the horizon (new mission status `WAITING`, plus

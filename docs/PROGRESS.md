@@ -53,6 +53,27 @@ the 8-week plan; the 8-week plan is the full roadmap. All of Days 1–7 were bui
 | Days 6–7 | Record to JSONL, replay | Week 7 |
 | 10 Oct | 10 robots; validator, schemas, VDA 5050 notes | Weeks 4, 5, 1 (rest) |
 
+## Week 3 second review (12 Oct, D-36)
+
+At the founder's request, after Week 3 was committed: three fresh reviews (code quality, security,
+correctness of the first review's fixes) plus bandit and radon.
+
+| Severity | Finding | Fix |
+|---|---|---|
+| High | `extend` refused forever after one rejected or lost update ("retry in a moment" never helped) | Next id from the robot's state; "in flight" lasts 5 s |
+| Medium (security) | A robot's own map name copied into node 0 could make the backend publish an order over the broker limit → backend disconnected | Robot values validated before reuse; every publish size-checked (422 / skip) |
+| Medium (security) | Crafted session file passed the replay live check and could fake a live robot's state | Live key from the published topic; ids validated; injection topics checked |
+| Medium | Long ids could still push a robot's state over the broker limit | Ids ≤ 128; final size guard |
+| Medium (quality) | `simulator/robot.py` 1,131 lines, maintainability C (0.00), 10 complex functions | Split into 6 modules with a version profile; all A, 3 functions at CC 11 |
+| Low | Robot-reported sequence ids not type-checked (500 / wrong stitch); order memory unbounded, could evict the running order; simulator parsed without D-31 limits; huge ints crashed validation; unlocked header counter; lone surrogate could break a publish | Fixed, each with a test |
+| Low (UI) | Paused robot looked stuck; one cancel's state overwrote another's | PAUSED badge; per-robot state |
+| Found on the way | `python3 main.py` (README) spun forever since the Week 3 start-node rule | Fixed; smoke test |
+
+Order caps: a valid order with 1,000 nodes would give a 425 KB state, so the simulator caps nodes, edges
+and actions at 300 each (largest state < 200 KiB). Every new test failed on the code before its fix.
+Verified: backend 269, simulator 333, frontend 46; ruff, oxlint, tsc, build; e2e 22/22 (2.1), 22/22 (3.0),
+25/25 (2.1 with login).
+
 ## Week 3: orders, updates, instant actions; quality gate (12 Oct, D-35)
 
 Built test-first from the official texts (rules extracted first, design written down as D-35 before
@@ -218,10 +239,10 @@ exercised by hand with a real browser and MQTT traffic.
 
 | Area | How it was verified | Gaps |
 |---|---|---|
-| Backend API | 218 unit/API tests (pytest), run in CI, including a shutdown test under a real uvicorn server | |
-| Simulator | 269 tests (pytest, incl. conformance against the official 2.1.0 and 3.0.0 schemas), run in CI | |
+| Backend API | 269 unit/API tests (pytest), run in CI, including a shutdown test under a real uvicorn server | |
+| Simulator | 333 tests (pytest, incl. conformance against the official 2.1.0 and 3.0.0 schemas), run in CI | |
 | Python style | `ruff check` + `ruff format --check` in CI (backend, simulator) | |
-| Frontend | Type check, lint, 42 unit/component tests (`npm test`, incl. malformed robot data, both VDA versions, login, nothing opened before the session check) and production build, in CI; real-browser tests in the e2e suite (below) | |
+| Frontend | Type check, lint, 46 unit/component tests (`npm test`, incl. malformed robot data, both VDA versions, login, nothing opened before the session check) and production build, in CI; real-browser tests in the e2e suite (below) | |
 | MQTT flow | Automated against Mosquitto in Docker (`tests/e2e`) | |
 | Shutdown | Automated in `tests/e2e` (broker first, then backend; recording gets its end line) and `backend/tests/test_shutdown.py` | |
 | Docker stack, end to end | **Automated** (`tests/e2e`, 26 tests incl. 3 in Chromium via Playwright and 5 for Week 3 orders, in CI for VDA 2.1, 3.0 and 2.1 with login): health, state every second, mission state machine, BLOCKED_PATH, near-collision warning, validation clean, record/replay, last will on kill, broker restart recovery, shutdown with open recording; in the browser: live robots, map and stream over a real WebSocket, a mission sent from the form completes, login screen refuses a wrong token, no console errors | Browser tests use the local plain-HTTP UI, not HTTPS (D-29) |
@@ -245,6 +266,14 @@ Numbered so they can be referenced from commits. Remove an item only when it is 
 ## Session log
 
 Newest first. One entry per work session: what was done, what was learned, what is next.
+
+### Mon 12 Oct 2026 (later): Week 3 second review (D-36)
+
+- Three fresh reviews and the scanners found the items in the table above; fixed in two phases (bugs and
+  security first, then the behaviour-preserving split of the simulator), test-first, each red claim
+  checked against the committed code.
+- Lesson: the Week 3 start-node rule broke the README's offline demo and no test covered it; it does now.
+- Week 4 starts when the founder says so.
 
 ### Mon 12 Oct 2026: Week 3 (D-35)
 

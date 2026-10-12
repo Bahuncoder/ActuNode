@@ -553,3 +553,30 @@ broker's packet limit. Every `stateRequest` is answered with a publish.
 **Consequences.** Week 3 closes the Week 2 review's order findings and adds cancel and order updates.
 `blockingType`, retriable actions, corridors and zones stay out of scope (not used by ActuNode's
 missions); listed as known limits in VDA5050_NOTES.
+
+## D-36 · Week 3 second review: limits on everything a robot or file can make us publish; simulator split by job
+12 Oct 2026 · Accepted
+
+**Context.** After Week 3 was committed, three fresh reviews (code quality, security, correctness of the
+first review's fixes) found: `extend` locked itself out for good after one rejected or lost update; a robot
+could make the backend publish an order over the broker's packet limit (its own map name copied into node 0)
+and so disconnect the backend; a crafted session file passed the replay live check and could fake a live
+robot's state, which order building now reads; long ids or many nodes could still push a robot's state
+over the broker limit; and `simulator/robot.py` had grown to 1,131 lines (maintainability index C, 0.00).
+**Decision.**
+- *Everything published is bounded*: the MQTT bridge refuses any payload over the broker limit (callers
+  answer 422 or skip and count); payloads are compact UTF-8 JSON (ASCII-escaped only when a lone surrogate
+  forces it); values copied from a robot's state into an order (map id, position) are validated first.
+- *Extend*: the next update id comes from the robot's state; a 409 for "update in flight" only lasts 5 s.
+  The order memory is its own module (`sent_orders.py`), capped (200 nodes per order, never evicting the
+  order the robot runs); robot-reported sequence ids must be integers.
+- *Replay* computes the live-check key from exactly the topic it publishes, validates ids, and also checks
+  simulator injection topics.
+- *Simulator limits*: ids ≤ 128 characters (advertised in the factsheet); ≤ 300 nodes, 300 edges and 300
+  actions per order (1,000 would let a valid order's state exceed the limit); the backend's D-31 payload
+  limits applied to incoming orders and instant actions; huge numbers rejected, not crashing.
+- *Structure*: the simulator is split by job (`protocol`, `validation`, `orders`, `instant`, `messages`,
+  `robot`) with one `VersionProfile` per VDA 5050 version instead of scattered version checks; instant
+  actions live in one list (2.1 publishes them inside `actionStates`, after the order's actions).
+**Consequences.** Every module now rates A for maintainability. The offline demo (`python3 main.py`), broken
+by the Week 3 start-node rule without anyone noticing, is fixed and covered by a test.
