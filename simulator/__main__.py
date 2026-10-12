@@ -13,11 +13,17 @@ from pathlib import Path
 from simulator.publisher import RobotConnection
 from simulator.robot import VDA_VERSIONS, Robot
 
-# Robots park in a grid in the charging area (x 0-12 m, y 0-4 m) until missions arrive.
-# Ten robots fill it; more spill over into rows above.
-PARKING_COLUMNS = 5
-PARKING_ORIGIN = (1.2, 1.2)
-PARKING_SPACING = (2.2, 2.0)
+# Robots park first in the charging area (3 rows x 7 columns, 1.35 m apart), then in the PARKING zone
+# (5 staggered rows x 6 columns). Every spot is >= 0.5 m inside its zone, >= 1.3 m from every other spot
+# (above the proximity re-arm distance 1.2 m, D-22) and >= 1.5 m from every named location, so a robot
+# sent to CHARGING never stops on a parked one. Robots in PARKING do not charge (D-33): that is intended.
+CHARGING_SPOTS = [(round(0.5 + 1.35 * column, 3), y) for y in (0.5, 2.0, 3.5) for column in range(7)]
+PARKING_SPOTS = [
+    (round(0.5 + 1.35 * column + (0.675 if row % 2 else 0.0), 3), round(5.5 + 1.125 * row, 3))
+    for row in range(5)
+    for column in range(6)
+]
+PARKING_ORDER = CHARGING_SPOTS + PARKING_SPOTS
 MAX_ROBOTS = 50
 
 # Physics step. State is published every --interval and on every state event.
@@ -25,11 +31,7 @@ TICK_S = 0.1
 
 
 def parking_spot(index: int) -> tuple[float, float]:
-    column, row = index % PARKING_COLUMNS, index // PARKING_COLUMNS
-    return (
-        round(PARKING_ORIGIN[0] + column * PARKING_SPACING[0], 2),
-        round(PARKING_ORIGIN[1] + row * PARKING_SPACING[1], 2),
-    )
+    return PARKING_ORDER[index]
 
 
 def robot_count(value: str) -> int:

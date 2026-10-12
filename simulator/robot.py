@@ -70,6 +70,10 @@ BATTERY_PER_METER = 0.2
 # (x_min, y_min, x_max, y_max) of the warehouse map's charging zone, same as
 # frontend/src/WarehouseMap.tsx and backend/app/warehouse.py.
 CHARGING_AREA = (0.0, 0.0, 12.0, 4.0)
+# Overflow parking zone, same (x_min, y_min, x_max, y_max) form. Both areas must match the "charging" and
+# "parking" entries of backend/app/warehouse.py ZONES (checked by simulator/tests/test_main.py).
+# Robots parked here do not charge: charging stays limited to CHARGING_AREA (D-33).
+PARKING_AREA = (0.0, 5.0, 8.5, 10.5)
 # % per second; fast so a demo robot is full again within two minutes.
 CHARGE_PER_S = 1.0
 
