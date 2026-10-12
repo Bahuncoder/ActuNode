@@ -237,6 +237,7 @@ can go first).
 | `ACTUNODE_MAX_SESSION_MB` | backend (recording stops itself at this size; fractions allowed) | `200` |
 | `ACTUNODE_PROXIMITY_M` | backend (near-collision distance in metres, D-22) | `1.0` |
 | `ACTUNODE_ALLOWED_HOSTS` | backend (host names the API answers to, D-24) | `localhost,127.0.0.1,::1` |
+| `ACTUNODE_TRUSTED_PROXIES` | backend (comma-separated hosts/IPs whose `X-Real-IP` the login rate limit believes; resolved at startup, refreshed every 60 s; issue 23) | `frontend` |
 | `ACTUNODE_REQUIRE_LOGIN`, `ACTUNODE_API_TOKEN_FILE` | backend (web login, D-25) | `0`, generated token in the `secrets` volume |
 | `ACTUNODE_SIM_ROBOTS` | simulator | `3` (1–50) |
 | `ACTUNODE_VDA_INTERFACE` | backend, simulator | `uagv` |

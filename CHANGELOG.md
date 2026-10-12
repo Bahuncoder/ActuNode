@@ -4,6 +4,13 @@ What changed, per commit, newest first. Status and plans are in [docs/PROGRESS.m
 
 ## Unreleased
 
+### Code-quality backlog (issues 21–24, D-39)
+- Very large robot states are stored as a trimmed copy (≤ 64 KiB, marked `_truncated`, shown in the UI).
+- Validation counters can no longer double count around a reset (`epoch` / `validationEpoch`); recording
+  counters follow the current recording, whoever started it.
+- Login rate limit trusts `X-Real-IP` only from the nginx proxy (`ACTUNODE_TRUSTED_PROXIES`).
+- CI: weekly security scans (pip-audit, npm audit, Trivy) and a weekly/on-demand load test.
+
 ### Week 4: many robots, one map, live feed at scale (D-37, D-38)
 - Load test `tests/load/run_load.py` (isolated stack, 10/25/50 robots with missions, 18 thresholds, ~4 min).
 - One warehouse map in `backend/app/warehouse.py`, served at `GET /api/map`; the UI draws it, simulator tests

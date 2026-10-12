@@ -14,7 +14,7 @@ the status line, the schedule table, the session log, and the open issues.
 |---|---|
 | **Calendar** | Week 1 of 8 by date (Fri 9 Oct – Thu 15 Oct 2026); dates no longer gate the work (D-30) |
 | **Last updated** | Mon 12 Oct 2026 |
-| **Status** | **Weeks 1–4 complete** (quality gates passed 11–12 Oct, D-30). Next: code-quality backlog (issues 21–24, load test in CI), then the Week 5 and Week 7 quality gates (features built early), then Week 6 (three remaining failure types). |
+| **Status** | **Weeks 1–4 complete** (quality gates passed 11–12 Oct, D-30). No open issues (21–24 closed, D-39). Next: the Week 5 and Week 7 quality gates (features built early), then Week 6 (three remaining failure types). |
 | **Working rule** | A week is done when its work is fully done (D-30): features, then a quality gate (independent bug and security review, scans, a test for every fix, all suites and e2e green, docs). Then the next week starts, whatever the date. |
 
 ## Schedule
@@ -28,10 +28,6 @@ Week 1 started on Friday 9 October 2026 (Day 1). Each week runs Friday to Thursd
 | 3 | 23–29 Oct | Mission sender + state transitions | Move job from start to destination | ✅ Built early (Day 3); completed 12 Oct (D-35) | ✅ Quality gate passed 12 Oct: VDA 5050 order handling, order updates, cancel/pause, review fixes |
 | 4 | 30 Oct – 5 Nov | 5–10 robots + simple warehouse map | Multi-robot screen with location/state | ✅ Built early (Day 4); completed 12 Oct (D-37, D-38) | ✅ Quality gate passed 12 Oct: load test 10/25/50 robots, one map, parking, live feed at scale |
 | 5 | 6–12 Nov | Message inspector + validation | Readable message stream + errors | ✅ Built early (Day 4, 10 Oct) | 🟡 Official VDA 5050 2.1.0 and 3.0.0 schemas, chosen by topic (D-15, D-20). No offline validation of session files yet |
-| 21 | Each robot's last state is stored whole (up to 256 KiB, D-31), so 1,000 robots could hold ~256 MB | Memory pressure only under a deliberate flood by logged-in clients | Store large states as a preview, or cap total bytes |
-| 22 | Suspected UI races (found by reading, not reproduced): a message counted during "reset validation" may be counted twice in the UI; a recording started from another tab shows the previous recording's counters | Wrong numbers in the UI, not in files | Reproduce with a test first, then fix |
-| 23 | Login rate limit trusts `X-Real-IP` from any peer: a local process on the direct API port 8000 (127.0.0.1 only) can rotate it | Accepted for now: the token has ~190 bits, so guessing stays infeasible; only memory growth, which is capped | Trust `X-Real-IP` only from the nginx container |
-| 24 | Dependency and image scans (`pip-audit`, `npm audit`, `trivy`) run by hand, not in CI | A new CVE in a dependency is noticed late | Add a scheduled CI job |
 | 7 | 20–26 Nov | Record/replay | Session file can reproduce incident | ✅ Built early (Days 6–7) | 🟡 Size limit (`ACTUNODE_MAX_SESSION_MB`, default 200) and streaming replay. No retention or upload yet |
 | 8 | 27 Nov – 3 Dec | Demo + README + 3-minute video | GitHub repo + pitch demo | 🟡 README + demo script written | ⬜ Video not recorded |
 
@@ -81,7 +77,7 @@ failed (robots showed UNKNOWN). Fixed, and a shared contract fixture now ties bo
 was the broken build rendering nothing; the numbers above are from the fixed build.
 
 Verified: backend 282, simulator 337, frontend 59; e2e 22/22 (2.1), 22/22 (3.0), 25/25 (2.1 with login);
-load test 18/18 at 10, 25 and 50 robots.
+load test 18/18 at 10, 25 and 50 robots. Load test runs weekly in CI (`load.yml`, D-39).
 
 ## Week 3 second review (12 Oct, D-36)
 
@@ -281,21 +277,28 @@ exercised by hand with a real browser and MQTT traffic.
 | Validator | Official VDA 5050 2.1.0 schemas (D-20); real and generated messages in every mission state pass them; planted bad messages flagged; e2e: all live traffic clean. 3.0.0 schemas on `v3` topics (D-15), tested with valid 3.0 messages and 2.1 messages on a `v3` topic | No offline validation of session files |
 | 10/25/50 robots with missions | Load test (`tests/load`, D-38): all 18 thresholds met at every size; at 50 robots cadence p99 1.03 s, robot→browser p99 75 ms, backend CPU 10 %, UI 59 fps (p95 frame 16.8 ms), nothing dropped | Run by hand, not in CI; 50 robots is the simulator maximum |
 | State every second (Week 2) | Measured on the real stack, 75 s windows with missions: 1, 10 and 50 robots; worst interval 1.068 s, p99 ≤ 1.064 s, no headerId gaps, drift 0, at most one message per 0.1 s tick; one retained factsheet per robot | Not automated (scratch script); 50 robots is the simulator maximum |
-| Dependencies and images | `pip-audit` (backend, simulator, e2e), `npm audit`, `bandit`, `trivy` images and Dockerfiles: 0 known HIGH/CRITICAL after the gate (11 Oct) | Not yet automated in CI |
+| Dependencies and images | `pip-audit` (backend, simulator, e2e), `npm audit`, `trivy` images and Dockerfiles: 0 known HIGH/CRITICAL; automated weekly and on dependency changes (`security.yml`, D-39) | `bandit` still by hand |
 | Security (D-18, D-23–D-28, D-31, D-32) | E2E: MQTT logins and ACL (spoofing refused, incl. own serial under another manufacturer; old serial-only login refused), Host/Origin checks, nothing works without a session in login mode, plain ports unreachable from the LAN, TLS refuses clients that do not trust the CA | |
 | Near-collisions (D-22) | 8 unit tests (incl. 3.0 positions, offline robots, two robots sharing a serial); e2e: two robots at the same spot raise one warning | |
 
 ## Open issues and technical debt
 
-Numbered so they can be referenced from commits. Remove an item only when it is fixed and verified; numbers are never reused (fixed: 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20).
+Numbered so they can be referenced from commits. Remove an item only when it is fixed and verified; numbers are never reused (fixed: 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24).
 
 | # | Issue | Impact | Plan |
 |---|---|---|---|
+| — | No open issues (21–24 closed 12 Oct, D-39) | | |
 | 6 | No real-browser tests (component and logic tests exist since D-19, but run in jsdom, not a browser) | Browser-only issues (layout, WebSocket in a real browser) are caught by hand | Add Playwright tests against the e2e stack |
 
 ## Session log
 
 Newest first. One entry per work session: what was done, what was learned, what is next.
+
+### Mon 12 Oct 2026 (night): code-quality backlog closed (D-39)
+
+- Issues 21–24 fixed in parallel (backend, UI, CI), test-first; the shared contract fixture now also carries
+  `validationEpoch`. Security scans and the load test run in CI on a schedule.
+- Next: Week 5 and Week 7 quality gates.
 
 ### Mon 12 Oct 2026 (evening): Week 4 (D-37, D-38)
 

@@ -614,3 +614,24 @@ batches events per animation frame and memoises rows and markers so unchanged ro
 Validators were already built once; the remaining per-message cost is jsonschema itself (the load test
 projects the 250 ms latency budget holding to roughly 170 robots).
 **Consequences.** Measured before and after with the same load test (PROGRESS, Week 4).
+
+## D-39 · Code-quality backlog closed: bounded robot state, validation epoch, trusted proxy, scans in CI
+12 Oct 2026 · Accepted (issues 21–24)
+
+**Decision.**
+- *Issue 21 (amends D-31):* the hub stores a robot's state whole only up to 64 KiB; a larger state is kept
+  as a reduced copy (lists cut to their first 50 entries, then top-level fields dropped until it fits) with a
+  `_truncated` marker saying what was cut, which the UI shows as "state trimmed". The recorder still gets
+  every message whole. Worst case for 1,000 robots: 64 MB instead of 256 MB.
+- *Issue 22:* the validation summary has an `epoch` that increases on every reset, and each `message` event
+  carries the `validationEpoch` it was counted under (counted and read under one lock); the UI counts a
+  message only in its own epoch. Recording counters reset whenever the recording's session id changes,
+  whoever started it, and stale poll answers are ignored.
+- *Issue 23 (amends D-25):* the login rate limit uses `X-Real-IP` only when the TCP peer is a trusted proxy
+  (`ACTUNODE_TRUSTED_PROXIES`, default the `frontend` nginx service, resolved in the background so a request
+  never waits on DNS); otherwise the peer address.
+- *Issue 24:* `.github/workflows/security.yml` runs pip-audit, npm audit and Trivy (images and Dockerfiles)
+  weekly and whenever dependencies or images change; `.github/workflows/load.yml` runs the load test weekly
+  and on demand, keeping the results as an artifact.
+**Consequences.** No open issues. New CVEs or a load regression fail a scheduled run instead of waiting for a
+person to remember the scans.
