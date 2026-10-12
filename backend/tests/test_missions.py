@@ -1,10 +1,19 @@
 import json
+import threading
+from concurrent.futures import ThreadPoolExecutor
+from pathlib import Path
 
 import pytest
 from fastapi.testclient import TestClient
 
+from app import sent_orders as sent_orders_module
+from app import vda5050
+from app.live import hub
 from app.main import app
+from app.mqtt import PayloadTooLarge
 from app.mqtt_state import mqtt_bridge
+from app.sent_orders import sent_orders
+from app.validator import Validator
 
 P1042 = {
     "robot_id": "robot_01",
@@ -105,16 +114,10 @@ def test_orders_are_published_with_qos_0_as_vda5050_requires(client, monkeypatch
 
 def _seen(topic: str, payload: dict) -> None:
     """Let the live hub see a robot, as if its state had arrived over MQTT."""
-    from app.live import hub
-
     hub.handle_mqtt(topic, json.dumps(payload).encode())
 
 
 def test_order_to_a_3_0_robot_uses_the_requested_version_and_passes_the_official_3_0_schema(client, published):
-    from pathlib import Path
-
-    from app.validator import Validator
-
     fixture = json.loads((Path(__file__).parent / "fixtures" / "v3_state.json").read_text())
     _seen(fixture["topic"], fixture["payload"])
 
@@ -190,8 +193,6 @@ def test_warning_lists_every_identity_the_serial_was_seen_under(client, publishe
 
 def test_every_mission_to_a_robot_seen_under_another_identity_carries_the_warning(client, published):
     """Command traffic (our own orders echoed back over uagv/#) must not hide the D-21 warning."""
-    from app.live import hub
-
     _seen("uagv/v2/Other/robot_w/state", {"serialNumber": "robot_w"})
     for _ in range(2):
         response = client.post("/api/missions", json={**P1042, "robot_id": "robot_w", "vda_version": "3"})
@@ -210,8 +211,6 @@ def _state_with_position(major: str, manufacturer: str, robot_id: str, x=1.5, y=
 
 
 def _validates(topic: str, message: dict) -> list:
-    from app.validator import Validator
-
     return Validator().check(topic, message, valid_json=True)
 
 
@@ -414,22 +413,25 @@ def test_extend_before_the_robot_confirmed_the_previous_update_is_a_conflict(cli
 
 
 def test_concurrent_extends_send_one_update_only(client, published, monkeypatch):
-    import time
-    from concurrent.futures import ThreadPoolExecutor
-
-    from app import missions
-
     sent = _mission(client, "robot_cc")
     _robot_state("v2", "robot_cc", sent["order"], last_seq=2)
     published.clear()
-    real_publish = mqtt_bridge.publish
+    real_publish, real_topic = mqtt_bridge.publish, vda5050.topic
+    both_started = threading.Event()
+    calls = []
 
-    def slow_publish(topic, payload, qos=0):
-        time.sleep(0.2)
+    def counting_topic(*args, **kwargs):  # every extend calls this once, before taking the lock
+        calls.append(1)
+        if len(calls) == 2:
+            both_started.set()
+        return real_topic(*args, **kwargs)
+
+    def waiting_publish(topic, payload, qos=0):
+        assert both_started.wait(5)  # the other extend is under way while this one holds the lock
         real_publish(topic, payload, qos)
 
-    monkeypatch.setattr(mqtt_bridge, "publish", slow_publish)
-    assert missions._lock is not None
+    monkeypatch.setattr(vda5050, "topic", counting_topic)
+    monkeypatch.setattr(mqtt_bridge, "publish", waiting_publish)
     with ThreadPoolExecutor(2) as pool:
         codes = sorted(f.result().status_code for f in [pool.submit(_extend, client, "robot_cc") for _ in range(2)])
 
@@ -445,9 +447,7 @@ def test_extend_rejects_unknown_location_and_action(client, published):
 
 
 def test_remembered_orders_are_capped(client, published, monkeypatch):
-    from app import missions
-
-    monkeypatch.setattr(missions, "MAX_REMEMBERED_ORDERS", 2)
+    monkeypatch.setattr(sent_orders_module, "MAX_REMEMBERED_ORDERS", 2)
     sents = {}
     for robot in ("ra", "rb", "rc"):
         sents[robot] = _mission(client, robot)
@@ -455,3 +455,122 @@ def test_remembered_orders_are_capped(client, published, monkeypatch):
 
     _conflict(client, published, "ra", "did not send")
     assert _extend(client, "rc").status_code == 202
+
+
+# --- review fixes -------------------------------------------------------------------------------
+
+
+def test_a_rejected_update_does_not_lock_the_robot_out(client, published, monkeypatch):
+    sent = _mission(client, "robot_rej")
+    _robot_state("v2", "robot_rej", sent["order"], last_seq=2)
+    assert _extend(client, "robot_rej").json()["orderUpdateId"] == 1
+    published.clear()
+
+    # Update 1 was rejected or lost: the robot still says 0. Right after sending, wait (it may be in flight).
+    _conflict(client, published, "robot_rej", "previous update not confirmed by the robot yet; retry in a moment")
+
+    # Once the in-flight window is over, the stale update counts as lost: a fresh one is built from the state.
+    now = sent_orders.clock()
+    monkeypatch.setattr(sent_orders, "clock", lambda: now + 6)
+    response = _extend(client, "robot_rej")
+
+    assert response.status_code == 202
+    assert response.json()["orderUpdateId"] == 1  # state (0) + 1, not 2
+    assert published[0][1]["orderUpdateId"] == 1
+
+
+def test_extend_numbers_the_update_from_the_robots_confirmed_state(client, published, monkeypatch):
+    sent = _mission(client, "robot_num")
+    _robot_state("v2", "robot_num", sent["order"], last_seq=2, update_id=3)  # robot is further along than we know
+    published.clear()
+
+    assert _extend(client, "robot_num").json()["orderUpdateId"] == 4
+
+
+@pytest.mark.parametrize("bad", [["x"], True, 1.5, None, "2"])
+@pytest.mark.parametrize("field", ["orderUpdateId", "lastNodeSequenceId", "released"])
+def test_extend_rejects_robot_state_fields_of_the_wrong_type(client, published, bad, field):
+    sent = _mission(client, "robot_ty")
+    _robot_state("v2", "robot_ty", sent["order"], last_seq=2)
+    state = dict(hub.robot("robot_ty")["state"])
+    if field == "released":  # the decision node's sequenceId, taken from nodeStates
+        state["nodeStates"] = [{"sequenceId": bad, "released": True}]
+        field = "sequenceId"
+    else:
+        state[field] = bad
+    _seen("uagv/v2/ActuNode/robot_ty/state", state)
+
+    _conflict(client, published, "robot_ty", f"robot state has no usable {field}")
+
+
+def test_extend_refuses_to_grow_an_order_without_bound(client, published, monkeypatch):
+    sent = _mission(client, "robot_big")
+    _robot_state("v2", "robot_big", sent["order"], last_seq=2)
+    monkeypatch.setattr(sent_orders_module, "MAX_NODES_PER_ORDER", 3)  # the mission already has 3 nodes
+
+    _conflict(client, published, "robot_big", "order too long to extend; send a new mission")
+
+
+def test_the_order_the_robot_reports_is_never_evicted(client, published, monkeypatch):
+    monkeypatch.setattr(sent_orders_module, "MAX_ORDERS_PER_ROBOT", 2)
+    first = _mission(client, "robot_ev")
+    _robot_state("v2", "robot_ev", first["order"], last_seq=2)  # the robot runs the first order
+    for _ in range(3):  # later missions it rejected: its state still names the first order
+        client.post("/api/missions", json={**P1042, "robot_id": "robot_ev"})
+    published.clear()
+
+    assert _extend(client, "robot_ev").status_code == 202
+
+
+def test_a_robot_cannot_make_us_publish_an_oversized_order_through_its_map_id(client, published):
+    state = {"serialNumber": "robot_mp", "agvPosition": {"x": 1, "y": 2, "mapId": "\U0001f600" * 60000}}
+    payload = json.dumps(state, ensure_ascii=False).encode()
+    assert len(payload) < 256 * 1024  # small enough for the live hub to accept
+    hub.handle_mqtt("uagv/v2/ActuNode/robot_mp/state", payload)
+
+    response = client.post("/api/missions", json={**P1042, "robot_id": "robot_mp"})
+
+    assert response.status_code == 202
+    [(_, order)] = published
+    assert len(order["nodes"]) == 2  # position ignored
+    assert "has not reported a position yet" in response.json()["warning"]
+
+
+@pytest.mark.parametrize("map_id", ["a b", "a/b", "", "x" * 65, "m\u00e9"])
+@pytest.mark.parametrize("x", [1e7, float("inf")])
+def test_unusable_reported_positions_are_ignored(client, published, map_id, x):
+    _state_with_position("v2", "ActuNode", "robot_bp", x=x, map_id=map_id)
+    _state_with_position("v3", "ActuNode", "robot_bp2", x=1, map_id=map_id)
+
+    for robot in ("robot_bp", "robot_bp2"):
+        client.post("/api/missions", json={**P1042, "robot_id": robot})
+
+    assert all(len(order["nodes"]) == 2 for _, order in published)
+
+
+def test_published_json_is_compact_and_not_escaped(client, monkeypatch):
+    raw = []
+    monkeypatch.setattr(mqtt_bridge, "publish", lambda topic, payload, qos=0: raw.append(payload))
+
+    client.post("/api/missions", json={**P1042, "robot_id": "robot_cj"})
+    client.post("/api/missions/robot_cj/cancel")
+
+    assert all(", " not in payload and ": " not in payload for payload in raw)
+
+
+def _too_large(topic, payload, qos=0):
+    raise PayloadTooLarge("too big")
+
+
+def test_oversized_messages_are_refused_with_422(client, published, monkeypatch):
+    sent = _mission(client, "robot_tl")
+    _robot_state("v2", "robot_tl", sent["order"], last_seq=2)
+    monkeypatch.setattr(mqtt_bridge, "publish", _too_large)
+
+    for response in (
+        client.post("/api/missions", json={**P1042, "robot_id": "robot_tl"}),
+        _extend(client, "robot_tl"),
+        client.post("/api/missions/robot_tl/cancel"),
+    ):
+        assert response.status_code == 422
+        assert response.json()["detail"] == "message too large for the broker"

@@ -9,6 +9,7 @@ from fastapi.testclient import TestClient
 from app import sessions
 from app.live import hub
 from app.main import app
+from app.mqtt import PayloadTooLarge
 from app.mqtt_state import mqtt_bridge
 from app.replay import Replayer, ReplayError, is_command, iter_plan, scan_session
 
@@ -304,3 +305,102 @@ def test_replay_restores_each_robot_on_its_own_version_topic():
     assert "uagv/v2/ActuNode/r2/state" in topics
     assert "uagv/v3/VendorX/r3/state" in topics
     assert "uagv/v2/ActuNode/old/state" in topics
+
+
+def test_live_check_uses_the_identity_the_topic_is_built_from(client, published, tmp_path):
+    """A crafted snapshot "key" must not hide that the robot it really publishes as is live."""
+    robot = {
+        "key": "v2/Nobody/rp_decoy",  # lies: the topic below is built from the fields, not from this
+        "robotId": "rp_victim",
+        "vdaMajor": "v3",
+        "manufacturer": "Victim",
+        "state": STATE,
+    }
+    write_session(tmp_path / "20261009-120000_key.jsonl", [], robots=[robot])
+    hub.handle_mqtt("uagv/v3/Victim/rp_victim/state", json.dumps(STATE).encode())
+
+    response = client.post("/api/sessions/20261009-120000_key/replay")
+
+    assert response.status_code == 409
+    assert "v3/Victim/rp_victim" in response.json()["detail"]
+    assert published == []
+
+
+@pytest.mark.parametrize(
+    "fields",
+    [
+        {"robotId": "a/b"},
+        {"robotId": "+"},
+        {"robotId": "x" * 65},
+        {"robotId": 5},
+        {"manufacturer": "a#b"},
+        {"manufacturer": "../x"},
+        {"vdaMajor": "v9"},
+        {"vdaMajor": "v2/../x"},
+    ],
+)
+def test_snapshot_robots_with_unsafe_identities_are_skipped(tmp_path, caplog, fields):
+    robot = {"robotId": "rp_ok", "vdaMajor": "v2", "manufacturer": "ActuNode", "connection": "ONLINE", "state": STATE}
+    good = {**robot, "robotId": "rp_good"}
+    path = write_session(tmp_path / "20261009-120000_bad.jsonl", [], robots=[{**robot, **fields}, good])
+
+    scan = scan_session(path)
+
+    assert [r["robotId"] for r in scan["robots"]] == ["rp_good"]
+    assert scan["robotIds"] == {"v2/ActuNode/rp_good"}
+    assert {topic.split("/")[3] for _, topic, _ in iter_plan(path, scan["robots"], False)} == {"rp_good"}
+
+
+def test_injection_commands_count_as_live_for_an_actunode_robot_of_that_serial(client, published, tmp_path):
+    messages = [{"t": 0.0, "topic": "actunode/v1/sim/rp_sim/inject", "payload": {"failure": "BLOCKED_PATH"}}]
+    write_session(tmp_path / "20261009-120000_inj.jsonl", messages, robots=[])
+    hub.handle_mqtt("uagv/v3/ActuNode/rp_sim/state", json.dumps({"serialNumber": "rp_sim"}).encode())
+
+    blocked = client.post("/api/sessions/20261009-120000_inj/replay", json={"include_commands": True})
+    allowed = client.post("/api/sessions/20261009-120000_inj/replay", json={"speed": 20})
+
+    assert blocked.status_code == 409 and "rp_sim" in blocked.json()["detail"]
+    assert allowed.status_code == 202  # without commands nothing is injected
+    wait_for_replay(client)
+
+
+def test_injection_for_a_serial_only_other_manufacturers_use_is_allowed(client, published, tmp_path):
+    messages = [{"t": 0.0, "topic": "actunode/v1/sim/rp_sim2/inject", "payload": {}}]
+    write_session(tmp_path / "20261009-120000_inj2.jsonl", messages, robots=[])
+    hub.handle_mqtt("uagv/v2/Other/rp_sim2/state", b"{}")
+
+    response = client.post("/api/sessions/20261009-120000_inj2/replay", json={"include_commands": True, "speed": 20})
+
+    assert response.status_code == 202
+    wait_for_replay(client)
+
+
+def test_replay_skips_and_counts_a_message_too_large_for_the_broker(tmp_path, caplog):
+    path = write_session(
+        tmp_path / "20261009-120000_large.jsonl",
+        [
+            {"t": 0.0, "topic": "uagv/v2/ActuNode/rp_01/state", "payload": {}},
+            {"t": 0.0, "topic": "uagv/v2/ActuNode/rp_01/state", "payloadRaw": "big"},
+            {"t": 0.0, "topic": "uagv/v2/ActuNode/rp_01/state", "payload": {"n": 1}},
+        ],
+        robots=[],
+    )
+    sent = []
+
+    def publish(topic, payload):
+        if payload == "big":
+            raise PayloadTooLarge("big")
+        sent.append(payload)
+
+    async def main():
+        replayer = Replayer(publish, lambda status: None)
+        replayer.start("s", path, scan_session(path), speed=20, include_commands=False)
+        await replayer._task
+        return replayer.status()
+
+    status = run(main())
+
+    assert status["state"] == "finished"
+    assert sent == ["{}", '{"n":1}']
+    assert status["sent"] == 2 and status["tooLarge"] == 1
+    assert "too large" in caplog.text

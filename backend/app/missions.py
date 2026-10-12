@@ -1,6 +1,4 @@
-import json
-import threading
-from collections import OrderedDict
+import re
 from typing import Literal
 from uuid import uuid4
 
@@ -9,22 +7,20 @@ from pydantic import BaseModel, Field
 
 from app import vda5050
 from app.live import hub
+from app.mqtt import PayloadTooLarge
 from app.mqtt_state import mqtt_bridge
 from app.proximity import state_position
+from app.sent_orders import sent_orders
 from app.warehouse import LOCATIONS
 
 router = APIRouter(prefix="/api")
 
 
 ROBOT_ID_PATTERN = r"^[A-Za-z0-9_-]{1,64}$"
-# Orders sent per robot key ("<major>/<manufacturer>/<serial>"): orderId -> the nodes sent (3.0 wants them
-# resent unchanged in an update) and the last update id sent. Memory only, capped (least recently used
-# dropped) so made-up serials cannot grow it without bound. What the robot is actually running comes from
-# its own state, never from this memory. One lock covers every read-modify-write (D-35).
-MAX_REMEMBERED_ORDERS = 1000
-MAX_ORDERS_PER_ROBOT = 10
-_last_orders: OrderedDict[str, OrderedDict[str, dict]] = OrderedDict()
-_lock = threading.Lock()
+MAP_ID_PATTERN = re.compile(r"^[A-Za-z0-9_.-]{1,64}$")
+MAX_COORDINATE = 1e6
+# An update sent less than this long ago may still be on its way to the robot (QoS 0, no acknowledgement).
+UPDATE_IN_FLIGHT_S = 5
 
 
 class Address(BaseModel):
@@ -79,19 +75,19 @@ def send_mission(mission: MissionRequest) -> dict:
 
     order = vda5050.build_order(mission.robot_id, order_id, stops, major, manufacturer)
     order_topic = vda5050.topic(mission.robot_id, "order", major, manufacturer)
-    # VDA 5050 section 6.2: order is published with QoS 0.
-    with _lock:
-        mqtt_bridge.publish(order_topic, json.dumps(order), qos=0)
-        _remember(_key(mission.robot_id, major, manufacturer), order)
+    key = _key(mission.robot_id, major, manufacturer)
+    with sent_orders.lock:
+        _publish(order_topic, order)
+        state = _reported_state(mission.robot_id, key)
+        sent_orders.remember(key, order, running=state.get("orderId") if state else None)
 
     result = {"order_id": order_id, "topic": order_topic, "order": order}
-    warning = _identity_warning(mission.robot_id, major, manufacturer)
-    if not position:
-        no_position = (
-            f"{mission.robot_id} has not reported a position yet; it may reject the order (start node out of range)"
-        )
-        warning = f"{warning}; {no_position}" if warning else no_position
-    if warning:
+    no_position = (
+        None
+        if position
+        else f"{mission.robot_id} has not reported a position yet; it may reject the order (start node out of range)"
+    )
+    if warning := _warnings(_identity_warning(mission.robot_id, major, manufacturer), no_position):
         result["warning"] = warning
     return result
 
@@ -103,7 +99,7 @@ def cancel_mission(robot_id: str = Path(pattern=ROBOT_ID_PATTERN), target: Addre
     action_id = f"cancel-{uuid4().hex[:8]}"
     message = vda5050.cancel_order_message(robot_id, action_id, major, manufacturer)
     instant_topic = vda5050.topic(robot_id, "instantActions", major, manufacturer)
-    mqtt_bridge.publish(instant_topic, json.dumps(message), qos=0)
+    _publish(instant_topic, message)
     return {"actionId": action_id, "topic": instant_topic}
 
 
@@ -116,33 +112,45 @@ def extend_mission(request: ExtendRequest, robot_id: str = Path(pattern=ROBOT_ID
     key = _key(robot_id, major, manufacturer)
     order_topic = vda5050.topic(robot_id, "order", major, manufacturer)
 
-    with _lock:  # from reading the robot's state to recording the update: two extends cannot both send N+1
+    with sent_orders.lock:  # from reading the robot's state to recording the update: two extends cannot both send N+1
         state = _reported_state(robot_id, key)
         if state is None:
             raise HTTPException(409, f"no state from {robot_id} yet; cannot tell what it is running")
         if (state.get("actunode") or {}).get("missionStatus") == "CANCELLED":
             raise HTTPException(409, "order was cancelled; send a new mission")
         order_id = state.get("orderId")
-        sent = _last_orders.get(key, {}).get(order_id) if isinstance(order_id, str) and order_id else None
+        sent = sent_orders.get(key, order_id) if isinstance(order_id, str) and order_id else None
         if sent is None:
             raise HTTPException(409, f"{robot_id} is running an order ActuNode did not send")
-        if state.get("orderUpdateId") != sent["last_sent_update_id"]:
+        confirmed, at = state.get("orderUpdateId"), state.get("lastNodeSequenceId")
+        for name, value in (("orderUpdateId", confirmed), ("lastNodeSequenceId", at)):
+            if not _is_int(value):
+                raise HTTPException(409, f"robot state has no usable {name}")
+        in_flight = (
+            sent["last_sent_update_id"] > confirmed and sent_orders.clock() - sent["sent_at"] < UPDATE_IN_FLIGHT_S
+        )
+        if in_flight:
             raise HTTPException(409, "previous update not confirmed by the robot yet; retry in a moment")
-        stitch = sent["nodes"].get(_decision_sequence_id(state))
+        # An older update the robot never confirmed is taken as lost or rejected: build on what it reports.
+        decision = _decision_sequence_id(state)
+        if not _is_int(decision):
+            raise HTTPException(409, "robot state has no usable sequenceId")
+        stitch = sent["nodes"].get(decision)
         if stitch is None:
             raise HTTPException(409, f"cannot find the node {robot_id} is at in the order ActuNode sent")
+        if sent_orders.is_full(sent):
+            raise HTTPException(409, "order too long to extend; send a new mission")
 
-        update_id = sent["last_sent_update_id"] + 1
+        update_id = confirmed + 1
         action = vda5050.load_action(request.action, f"{order_id}-u{update_id}-{request.action}", None)
         update = vda5050.build_order_update(
             robot_id, order_id, update_id, stitch, _stop(request.to_location, action), major, manufacturer
         )
-        mqtt_bridge.publish(order_topic, json.dumps(update), qos=0)
-        _remember(key, update)
+        _publish(order_topic, update)
+        sent_orders.remember(key, update, running=order_id)
 
     result = {"orderId": order_id, "orderUpdateId": update_id, "topic": order_topic}
-    warning = _identity_warning(robot_id, major, manufacturer)
-    if warning:
+    if warning := _warnings(_identity_warning(robot_id, major, manufacturer)):
         result["warning"] = warning
     return result
 
@@ -152,21 +160,24 @@ def _require_broker() -> None:
         raise HTTPException(503, "MQTT broker is not connected")
 
 
+def _publish(topic: str, message: dict) -> None:
+    """VDA 5050 section 6.2: orders and instant actions go out with QoS 0."""
+    try:
+        mqtt_bridge.publish(topic, vda5050.dumps(message), qos=0)
+    except PayloadTooLarge as error:
+        raise HTTPException(422, "message too large for the broker") from error
+
+
+def _is_int(value) -> bool:
+    return isinstance(value, int) and not isinstance(value, bool)
+
+
+def _warnings(*warnings: str | None) -> str | None:
+    return "; ".join(w for w in warnings if w) or None
+
+
 def _key(robot_id: str, major: str, manufacturer: str) -> str:
     return f"{major}/{manufacturer}/{robot_id}"
-
-
-def _remember(key: str, order: dict) -> None:
-    orders = _last_orders.setdefault(key, OrderedDict())
-    entry = orders.setdefault(order["orderId"], {"nodes": {}, "last_sent_update_id": 0})
-    entry["nodes"].update({n["sequenceId"]: n for n in order["nodes"]})
-    entry["last_sent_update_id"] = order["orderUpdateId"]
-    orders.move_to_end(order["orderId"])
-    while len(orders) > MAX_ORDERS_PER_ROBOT:
-        orders.popitem(last=False)
-    _last_orders.move_to_end(key)
-    while len(_last_orders) > MAX_REMEMBERED_ORDERS:
-        _last_orders.popitem(last=False)
 
 
 def _reported_state(robot_id: str, key: str) -> dict | None:
@@ -188,7 +199,11 @@ def _decision_sequence_id(state: dict):
 def _reported_position(robot_id: str, major: str, manufacturer: str):
     """The robot's own last reported position, for exactly the identity the order is addressed to."""
     state = _reported_state(robot_id, _key(robot_id, major, manufacturer))
-    return state_position(state) if state else None
+    position = state_position(state) if state else None
+    # The map id is robot-controlled and goes into the order we publish: only accept a plain one.
+    if position and MAP_ID_PATTERN.match(position[3]) and all(abs(v) <= MAX_COORDINATE for v in position[1:3]):
+        return position
+    return None
 
 
 def _address(mission: Address) -> tuple[str, str]:

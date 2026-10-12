@@ -6,6 +6,7 @@ from fastapi import APIRouter, HTTPException, Response
 from fastapi.responses import FileResponse
 from pydantic import BaseModel, Field
 
+from app import vda5050
 from app.config import settings
 from app.live import hub
 from app.mqtt_state import mqtt_bridge
@@ -131,7 +132,15 @@ async def start_replay(session_id: str, request: ReplayRequest | None = None) ->
     except ReplayError as error:
         raise HTTPException(422, str(error)) from error
 
-    live = sorted(key for key in scan["robotIds"] if _is_live(key))
+    keys = set(scan["robotIds"])
+    if request.include_commands:  # failure injections reach the ActuNode simulator of that serial
+        keys |= {
+            robot["key"]
+            for serial in scan["simSerials"]
+            for robot in hub.robots_for(serial)
+            if robot["manufacturer"] == vda5050.MANUFACTURER
+        }
+    live = sorted(key for key in keys if _is_live(key))
     if live:
         raise HTTPException(
             409,

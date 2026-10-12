@@ -1,6 +1,8 @@
 """VDA 5050 message building for the backend (master control side)."""
 
+import json
 import os
+import threading
 from collections import OrderedDict
 from dataclasses import dataclass
 from datetime import UTC, datetime
@@ -17,6 +19,7 @@ MAJOR_VERSION = os.getenv("ACTUNODE_VDA_MAJOR_VERSION", "v2")
 # cannot grow memory. A dropped counter restarts at 1, which only matters after 2000 other topics.
 MAX_HEADER_COUNTERS = 2000
 _header_ids: OrderedDict[str, count] = OrderedDict()
+_header_lock = threading.Lock()
 
 
 def topic(serial_number: str, name: str, major: str = MAJOR_VERSION, manufacturer: str = MANUFACTURER) -> str:
@@ -48,10 +51,14 @@ def robot_key(parts: TopicParts) -> str:
     return f"{parts.major}/{parts.manufacturer}/{parts.serial_number}"
 
 
-def parse_topic(topic_name: str) -> tuple[str, str] | None:
-    """Return (serialNumber, topic) for a VDA 5050 topic, or None if it is not one."""
-    parts = topic_parts(topic_name)
-    return (parts.serial_number, parts.name) if parts else None
+def dumps(message: dict) -> str:
+    """Compact JSON for publishing: no padding, and non-ASCII kept as is (escaping would triple its size)."""
+    text = json.dumps(message, separators=(",", ":"), ensure_ascii=False)
+    try:
+        text.encode("utf-8")
+    except UnicodeEncodeError:  # a lone surrogate (JSON allows "\ud800"): only ASCII escaping can carry it
+        text = json.dumps(message, separators=(",", ":"))
+    return text
 
 
 def utc_timestamp() -> str:
@@ -61,12 +68,14 @@ def utc_timestamp() -> str:
 def header(serial_number: str, topic_name: str, major: str = MAJOR_VERSION, manufacturer: str = MANUFACTURER) -> dict:
     """headerId counts up per topic, as the spec requires."""
     key = topic(serial_number, topic_name, major, manufacturer)
-    ids = _header_ids.setdefault(key, count(1))
-    _header_ids.move_to_end(key)
-    if len(_header_ids) > MAX_HEADER_COUNTERS:
-        _header_ids.popitem(last=False)
+    with _header_lock:  # concurrent requests: ids must stay in order and the cap must not race
+        ids = _header_ids.setdefault(key, count(1))
+        _header_ids.move_to_end(key)
+        if len(_header_ids) > MAX_HEADER_COUNTERS:
+            _header_ids.popitem(last=False)
+        header_id = next(ids)
     return {
-        "headerId": next(ids),
+        "headerId": header_id,
         "timestamp": utc_timestamp(),
         "version": SUPPORTED_MAJOR_VERSIONS[major],
         "manufacturer": manufacturer,
@@ -74,34 +83,37 @@ def header(serial_number: str, topic_name: str, major: str = MAJOR_VERSION, manu
     }
 
 
+# 2.x edges name their start and end node; 3.0 removed those fields.
+EDGE_HAS_ENDPOINTS = {"v2": True, "v3": False}
+
+
+def _node(stop: dict, sequence_id: int) -> dict:
+    return {
+        "nodeId": stop["nodeId"],
+        "sequenceId": sequence_id,
+        "released": True,
+        "nodePosition": {"x": stop["x"], "y": stop["y"], "mapId": stop.get("mapId", MAP_ID)},
+        "actions": stop.get("actions", []),
+    }
+
+
+def _edge(start_id: str, end_id: str, sequence_id: int, major: str) -> dict:
+    edge = {"edgeId": f"{start_id}->{end_id}", "sequenceId": sequence_id, "released": True}
+    if EDGE_HAS_ENDPOINTS[major]:
+        edge |= {"startNodeId": start_id, "endNodeId": end_id}
+    return {**edge, "actions": []}
+
+
 def build_order(
     serial_number: str, order_id: str, stops: list[dict], major: str = MAJOR_VERSION, manufacturer: str = MANUFACTURER
 ) -> dict:
     """Build an order that visits `stops` in sequence, in the robot's VDA 5050 version.
 
-    Each stop: {"nodeId", "x", "y", "actions": [VDA 5050 action, ...]}.
-    Nodes get even sequence ids, the edges between them odd ones. 2.x edges also name their start and
-    end node; 3.0 removed those fields.
+    Each stop: {"nodeId", "x", "y", "actions": [VDA 5050 action, ...]} and optionally "mapId".
+    Nodes get even sequence ids, the edges between them odd ones.
     """
-    nodes = []
-    edges = []
-    for index, stop in enumerate(stops):
-        nodes.append(
-            {
-                "nodeId": stop["nodeId"],
-                "sequenceId": index * 2,
-                "released": True,
-                "nodePosition": {"x": stop["x"], "y": stop["y"], "mapId": stop.get("mapId", MAP_ID)},
-                "actions": stop.get("actions", []),
-            }
-        )
-        if index > 0:
-            previous = stops[index - 1]["nodeId"]
-            edge = {"edgeId": f"{previous}->{stop['nodeId']}", "sequenceId": index * 2 - 1, "released": True}
-            if major == "v2":
-                edge |= {"startNodeId": previous, "endNodeId": stop["nodeId"]}
-            edges.append({**edge, "actions": []})
-
+    nodes = [_node(stop, index * 2) for index, stop in enumerate(stops)]
+    edges = [_edge(stops[i - 1]["nodeId"], stops[i]["nodeId"], i * 2 - 1, major) for i in range(1, len(stops))]
     return {
         **header(serial_number, "order", major, manufacturer),
         "orderId": order_id,
@@ -122,22 +134,12 @@ def build_order_update(
 ) -> dict:
     """Extend an order: resend `stitch_node` (the last released node, unchanged) and add `stop` after it."""
     sequence = stitch_node["sequenceId"]
-    edge = {"edgeId": f"{stitch_node['nodeId']}->{stop['nodeId']}", "sequenceId": sequence + 1, "released": True}
-    if major == "v2":
-        edge |= {"startNodeId": stitch_node["nodeId"], "endNodeId": stop["nodeId"]}
-    new_node = {
-        "nodeId": stop["nodeId"],
-        "sequenceId": sequence + 2,
-        "released": True,
-        "nodePosition": {"x": stop["x"], "y": stop["y"], "mapId": MAP_ID},
-        "actions": stop.get("actions", []),
-    }
     return {
         **header(serial_number, "order", major, manufacturer),
         "orderId": order_id,
         "orderUpdateId": update_id,
-        "nodes": [stitch_node, new_node],
-        "edges": [{**edge, "actions": []}],
+        "nodes": [stitch_node, _node(stop, sequence + 2)],
+        "edges": [_edge(stitch_node["nodeId"], stop["nodeId"], sequence + 1, major)],
     }
 
 

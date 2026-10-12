@@ -11,17 +11,22 @@ Commands (orders, instant actions, ActuNode failure injections) are opt-in.
 import asyncio
 import json
 import logging
+import re
 import time
 from collections.abc import Callable, Iterator
 from datetime import UTC, datetime
 from pathlib import Path
 
 from app import vda5050
+from app.mqtt import PayloadTooLarge
 
 log = logging.getLogger("actunode.replay")
 
 STATUS_EVERY_S = 0.5
 COMMAND_SUFFIXES = ("/order", "/instantActions", "/zoneSet", "/responses")
+ROBOT_ID = re.compile(r"^[A-Za-z0-9_-]{1,64}$")
+MANUFACTURER = re.compile(r"^[A-Za-z0-9_.-]{1,64}$")
+SIM_INJECT = re.compile(r"^actunode/v1/sim/([A-Za-z0-9_-]{1,64})/inject$")
 
 
 class ReplayError(Exception):
@@ -53,6 +58,7 @@ def scan_session(path: Path) -> dict:
     robot ids, and message count / last time with and without commands (keys False / True)."""
     header = None
     robots: list[dict] = []
+    sim_serials: set[str] = set()
     robot_ids: set[str] = set()
     count = {False: 0, True: 0}
     last_t = {False: 0.0, True: 0.0}
@@ -67,6 +73,8 @@ def scan_session(path: Path) -> dict:
         elif _is_message(record):
             topic = record["topic"]
             parts = topic.split("/")
+            if sim := SIM_INJECT.match(topic):
+                sim_serials.add(sim[1])
             if len(parts) == 5 and parts[0] != "actunode":
                 robot_ids.add("/".join(parts[1:4]))
             for include_commands in (False, True):
@@ -77,29 +85,48 @@ def scan_session(path: Path) -> dict:
         raise ReplayError(f"{path.name} is not an ActuNode session (no session header)")
     if header.get("formatVersion") != 1:
         raise ReplayError(f"Unsupported session format version: {header.get('formatVersion')}")
+    usable = []
+    for robot in robots:
+        if _robot_key(robot) is None:
+            log.warning("Replay: skipping snapshot robot with an unsafe identity: %.100r", robot.get("robotId"))
+        else:
+            usable.append(robot)
+    robots = usable
     robot_ids.update(_robot_key(robot) for robot in robots)
     return {
         "header": header,
         "robots": robots,
         "robotIds": robot_ids,
+        "simSerials": sim_serials,
         "count": count,
         "lastT": last_t,
         "skipped": skipped,
     }
 
 
-def _robot_key(robot: dict) -> str:
-    """ "<major>/<manufacturer>/<serial>" of a snapshot robot (old recordings: v2, manufacturer from state)."""
-    if robot.get("key"):
-        return robot["key"]
-    major, manufacturer = _identity(robot)
-    return f"{major}/{manufacturer}/{robot['robotId']}"
+def _identity(robot: dict) -> tuple[str, str, str] | None:
+    """(major, manufacturer, serial) of a snapshot robot, or None if any part could not be a safe topic level.
+    Sessions recorded before vdaMajor existed are 2.x. Topic and live check both come from this one answer."""
+    state = robot.get("state")
+    state = state if isinstance(state, dict) else {}
+    major = robot.get("vdaMajor") or "v2"
+    manufacturer = robot.get("manufacturer") or state.get("manufacturer", "ActuNode")
+    serial = robot.get("robotId")
+    if (
+        major in vda5050.SUPPORTED_MAJOR_VERSIONS
+        and isinstance(manufacturer, str)
+        and MANUFACTURER.match(manufacturer)
+        and isinstance(serial, str)
+        and ROBOT_ID.match(serial)
+    ):
+        return major, manufacturer, serial
+    return None
 
 
-def _identity(robot: dict) -> tuple[str, str]:
-    """(major, manufacturer) of a snapshot robot (sessions recorded before vdaMajor existed are 2.x)."""
-    state = robot.get("state") or {}
-    return robot.get("vdaMajor") or "v2", robot.get("manufacturer") or state.get("manufacturer", "ActuNode")
+def _robot_key(robot: dict) -> str | None:
+    """ "<major>/<manufacturer>/<serial>" of a snapshot robot, from exactly the identity its topics use."""
+    identity = _identity(robot)
+    return "/".join(identity) if identity else None
 
 
 def snapshot_plan(robots: list[dict]) -> list[tuple[float, str, str]]:
@@ -109,15 +136,19 @@ def snapshot_plan(robots: list[dict]) -> list[tuple[float, str, str]]:
         state = robot.get("state")
         if not state:
             continue
-        # Each robot on its own topic version (sessions recorded before vdaMajor existed are 2.x).
-        major, manufacturer = _identity(robot)
-        prefix = f"{vda5050.INTERFACE_NAME}/{major}/{manufacturer}/{robot['robotId']}"
+        identity = _identity(robot)
+        if identity is None:
+            continue
+        # Each robot on its own topic version.
+        prefix = f"{vda5050.INTERFACE_NAME}/{'/'.join(identity)}"
         if robot.get("connection"):
             header = {
                 k: state[k] for k in ("headerId", "timestamp", "version", "manufacturer", "serialNumber") if k in state
             }
-            plan.append((0.0, f"{prefix}/connection", json.dumps({**header, "connectionState": robot["connection"]})))
-        plan.append((0.0, f"{prefix}/state", json.dumps(state)))
+            plan.append(
+                (0.0, f"{prefix}/connection", vda5050.dumps({**header, "connectionState": robot["connection"]}))
+            )
+        plan.append((0.0, f"{prefix}/state", vda5050.dumps(state)))
     return plan
 
 
@@ -127,7 +158,7 @@ def iter_plan(path: Path, robots: list[dict], include_commands: bool) -> Iterato
     for record in _records(path):
         if not _is_message(record) or (not include_commands and is_command(record["topic"])):
             continue
-        payload = record["payloadRaw"] if "payloadRaw" in record else json.dumps(record.get("payload"))
+        payload = record["payloadRaw"] if "payloadRaw" in record else vda5050.dumps(record.get("payload"))
         yield float(record["t"]), record["topic"], payload
 
 
@@ -162,6 +193,7 @@ class Replayer:
             "position": 0.0,
             "duration": scan["lastT"][include_commands],
             "skippedLines": scan["skipped"],
+            "tooLarge": 0,
         }
         self.ended_at = None
         plan = iter_plan(path, scan["robots"], include_commands)
@@ -184,7 +216,12 @@ class Replayer:
                 delay = started + t / speed - loop.time()
                 if delay > 0:
                     await asyncio.sleep(delay)
-                self._publish(topic, payload)
+                try:
+                    self._publish(topic, payload)
+                except PayloadTooLarge:
+                    log.warning("Replay: skipping a message on %s that is too large for the broker", topic)
+                    self._status["tooLarge"] += 1
+                    continue
                 self._status["sent"] += 1
                 self._status["position"] = t
                 if time.monotonic() - last_report >= STATUS_EVERY_S:

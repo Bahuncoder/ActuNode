@@ -1,7 +1,9 @@
 import logging
 
+import pytest
+
 from app import config, mqtt
-from app.mqtt import MqttBridge
+from app.mqtt import MqttBridge, PayloadTooLarge
 
 
 def bridge():
@@ -38,3 +40,22 @@ def test_handler_errors_are_rate_limited(monkeypatch, caplog):
 def test_default_client_id_is_suffixed_per_process(monkeypatch):
     assert config.settings.mqtt_client_id.startswith("actunode-backend-")
     assert len(config.settings.mqtt_client_id) > len("actunode-backend-")
+
+
+def test_publish_refuses_a_payload_over_the_limit_measured_in_utf8_bytes():
+    b = MqttBridge("localhost", 1883, "t", max_payload_bytes=10)
+    sent = []
+    b._client.publish = lambda topic, payload, qos=0: sent.append(payload)
+
+    b.publish("t", "x" * 10)
+    with pytest.raises(PayloadTooLarge):
+        b.publish("t", "é" * 6)  # 6 characters, 12 bytes
+
+    assert sent == ["x" * 10]
+
+
+def test_the_shared_bridge_is_limited_to_the_brokers_max_packet_size():
+    from app.live import MAX_PAYLOAD_BYTES
+    from app.mqtt_state import mqtt_bridge
+
+    assert mqtt_bridge.max_payload_bytes == MAX_PAYLOAD_BYTES

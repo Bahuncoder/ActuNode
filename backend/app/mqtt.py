@@ -10,6 +10,10 @@ log = logging.getLogger(__name__)
 ERROR_LOG_EVERY_S = 60
 
 
+class PayloadTooLarge(Exception):
+    """The message is bigger than the broker accepts; it would drop our connection."""
+
+
 class MqttBridge:
     """Background MQTT connection shared by the API.
 
@@ -26,10 +30,12 @@ class MqttBridge:
         on_message: Callable[[str, bytes, bool], None] | None = None,
         username: str | None = None,
         password: str | None = None,
+        max_payload_bytes: int | None = None,
     ):
         self.host = host
         self.port = port
         self.connected = False
+        self.max_payload_bytes = max_payload_bytes
         self.subscriptions = subscriptions
         self.message_handler = on_message
         self._last_error_log = float("-inf")
@@ -54,6 +60,9 @@ class MqttBridge:
         self._client.loop_stop()
 
     def publish(self, topic: str, payload: str, qos: int = 0) -> None:
+        size = len(payload.encode("utf-8"))
+        if self.max_payload_bytes is not None and size > self.max_payload_bytes:
+            raise PayloadTooLarge(f"{size} bytes exceeds {self.max_payload_bytes}")
         self._client.publish(topic, payload, qos=qos)
 
     def _on_connect(self, client, userdata, flags, reason_code, properties):
