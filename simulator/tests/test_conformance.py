@@ -24,7 +24,7 @@ def official(major: str, name: str) -> Draft202012Validator:
 def messages_in_every_state(major: str) -> list[tuple[str, str, dict]]:
     robot = Robot("robot_01", 1, 1, vda_major=major)
     out = [("IDLE", "state", robot.state_message())]
-    robot.accept_order(make_order(points=((3, 1), (3, 5))))
+    robot.accept_order(make_order(points=((1, 1), (3, 5))))
     out.append(("ACCEPTED", "state", robot.state_message()))
     for _ in range(15):
         robot.update(0.1)

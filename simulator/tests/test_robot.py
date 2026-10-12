@@ -29,8 +29,8 @@ REQUIRED_STATE_FIELDS = {
 }
 
 
-def make_order(serial="robot_01", order_id="order-1", points=((3, 0), (3, 4))):
-    """Order through `points`; first node gets a pick, last a drop."""
+def make_order(serial="robot_01", order_id="order-1", points=((0, 0), (3, 4))):
+    """Order through `points`; first node (where the robot starts) gets a pick, last a drop."""
     nodes = []
     for index, (x, y) in enumerate(points):
         actions = []
@@ -105,7 +105,7 @@ def test_mission_goes_idle_accepted_moving_completed():
 
 def test_robot_drives_through_nodes_and_reports_progress():
     robot = Robot("robot_01")
-    robot.accept_order(make_order(points=((3, 0), (3, 4))))
+    robot.accept_order(make_order(points=((0, 0), (3, 4))))
 
     run_until_done(robot)
 
@@ -122,7 +122,7 @@ def test_robot_drives_through_nodes_and_reports_progress():
 
 def test_motion_is_gradual_and_drains_battery_by_distance():
     robot = Robot("robot_01")
-    robot.accept_order(make_order(points=((10, 0),)))
+    robot.accept_order(make_order(points=((0, 0), (10, 0))))
     robot.update(0.1)  # ACCEPTED -> MOVING
 
     for _ in range(10):  # one simulated second at 1 m/s
@@ -136,16 +136,16 @@ def test_motion_is_gradual_and_drains_battery_by_distance():
 
 def test_mid_route_state_lists_remaining_nodes():
     robot = Robot("robot_01")
-    robot.accept_order(make_order(points=((3, 0), (3, 4))))
-    while robot.last_node_id != "N0":
+    robot.accept_order(make_order(points=((0, 0), (3, 0), (3, 4))))
+    while robot.last_node_id != "N1":
         robot.update(0.1)
 
     state = robot.state_message()
 
-    assert [n["nodeId"] for n in state["nodeStates"]] == ["N1"]
+    assert [n["nodeId"] for n in state["nodeStates"]] == ["N2"]
     assert state["nodeStates"][0]["nodePosition"]["x"] == 3
     assert state["nodeStates"][0]["nodePosition"]["y"] == 4
-    assert [e["edgeId"] for e in state["edgeStates"]] == ["N0->N1"]
+    assert [e["edgeId"] for e in state["edgeStates"]] == ["N1->N2"]
     assert state["actionStates"][0]["actionStatus"] == "FINISHED"
     assert state["actionStates"][1]["actionStatus"] == "WAITING"
 
@@ -155,7 +155,7 @@ def test_new_order_accepted_after_completion():
     robot.accept_order(make_order(order_id="order-1"))
     run_until_done(robot)
 
-    assert robot.accept_order(make_order(order_id="order-2", points=((0, 0),)))
+    assert robot.accept_order(make_order(order_id="order-2", points=((3, 4),)))
     assert robot.mission_status == ACCEPTED
 
 
@@ -197,17 +197,6 @@ def test_node_without_position_is_rejected():
     assert "nodePosition" in robot.errors[0]["errorDescription"]
 
 
-def test_busy_rejection_clears_when_mission_completes():
-    robot = Robot("robot_01")
-    robot.accept_order(make_order(order_id="order-1"))
-    robot.accept_order(make_order(order_id="order-2"))
-
-    run_until_done(robot)
-
-    assert robot.mission_status == COMPLETED
-    assert robot.errors == []
-
-
 def test_errors_clear_on_next_accepted_order():
     robot = Robot("robot_01")
     robot.handle_order_payload(b"garbage")
@@ -220,7 +209,7 @@ def test_errors_clear_on_next_accepted_order():
 def test_battery_never_goes_negative():
     robot = Robot("robot_01", x=20, y=10)  # outside the charging area
     robot.battery = 0.1
-    robot.accept_order(make_order(points=((100, 10),)))
+    robot.accept_order(make_order(points=((20, 10), (100, 10))))
 
     for _ in range(100):
         robot.update(0.1)
@@ -236,7 +225,7 @@ def command(failure="BLOCKED_PATH", action="inject"):
     return json.dumps({"failure": failure, "action": action}).encode()
 
 
-def moving_robot(points=((3, 0), (3, 4))):
+def moving_robot(points=((0, 0), (3, 4))):
     robot = Robot("robot_01")
     robot.accept_order(make_order(points=points))
     robot.update(0.1)  # ACCEPTED -> MOVING
@@ -244,7 +233,7 @@ def moving_robot(points=((3, 0), (3, 4))):
 
 
 def test_blocked_path_stops_robot_and_reports_error():
-    robot = moving_robot(points=((10, 0),))
+    robot = moving_robot(points=((0, 0), (10, 0)))
     for _ in range(10):
         robot.update(0.1)
 
@@ -259,13 +248,11 @@ def test_blocked_path_stops_robot_and_reports_error():
     assert state["driving"] is False
     [error] = state["errors"]
     assert error["errorType"] == "pathBlocked"
-    assert error["errorReferences"][0] == {"referenceKey": "nodeId", "referenceValue": "N0"}
+    assert error["errorReferences"][0] == {"referenceKey": "edgeId", "referenceValue": "N0->N1"}
 
 
 def test_blocked_path_on_edge_references_the_edge():
-    robot = moving_robot()
-    while robot.last_node_id != "N0":
-        robot.update(0.1)
+    robot = moving_robot()  # N0 is traversed at acceptance: the robot is on the edge
 
     robot.block_path()
 
@@ -319,7 +306,7 @@ def test_control_topic_is_separate_from_vda5050():
 def test_empty_battery_stops_the_robot_and_fails_the_mission():
     robot = Robot("robot_01", x=20, y=10)  # outside the charging area
     robot.battery = 0.2  # 1 m of driving left at 0.2 % per metre
-    robot.accept_order(make_order(order_id="order-9", points=((100, 10),)))
+    robot.accept_order(make_order(order_id="order-9", points=((20, 10), (100, 10))))
 
     for _ in range(50):  # 5 simulated seconds at 1 m/s
         robot.update(0.1)
@@ -376,7 +363,7 @@ def test_malformed_order_is_rejected_without_state_change(mutate):
     assert robot.mission_status == IDLE
     assert robot.order_id == ""
     assert robot.node_states == []
-    assert robot.errors[0]["errorType"] == "orderError"
+    assert robot.errors[0]["errorType"] == "validationError"
     assert any(ref["referenceKey"] == "field" for ref in robot.errors[0]["errorReferences"]) or "orderId" in str(
         robot.errors[0]["errorReferences"]
     )
@@ -472,7 +459,7 @@ def test_robot_outside_charging_area_does_not_charge():
 def test_driving_robot_does_not_charge_in_charging_area():
     robot = Robot("robot_01", x=1, y=1)
     robot.battery = 50
-    robot.accept_order(make_order(points=((10, 1),)))
+    robot.accept_order(make_order(points=((1, 1), (10, 1))))
     robot.update(1.0)  # ACCEPTED -> MOVING
     robot.update(1.0)
 
@@ -483,7 +470,7 @@ def test_driving_robot_does_not_charge_in_charging_area():
 def test_completed_robot_in_charging_area_charges():
     robot = Robot("robot_01")
     robot.battery = 50
-    robot.accept_order(make_order(points=((3, 0),)))
+    robot.accept_order(make_order(points=((0, 0), (3, 0))))
     run_until_done(robot)
     before = robot.battery
 
@@ -494,10 +481,10 @@ def test_completed_robot_in_charging_area_charges():
     assert robot.charging is True
 
 
-def test_charging_clears_battery_empty_error_and_robot_takes_orders_again():
+def test_charging_clears_battery_empty_error_but_keeps_the_order():
     robot = Robot("robot_01", x=10, y=2)
     robot.battery = 0.2
-    robot.accept_order(make_order(order_id="order-9", points=((100, 2),)))
+    robot.accept_order(make_order(order_id="order-9", points=((10, 2), (100, 2))))
     while robot.mission_status != "FAILED":
         robot.update(0.1)
     assert [e["errorType"] for e in robot.errors] == ["batteryEmpty"]
@@ -506,7 +493,9 @@ def test_charging_clears_battery_empty_error_and_robot_takes_orders_again():
 
     assert robot.battery > 0
     assert robot.errors == []
-    assert robot.accept_order(make_order(order_id="order-10", points=((11, 2),)))
+    # 3.0 section 6.6.5.1: the order is never cleared on an error; only cancelOrder frees the robot.
+    assert robot.mission_status == "FAILED" and robot.node_states
+    assert not robot.accept_order(make_order(order_id="order-10", points=((11, 2),)))
 
 
 def test_theta_stays_within_pi_after_rounding():
@@ -530,7 +519,7 @@ def test_zero_distance_order_is_not_reported_as_driving():
 
 def test_moving_robot_reports_driving_and_speed():
     robot = Robot("robot_01")
-    robot.accept_order(make_order(points=((30, 0),)))
+    robot.accept_order(make_order(points=((0, 0), (30, 0))))
     robot.update(0.1)
     robot.update(0.1)
 
@@ -541,7 +530,7 @@ def test_moving_robot_reports_driving_and_speed():
 
 def test_event_signature_changes_on_node_traversal_and_not_while_driving_between_nodes():
     robot = Robot("robot_01")
-    robot.accept_order(make_order(points=((0.25, 0), (30, 0))))
+    robot.accept_order(make_order(points=((0, 0), (0.25, 0), (30, 0))))
     robot.update(0.1)
     robot.update(0.1)
     before = robot.event_signature()

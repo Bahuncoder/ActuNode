@@ -42,7 +42,7 @@ class FakeConnection:
 
 def test_step_publishes_on_node_traversal_between_periodic_ticks():
     robot = Robot("robot_01")
-    robot.accept_order(make_order(points=((0.25, 0), (30, 0))))
+    robot.accept_order(make_order(points=((0, 0), (0.25, 0), (30, 0))))
     connection = FakeConnection(robot)
     step([connection], 0, 10)  # periodic: ACCEPTED -> MOVING
     step([connection], 1, 10)  # starts driving: event
@@ -51,7 +51,7 @@ def test_step_publishes_on_node_traversal_between_periodic_ticks():
     step([connection], 2, 10)  # driving along the edge, nothing new
     assert connection.published == published
 
-    step([connection], 3, 10)  # reaches N0: lastNodeId changes
+    step([connection], 3, 10)  # reaches N1: lastNodeId changes
     assert connection.published == published + 1
 
     step([connection], 4, 10)

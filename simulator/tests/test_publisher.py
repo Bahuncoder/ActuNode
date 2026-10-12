@@ -17,7 +17,7 @@ def test_stop_without_start_does_not_raise():
     RobotConnection(Robot("robot_01"), "127.0.0.1", 1).stop()
 
 
-def test_order_subscription_uses_qos_0_and_inject_qos_1():
+def test_order_and_instant_actions_use_qos_0_and_inject_qos_1():
     """VDA 5050: order at QoS 0. The ActuNode inject topic is not VDA 5050; commands use QoS 1."""
     connection = RobotConnection(Robot("robot_01"), "127.0.0.1", 1)
     subscriptions = []
@@ -34,7 +34,7 @@ def test_order_subscription_uses_qos_0_and_inject_qos_1():
 
     connection._on_connect(FakeClient(), None, None, type("RC", (), {"is_failure": False})(), None)
 
-    assert dict(subscriptions) == {connection.order_topic: 0, connection.inject_topic: 1}
+    assert dict(subscriptions) == {connection.order_topic: 0, connection.instant_topic: 0, connection.inject_topic: 1}
 
 
 def test_will_is_refreshed_after_connect_with_next_header_id():
@@ -107,3 +107,42 @@ def test_factsheet_is_published_retained_qos0_after_online():
     assert message["serialNumber"] == "robot_01"
     assert kwargs["retain"] is True
     assert kwargs["qos"] == 0
+
+
+def instant(*actions):
+    return json.dumps({"actions": list(actions)}).encode()
+
+
+def test_instant_actions_are_applied_and_factsheet_request_publishes_retained():
+    robot = Robot("robot_01")
+    connection = RobotConnection(robot, "127.0.0.1", 1)
+    published = []
+
+    class FakeClient:
+        def is_connected(self):
+            return True
+
+        def publish(self, topic_name, payload, **kwargs):
+            published.append((topic_name, json.loads(payload), kwargs))
+
+    connection._client = FakeClient()
+    request = {"actionType": "factsheetRequest", "actionId": "f1", "blockingType": "NONE"}
+    connection.inbox.put((connection.instant_topic, instant(request)))
+
+    assert connection.apply_pending_messages() is True
+
+    assert robot.action_states[0]["actionStatus"] == "FINISHED"
+    assert robot.factsheet_requested is False
+    topic_name, message, kwargs = published[0]
+    assert topic_name == connection.factsheet_topic and message["serialNumber"] == "robot_01"
+    assert kwargs["retain"] is True and kwargs["qos"] == 0
+
+
+def test_malformed_instant_actions_are_ignored():
+    robot = Robot("robot_01")
+    connection = RobotConnection(robot, "127.0.0.1", 1)
+    connection.inbox.put((connection.instant_topic, b"not json"))
+    connection.inbox.put((connection.instant_topic, instant({"actionType": 1, "actionId": "x"})))
+
+    assert connection.apply_pending_messages() is True
+    assert robot.action_states == [] and robot.errors == []

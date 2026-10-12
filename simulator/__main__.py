@@ -71,7 +71,8 @@ def step(connections, tick: int, ticks_per_publish: int) -> None:
         before = connection.robot.event_signature()
         connection.robot.update(TICK_S)
         connection.apply_pending_messages()
-        if periodic or connection.robot.event_signature() != before:
+        if periodic or connection.robot.state_requested or connection.robot.event_signature() != before:
+            connection.robot.state_requested = False
             connection.publish_state()
 
 

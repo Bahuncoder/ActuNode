@@ -1,6 +1,10 @@
+import copy
 import json
+import logging
 import math
 from datetime import UTC, datetime
+
+log = logging.getLogger(__name__)
 
 MANUFACTURER = "ActuNode"
 # Topic major version -> protocol version a robot reports (D-15). 2.1 is the default.
@@ -17,6 +21,8 @@ CHARGING_AREA = (0.0, 0.0, 12.0, 4.0)
 CHARGE_PER_S = 1.0
 
 # Mission state machine: IDLE -> ACCEPTED -> MOVING -> COMPLETED
+# An order with a horizon stops at its last released node: MOVING -> WAITING until an order update
+# releases more (-> MOVING again) or ends the order (-> COMPLETED).
 # Failure injection can put a robot on a route into BLOCKED until cleared;
 # an empty battery ends the mission in FAILED.
 IDLE = "IDLE"
@@ -24,10 +30,49 @@ ACCEPTED = "ACCEPTED"
 MOVING = "MOVING"
 COMPLETED = "COMPLETED"
 BLOCKED = "BLOCKED"
+WAITING = "WAITING"
 # The robot cannot continue on its own (battery empty). Cleared by the next accepted order.
 FAILED = "FAILED"
+# The order was cancelled by a cancelOrder instant action; the robot is idle again.
+CANCELLED = "CANCELLED"
 
 BLOCKED_PATH = "BLOCKED_PATH"
+
+# A first node within this distance of the robot is reachable when the order names no allowedDeviationXY.
+DEFAULT_TOLERANCE_M = 0.25
+# newBaseRequest is true when the decision point is this close (m).
+NEW_BASE_DISTANCE_M = 1.0
+# The only action types the simulator performs.
+SUPPORTED_ACTIONS = ("pick", "drop")
+# Why an order was rejected -> (2.1 errorType, 3.0 errorType), all WARNING (D-35). Where a version names
+# no error, the closest 2.1 name is reused; the stitch case names none in either version.
+ORDER_ERRORS = {
+    "malformed": ("validationError", "VALIDATION_FAILURE"),
+    "action": ("orderError", "INVALID_ORDER_ACTION"),
+    "active": ("orderError", "OTHER_ORDER_ACTIVE"),
+    "range": ("orderError", "START_NODE_OUT_OF_RANGE"),
+    "outdated": ("orderUpdateError", "OUTDATED_ORDER_UPDATE"),
+    "same": ("orderUpdateError", "SAME_ORDER_UPDATE_ID"),
+    "cancelled": ("orderUpdateError", "ORDER_UPDATE_FOLLOWING_CANCEL"),
+    # An update while the battery is empty: 3.0 names no error for it; this is the closest ("until operating
+    # mode allows for new orders"). 2.1 has orderUpdateError for any failed update.
+    "unavailable": ("orderUpdateError", "MOBILE_ROBOT_NOT_AVAILABLE"),
+    "stitch": ("orderUpdateError", "VALIDATION_FAILURE"),
+    "other": ("orderError", "orderError"),  # e.g. empty battery: neither version names an error
+}
+# NO_ORDER_TO_CANCEL stays "until new order is accepted" (3.0 section 6.6.7), like a rejection.
+REJECTION_TYPES = {name for pair in ORDER_ERRORS.values() for name in pair} | {"noOrderToCancel", "NO_ORDER_TO_CANCEL"}
+
+# Instant actions the simulator performs (2.1 section 6.8.1, 3.0 section 6.2.1); clearInstantActions is 3.0 only.
+INSTANT_ACTIONS = ("cancelOrder", "startPause", "stopPause", "stateRequest", "factsheetRequest")
+INSTANT_ACTIONS_V3 = (*INSTANT_ACTIONS, "clearInstantActions")
+# Instant action states kept. 3.0 allows an URGENT INSTANT_ACTION_STATES_FULL error when the list grows too
+# long; the simulator drops the oldest finished/failed one instead, so it never gets there.
+MAX_INSTANT_ACTION_STATES = 50
+# One instantActions message is handled up to this many actions: more would make the state (every failed one
+# gets a state) outgrow the broker's max_packet_size.
+MAX_INSTANT_ACTIONS_PER_MESSAGE = 50
+ID_IN_USE = "actionId already in use"
 
 
 def _is_int(value) -> bool:
@@ -38,7 +83,24 @@ def _is_number(value) -> bool:
     return isinstance(value, int | float) and not isinstance(value, bool) and math.isfinite(value)
 
 
-def _check_actions(actions, path: str) -> tuple[str, str] | None:
+def _is_deviation(value, v3: bool) -> bool:
+    """3.0: ellipse {a, b, theta}; 2.1: radius in meters."""
+    if v3:
+        return isinstance(value, dict) and all(_is_number(value.get(key)) for key in ("a", "b", "theta"))
+    return _is_number(value) and value >= 0
+
+
+def _check_parameters(parameters, path: str) -> tuple[str, str] | None:
+    """actionParameters, when present: a list of objects with a string key (the value may be any JSON)."""
+    if not isinstance(parameters, list):
+        return f"{path} must be a list", path
+    for i, parameter in enumerate(parameters):
+        if not isinstance(parameter, dict) or not isinstance(parameter.get("key"), str):
+            return f"{path}[{i}] must be an object with a string key", f"{path}[{i}]"
+    return None
+
+
+def _check_actions(actions, path: str, parameters: bool = True) -> tuple[str, str] | None:
     if not isinstance(actions, list):
         return f"{path} must be a list", path
     for i, action in enumerate(actions):
@@ -48,10 +110,14 @@ def _check_actions(actions, path: str) -> tuple[str, str] | None:
         for key in ("actionType", "actionId"):
             if not isinstance(action.get(key), str):
                 return f"{where}.{key} must be a string", f"{where}.{key}"
+        if parameters and "actionParameters" in action:
+            problem = _check_parameters(action["actionParameters"], f"{where}.actionParameters")
+            if problem:
+                return problem
     return None
 
 
-def _check_node(node, path: str) -> tuple[str, str] | None:
+def _check_node(node, path: str, v3: bool) -> tuple[str, str] | None:
     if not isinstance(node, dict):
         return f"{path} must be an object", path
     if not isinstance(node.get("nodeId"), str):
@@ -68,6 +134,9 @@ def _check_node(node, path: str) -> tuple[str, str] | None:
             return f"{path}.nodePosition.{axis} must be a finite number", f"{path}.nodePosition.{axis}"
     if "mapId" in position and not isinstance(position["mapId"], str):
         return f"{path}.nodePosition.mapId must be a string", f"{path}.nodePosition.mapId"
+    if "allowedDeviationXY" in position and not _is_deviation(position["allowedDeviationXY"], v3):
+        what = "an object {a, b, theta}" if v3 else "a number"
+        return f"{path}.nodePosition.allowedDeviationXY must be {what}", f"{path}.nodePosition.allowedDeviationXY"
     return _check_actions(node.get("actions", []), f"{path}.actions")
 
 
@@ -114,8 +183,26 @@ class Robot:
         self.node_states: list[dict] = []
         self.edge_states: list[dict] = []
         self.action_states: list[dict] = []
-        self._node_positions: dict[str, tuple[float, float]] = {}
-        self._actions_by_node: dict[str, list[str]] = {}
+        # 3.0 keeps instant actions apart; 2.1 puts them into action_states (ids in _instant_ids).
+        self.instant_action_states: list[dict] = []
+        self._instant_ids: set[str] = set()
+        # startPause / stopPause (both versions report it as `paused`).
+        self.paused = False
+        # Set by factsheetRequest; the publisher publishes the factsheet and resets it.
+        self.factsheet_requested = False
+        # Set by stateRequest; the main loop publishes the state and resets it.
+        self.state_requested = False
+        # Loads the robot carries, as reported in `loads`.
+        self.loads: list[dict] = []
+        # Set by cancelOrder: further updates of that order are rejected.
+        self.cancelled = False
+        # Per sequenceId: the actions attached to a node/edge, and where the robot last stood.
+        self._node_actions: dict[int, list[str]] = {}
+        self._edge_actions: dict[int, list[str]] = {}
+        self._load_ids: dict[str, str] = {}
+        self._last_node_xy = (x, y)
+        # The last order/update accepted, without headerId and timestamp, to recognise duplicates.
+        self._last_order: dict = {}
 
         self.errors: list[dict] = []
         # Speed over the last update (m/s); 0 at standstill, so `driving` is only true when the robot moved.
@@ -126,7 +213,21 @@ class Robot:
 
     @property
     def busy(self) -> bool:
-        return self.mission_status in (ACCEPTED, MOVING, BLOCKED)
+        """Working on an order: it neither charges nor takes a new one."""
+        return self.mission_status in (ACCEPTED, MOVING, BLOCKED, WAITING)
+
+    @property
+    def idle(self) -> bool:
+        """VDA 5050 (2.1 section 6.6, 3.0 section 6.1): nothing left to traverse and every action done."""
+        return (
+            not self.node_states
+            and not self.edge_states
+            and all(
+                action["actionStatus"] in ("FINISHED", "FAILED")
+                for action in self.action_states
+                if action["actionId"] not in self._instant_ids  # 2.1 lists instant actions here too
+            )
+        )
 
     # --- Orders -----------------------------------------------------------
 
@@ -143,65 +244,212 @@ class Robot:
         return self.accept_order(order)
 
     def accept_order(self, order: dict) -> bool:
-        """Validate, then replace the mission. Nothing is mutated before validation passes."""
+        """Validate, then start a new order or apply an order update. Nothing is mutated before validation passes."""
         order_id = str(order.get("orderId", ""))
-        if order_id and order_id == self.order_id and isinstance(order.get("orderUpdateId", 0), int):
-            update_id = order.get("orderUpdateId", 0)
-            if update_id == self.order_update_id:
-                # VDA 5050 2.1: same orderId and orderUpdateId as the current order is a duplicate; ignore it.
-                return True
-            if update_id < self.order_update_id:
-                self._reject(
-                    order_id,
-                    f"orderUpdateId {update_id} is older than {self.order_update_id}",
-                    error_type="orderUpdateError",
-                )
-                return False
-            # A higher orderUpdateId falls through and is handled like a new order for now;
-            # real order updates (keeping progress, stitching at the base node) are a later feature.
         problem = self._check_order(order)
         if problem:
             self._reject(order_id, *problem)
             return False
+        problem = self._check_action_types(order)
+        if problem:
+            self._reject(order_id, *problem, kind="action")
+            return False
 
+        is_update = order_id == self.order_id
+        # NOTE: a new order with orderUpdateId > 0 is accepted. 3.0 Figure 8 step 4 asks "Is orderUpdateId 0?",
+        # but the outcome of that step is only in the figure, not in the text.
+        if is_update:
+            update_id = order.get("orderUpdateId", 0)
+            if update_id < self.order_update_id:
+                self._reject(
+                    order_id, f"orderUpdateId {update_id} is older than {self.order_update_id}", kind="outdated"
+                )
+                return False
+            if self.cancelled and (update_id > self.order_update_id or self.vda_major == "v3"):
+                # 3.0 Figure 8 asks "follows cancel" (step 7) before "same orderUpdateId" (step 8). 2.1 still
+                # ignores a repeat of the last update (a duplicate delivery) even after a cancel.
+                self._reject(order_id, "order update for a cancelled order", kind="cancelled")
+                return False
+            if update_id == self.order_update_id:
+                if self._comparable(order) == self._last_order or self.vda_major == "v2":
+                    # Same orderId and orderUpdateId: a duplicate. 2.1 ignores any such message; 3.0 only
+                    # an identical one and reports SAME_ORDER_UPDATE_ID for different content.
+                    return True
+                self._reject(order_id, f"orderUpdateId {update_id} was already used with other content", kind="same")
+                return False
+        if self.battery <= 0:
+            # An update to a stopped order gets the "robot not available" error (see ORDER_ERRORS).
+            self._reject(order_id, "battery is empty; robot cannot drive", kind="unavailable" if is_update else "other")
+            return False
+        # Atomic: if anything unexpected fails half way, the robot stays exactly as it was.
+        before = copy.deepcopy(self.__dict__)
+        try:
+            return self._apply_update(order) if is_update else self._apply_new_order(order)
+        except Exception:
+            self.__dict__.clear()
+            self.__dict__.update(before)
+            raise
+
+    @staticmethod
+    def _comparable(order: dict) -> dict:
+        return {key: value for key, value in order.items() if key not in ("headerId", "timestamp")}
+
+    def _apply_new_order(self, order: dict) -> bool:
+        if not self.idle:
+            self._reject(order["orderId"], f"robot is busy with order {self.order_id}", kind="active")
+            return False
         nodes = sorted(order["nodes"], key=lambda node: node["sequenceId"])
-        edges = sorted(order.get("edges", []), key=lambda edge: edge["sequenceId"])
+        if not self._reachable(nodes[0]["nodePosition"]):
+            self._reject(
+                order["orderId"],
+                f"first node {nodes[0]['nodeId']} is out of range of ({self.x:.1f}, {self.y:.1f})",
+                "nodes[0].nodePosition",
+                kind="range",
+            )
+            return False
 
-        self.order_id = order_id
+        self.order_id = order["orderId"]
         self.order_update_id = order.get("orderUpdateId", 0)
-        self.node_states = [
-            {
-                "nodeId": node["nodeId"],
-                "sequenceId": node["sequenceId"],
-                "released": True,
-                "nodePosition": {"x": node["nodePosition"]["x"], "y": node["nodePosition"]["y"], "mapId": MAP_ID},
-            }
-            for node in nodes
-        ]
-        self.edge_states = [
-            {"edgeId": edge["edgeId"], "sequenceId": edge["sequenceId"], "released": True} for edge in edges
-        ]
-        self._node_positions = {
-            node["nodeId"]: (node["nodePosition"]["x"], node["nodePosition"]["y"]) for node in nodes
-        }
-        self._actions_by_node = {
-            node["nodeId"]: [action["actionId"] for action in node.get("actions", [])] for node in nodes
-        }
+        self.cancelled = False
+        self.node_states = []
+        self.edge_states = []
+        # 2.1: action states are removed upon a new order, except running instant actions.
         self.action_states = [
-            {"actionId": action["actionId"], "actionType": action["actionType"], "actionStatus": "WAITING"}
-            for node in nodes
-            for action in node.get("actions", [])
+            a for a in self.action_states if a["actionId"] in self._instant_ids and a["actionStatus"] == "RUNNING"
         ]
-        self.errors = []
+        self._instant_ids &= {a["actionId"] for a in self.action_states}
+        self._node_actions = {}
+        self._edge_actions = {}
+        self._load_ids = {}
+        self._add_to_order(nodes, sorted(order.get("edges", []), key=lambda edge: edge["sequenceId"]))
+        self._last_order = self._comparable(order)
+        self._clear_rejections()
         self.mission_status = ACCEPTED
+        # The robot is at the first node: it counts as traversed, so it is not left in nodeStates.
+        self._traverse(self.node_states.pop(0))
         return True
 
+    def _apply_update(self, order: dict) -> bool:
+        """Stitch an order update at the decision point (2.1 section 6.6, Figure 8)."""
+        nodes = sorted(order["nodes"], key=lambda node: node["sequenceId"])
+        node_id, sequence_id, _ = self._decision_point()
+        if (nodes[0]["nodeId"], nodes[0]["sequenceId"]) != (node_id, sequence_id):
+            self._reject(
+                order["orderId"],
+                f"update starts at {nodes[0]['nodeId']} (sequenceId {nodes[0]['sequenceId']}), "
+                f"not at the decision point {node_id} (sequenceId {sequence_id})",
+                "nodes[0]",
+                kind="stitch",
+            )
+            return False
+
+        # Everything after the decision point is horizon: the update's base and horizon replace it.
+        for sequence, ids in list(self._node_actions.items()):
+            if sequence > sequence_id:
+                self._forget_actions(ids)
+                del self._node_actions[sequence]
+        for sequence, ids in list(self._edge_actions.items()):
+            if sequence > sequence_id:
+                self._forget_actions(ids)
+                del self._edge_actions[sequence]
+        self.node_states = [node for node in self.node_states if node["sequenceId"] <= sequence_id]
+        self.edge_states = [edge for edge in self.edge_states if edge["sequenceId"] <= sequence_id]
+        edges = sorted(order.get("edges", []), key=lambda edge: edge["sequenceId"])
+        # The stitch node's actions are not run again.
+        self._add_to_order(nodes[1:], [edge for edge in edges if edge["sequenceId"] > sequence_id])
+
+        self.order_update_id = order.get("orderUpdateId", 0)
+        self._last_order = self._comparable(order)
+        self._clear_rejections()
+        # FAILED: the battery was recharged (an update with an empty battery is rejected), so the fleet manager's
+        # update resumes the order.
+        if self.mission_status in (COMPLETED, WAITING, FAILED):
+            if not self.node_states:
+                self.mission_status = COMPLETED
+            elif self._can_drive():
+                self.mission_status = ACCEPTED if self.mission_status == COMPLETED else MOVING
+            else:
+                self.mission_status = WAITING
+            self._enter_edge()
+        return True
+
+    def _add_to_order(self, nodes: list[dict], edges: list[dict]) -> None:
+        """Add nodes, edges and their actions (in WAITING) to the remaining order."""
+        for node in nodes:
+            self.node_states.append(
+                {
+                    "nodeId": node["nodeId"],
+                    "sequenceId": node["sequenceId"],
+                    "released": node.get("released", True),
+                    "nodePosition": {"x": node["nodePosition"]["x"], "y": node["nodePosition"]["y"], "mapId": MAP_ID},
+                }
+            )
+            self._node_actions[node["sequenceId"]] = self._add_actions(node.get("actions", []))
+        for edge in edges:
+            self.edge_states.append(
+                {"edgeId": edge["edgeId"], "sequenceId": edge["sequenceId"], "released": edge.get("released", True)}
+            )
+            self._edge_actions[edge["sequenceId"]] = self._add_actions(edge.get("actions", []))
+
+    def _add_actions(self, actions: list[dict]) -> list[str]:
+        for action in actions:
+            self.action_states.append(
+                {"actionId": action["actionId"], "actionType": action["actionType"], "actionStatus": "WAITING"}
+            )
+            load_id = next(
+                (
+                    p.get("value")
+                    for p in action.get("actionParameters", [])
+                    if isinstance(p, dict) and p.get("key") == "loadId"
+                ),
+                "",
+            )
+            self._load_ids[action["actionId"]] = load_id if isinstance(load_id, str) else ""
+        return [action["actionId"] for action in actions]
+
+    def _forget_actions(self, ids: list[str]) -> None:
+        self.action_states = [action for action in self.action_states if action["actionId"] not in ids]
+        for action_id in ids:
+            self._load_ids.pop(action_id, None)
+
+    def _reachable(self, position: dict) -> bool:
+        """Within the first node's allowedDeviationXY (2.1 radius, 3.0 ellipse; 0 or absent: default tolerance)?"""
+        dx, dy = self.x - position["x"], self.y - position["y"]
+        deviation = position.get("allowedDeviationXY", 0)
+        if isinstance(deviation, dict):
+            a, b, theta = deviation["a"], deviation["b"], deviation["theta"]
+            if a > 0 and b > 0:
+                u = dx * math.cos(theta) + dy * math.sin(theta)
+                v = -dx * math.sin(theta) + dy * math.cos(theta)
+                return (u / a) ** 2 + (v / b) ** 2 <= 1
+            deviation = 0
+        return math.hypot(dx, dy) <= (deviation if deviation > 0 else DEFAULT_TOLERANCE_M)
+
+    def _decision_point(self) -> tuple[str, int, tuple[float, float]]:
+        """Last released node of the order: where the robot stops and where an update must start."""
+        released = [node for node in self.node_states if node["released"]]
+        if released:
+            node = released[-1]
+            return node["nodeId"], node["sequenceId"], (node["nodePosition"]["x"], node["nodePosition"]["y"])
+        return self.last_node_id, self.last_node_sequence_id, self._last_node_xy
+
+    def _can_drive(self) -> bool:
+        """The next node and the edge leading to it are released."""
+        if not self.node_states or not self.node_states[0]["released"]:
+            return False
+        edge = self.edge_states[0] if self.edge_states else None
+        return not (edge and edge["sequenceId"] < self.node_states[0]["sequenceId"] and not edge["released"])
+
+    @property
+    def new_base_request(self) -> bool:
+        """Horizon left and the decision point within NEW_BASE_DISTANCE_M (2.1 section 6.10.6)."""
+        if not any(not node["released"] for node in self.node_states):
+            return False
+        x, y = self._decision_point()[2]
+        return math.hypot(x - self.x, y - self.y) <= NEW_BASE_DISTANCE_M
+
     def _check_order(self, order: dict) -> tuple[str, str | None] | None:
-        """Return (description, offending field or None) for the first problem, else None."""
-        if self.battery <= 0:
-            return "battery is empty; robot cannot drive", None
-        if self.busy:
-            return f"robot is busy with order {self.order_id}", None
+        """Return (description, offending field or None) for the first malformed part, else None."""
         if order.get("serialNumber") != self.robot_id:
             return f"order is addressed to {order.get('serialNumber')!r}, not {self.robot_id!r}", None
         if not order.get("orderId"):
@@ -214,7 +462,7 @@ class Robot:
         if not isinstance(nodes, list) or not nodes:
             return "order has no nodes", "nodes"
         for i, node in enumerate(nodes):
-            problem = _check_node(node, f"nodes[{i}]")
+            problem = _check_node(node, f"nodes[{i}]", self.vda_major == "v3")
             if problem:
                 return problem
         edges = order.get("edges", [])
@@ -224,25 +472,195 @@ class Robot:
             problem = _check_edge(edge, f"edges[{i}]")
             if problem:
                 return problem
+        return self._check_unique(nodes, edges)
+
+    @staticmethod
+    def _check_unique(nodes: list[dict], edges: list[dict]) -> tuple[str, str] | None:
+        """sequenceId and actionId are unique within an order (nodes and edges share one sequence)."""
+        sequences, action_ids = set(), set()
+        for kind, items in (("nodes", nodes), ("edges", edges)):
+            for i, item in enumerate(items):
+                if item["sequenceId"] in sequences:
+                    return f"sequenceId {item['sequenceId']} is used twice", f"{kind}[{i}].sequenceId"
+                sequences.add(item["sequenceId"])
+                for j, action in enumerate(item.get("actions", [])):
+                    if action["actionId"] in action_ids:
+                        return f"actionId {action['actionId']!r} is used twice", f"{kind}[{i}].actions[{j}].actionId"
+                    action_ids.add(action["actionId"])
         return None
 
-    def _reject(
-        self, order_id: str, description: str, field: str | None = None, error_type: str = "orderError"
-    ) -> None:
+    @staticmethod
+    def _check_action_types(order: dict) -> tuple[str, str] | None:
+        """Only pick and drop are supported; the error names the field (3.0 section 6.1.4)."""
+        for kind in ("nodes", "edges"):
+            for i, item in enumerate(order.get(kind, [])):
+                for j, action in enumerate(item.get("actions", [])):
+                    if action["actionType"] not in SUPPORTED_ACTIONS:
+                        return (
+                            f"unsupported action type {action['actionType']!r}",
+                            f"{kind}[{i}].actions[{j}].actionType",
+                        )
+        return None
+
+    def _reject(self, order_id: str, description: str, field: str | None = None, kind: str = "malformed") -> None:
         # Replace an earlier rejection, but keep other errors (e.g. pathBlocked).
-        self._drop_errors("orderError")
-        self._drop_errors("orderUpdateError")
+        self._clear_rejections()
         references = [{"referenceKey": "orderId", "referenceValue": order_id}] if order_id else []
         if field:
             references.append({"referenceKey": "field", "referenceValue": field})
         self.errors.append(
             {
-                "errorType": error_type,
+                "errorType": ORDER_ERRORS[kind][self.vda_major == "v3"],
                 "errorLevel": "WARNING",
                 "errorDescription": description,
                 "errorReferences": references,
             }
         )
+
+    def _clear_rejections(self) -> None:
+        """Rejections stay until a new order (or update) is accepted (2.1 section 6.6, 3.0 section 6.6.5.4)."""
+        self.errors = [error for error in self.errors if error["errorType"] not in REJECTION_TYPES]
+
+    # --- Instant actions ----------------------------------------------------
+
+    def handle_instant_actions_payload(self, payload: bytes) -> bool:
+        """Apply a raw instantActions message. False if it is malformed and was ignored: neither version names
+        an error for a message that cannot be parsed, so the caller only logs it."""
+        try:
+            message = json.loads(payload)
+        except (json.JSONDecodeError, UnicodeDecodeError):
+            return False
+        actions = message.get("actions") if isinstance(message, dict) else None
+        # actionParameters are checked per action below: a bad one fails that action, not the message.
+        if not isinstance(actions, list) or _check_actions(actions, "actions", parameters=False):
+            return False
+        if len(actions) > MAX_INSTANT_ACTIONS_PER_MESSAGE:
+            log.warning(
+                "%s: ignored %d instant actions beyond the first %d of the message",
+                self.robot_id,
+                len(actions) - MAX_INSTANT_ACTIONS_PER_MESSAGE,
+                MAX_INSTANT_ACTIONS_PER_MESSAGE,
+            )
+            actions = actions[:MAX_INSTANT_ACTIONS_PER_MESSAGE]
+        v3 = self.vda_major == "v3"
+        # "Until new instant action is accepted" (3.0 section 6.6.7).
+        self._drop_errors("INVALID_INSTANT_ACTION")
+        invalid = []
+        for action in actions:
+            if action["actionType"] == "stateRequest":
+                # The loop publishes when this is set; the event signature alone would miss a repeated request
+                # with the same actionId (also one refused for reusing an id).
+                self.state_requested = True
+            in_use = self._id_in_use(action["actionId"])
+            state = self._add_instant_state(action, in_use)
+            if in_use:
+                self._set_status(state, "FAILED", ID_IN_USE)
+            elif action["actionType"] not in (INSTANT_ACTIONS_V3 if v3 else INSTANT_ACTIONS):
+                self._set_status(state, "FAILED", f"unsupported instant action {action['actionType']!r}")
+            elif "actionParameters" in action and _check_parameters(action["actionParameters"], "actionParameters"):
+                # Same outcome as an unknown action (3.0 names no error for bad parameters): FAILED.
+                self._set_status(state, "FAILED", "actionParameters must be a list of objects with a string key")
+            else:
+                getattr(self, f"_instant_{action['actionType']}")(action, state)
+                continue
+            invalid.append(action["actionId"])
+            # 2.1 names no error for a failed instant action: only the FAILED action state reports it.
+        if v3 and invalid:
+            # One error per message, so a flood of bad actions cannot blow up the state message.
+            self.errors.append(
+                {
+                    "errorType": "INVALID_INSTANT_ACTION",
+                    "errorLevel": "WARNING",
+                    "errorDescription": "invalid instant action",
+                    "errorReferences": [{"referenceKey": "actionId", "referenceValue": i} for i in invalid],
+                }
+            )
+        return True
+
+    def _id_in_use(self, action_id: str) -> bool:
+        return any(a["actionId"] == action_id for a in (*self.action_states, *self.instant_action_states))
+
+    def _add_instant_state(self, action: dict, in_use: bool = False) -> dict:
+        state = {"actionId": action["actionId"], "actionType": action["actionType"], "actionStatus": "WAITING"}
+        v3 = self.vda_major == "v3"
+        states = self.instant_action_states if v3 else self.action_states
+        if not v3 and not in_use:  # a clashing id stays what it is: the state is marked by ID_IN_USE
+            self._instant_ids.add(state["actionId"])
+        instants = [a for a in states if v3 or self._is_instant(a)]
+        if len(instants) >= MAX_INSTANT_ACTION_STATES:  # see MAX_INSTANT_ACTION_STATES
+            old = next((a for a in instants if a["actionStatus"] in ("FINISHED", "FAILED")), None)
+            if old:
+                states[:] = [a for a in states if a is not old]
+                if not any(a["actionId"] == old["actionId"] for a in states):
+                    self._instant_ids.discard(old["actionId"])
+        states.append(state)
+        return state
+
+    def _is_instant(self, state: dict) -> bool:
+        """2.1 lists instant action states among the order's: by id, or a duplicate id that was refused."""
+        return state["actionId"] in self._instant_ids or state.get("resultDescription") == ID_IN_USE
+
+    def _instant_error(self, error_type: str, action: dict, description: str) -> None:
+        self.errors.append(
+            {
+                "errorType": error_type,
+                "errorLevel": "WARNING",
+                "errorDescription": description,
+                "errorReferences": [{"referenceKey": "actionId", "referenceValue": action["actionId"]}],
+            }
+        )
+
+    def _instant_cancelOrder(self, action: dict, state: dict) -> None:
+        parameters = action.get("actionParameters")
+        wanted = next(
+            (p.get("value") for p in parameters or [] if isinstance(p, dict) and p.get("key") == "orderId"), None
+        )
+        # 3.0 section 6.1.3.2: idle, or another orderId than the active one: FAILED. 2.1 has no such parameter.
+        if self.idle or (self.vda_major == "v3" and wanted is not None and wanted != self.order_id):
+            self._set_status(state, "FAILED", "no active order to cancel")
+            error_type = "noOrderToCancel" if self.vda_major == "v2" else "NO_ORDER_TO_CANCEL"
+            self._drop_errors(error_type)
+            self._instant_error(error_type, action, "no active order to cancel")
+            return
+        # Everything is instant, so the robot stops at once. mission_status and errors other than a
+        # blocked path stay as they are: errors persist until a new order is accepted.
+        self.mission_status = CANCELLED
+        self.cancelled = True
+        self._velocity = 0.0
+        self.node_states = []
+        self.edge_states = []
+        self._drop_errors("pathBlocked")
+        for order_action in self.action_states:
+            if order_action["actionId"] not in self._instant_ids and order_action["actionStatus"] in (
+                "WAITING",
+                "RUNNING",
+            ):
+                self._set_status(order_action, "FAILED", "order cancelled")
+        self._set_status(state, "FINISHED")
+
+    def _instant_startPause(self, action: dict, state: dict) -> None:
+        # Idempotent: pausing a paused robot (and resuming a running one) is not an error in either version.
+        self.paused = True
+        self._set_status(state, "FINISHED")
+
+    def _instant_stopPause(self, action: dict, state: dict) -> None:
+        self.paused = False
+        self._set_status(state, "FINISHED")
+
+    def _instant_stateRequest(self, action: dict, state: dict) -> None:
+        self._set_status(state, "FINISHED")
+
+    def _instant_factsheetRequest(self, action: dict, state: dict) -> None:
+        self.factsheet_requested = True
+        self._set_status(state, "FINISHED")
+
+    def _instant_clearInstantActions(self, action: dict, state: dict) -> None:
+        # 3.0 removes finished/failed instant actions. This action's own state stays (FINISHED), so the
+        # master can see that it worked; the next clear removes it.
+        self.instant_action_states = [
+            a for a in self.instant_action_states if a is state or a["actionStatus"] not in ("FINISHED", "FAILED")
+        ]
+        self._set_status(state, "FINISHED")
 
     def stop(self) -> None:
         """Abandon the current mission and stand still."""
@@ -273,7 +691,7 @@ class Robot:
 
     def block_path(self) -> bool:
         """Something blocks the route: stop in place and report pathBlocked."""
-        if self.mission_status not in (ACCEPTED, MOVING):
+        if self.mission_status not in (ACCEPTED, MOVING) or not self.node_states:
             return False
 
         on_edge = (
@@ -308,8 +726,12 @@ class Robot:
         self.mission_status = MOVING
         return True
 
-    def _drop_errors(self, error_type: str) -> None:
-        self.errors = [error for error in self.errors if error["errorType"] != error_type]
+    def _drop_errors(self, error_type: str) -> bool:
+        """Remove errors of this type; True if there were any."""
+        kept = [error for error in self.errors if error["errorType"] != error_type]
+        removed = len(kept) != len(self.errors)
+        self.errors = kept
+        return removed
 
     # --- Simulation -------------------------------------------------------
 
@@ -317,9 +739,13 @@ class Robot:
         """Advance the simulation by `dt` seconds."""
         self._moved = 0.0
         self._velocity = 0.0
+        if self.paused and self.busy:
+            return  # startPause: no progress and no status change until stopPause
         if self.mission_status == ACCEPTED:
             self.mission_status = MOVING
             return
+        if self.mission_status == WAITING:
+            return  # at the decision point, until an order update releases more
         if self.mission_status != MOVING:
             self._charge(dt)
             return
@@ -327,9 +753,10 @@ class Robot:
         self.charging = False
         # Never drive further than the remaining battery allows.
         budget = min(SPEED_M_PER_S * dt, self.battery / BATTERY_PER_METER)
-        while self.node_states and budget > 0:
-            node_id = self.node_states[0]["nodeId"]
-            target_x, target_y = self._node_positions[node_id]
+        self._enter_edge()
+        while budget > 0 and self._can_drive():
+            node = self.node_states[0]
+            target_x, target_y = node["nodePosition"]["x"], node["nodePosition"]["y"]
             dx, dy = target_x - self.x, target_y - self.y
             distance = math.hypot(dx, dy)
 
@@ -345,13 +772,13 @@ class Robot:
             self.x, self.y = target_x, target_y
             self._drain(distance)
             budget -= distance
-            self._arrive(node_id)
+            self._arrive()
 
         self._velocity = self._moved / dt
         if not self.node_states:
             self.mission_status = COMPLETED
-            # Rejections of orders sent while busy no longer apply.
-            self._drop_errors("orderError")
+        elif not self._can_drive():
+            self.mission_status = WAITING  # decision point: the rest of the order is horizon
         elif self.battery <= 0:
             self._fail_battery_empty()
         if self.mission_status != MOVING:
@@ -368,6 +795,8 @@ class Robot:
         if self.battery > 0:
             # The FATAL error means "needs a human"; once charged the robot can work again, and
             # keeping it would make a fleet manager stop sending orders.
+            # The order is kept (3.0 section 6.6.5.1: never clear the order on an error), so the robot
+            # stays busy with it until a cancelOrder frees it.
             self._drop_errors("batteryEmpty")
 
     def _fail_battery_empty(self) -> None:
@@ -386,18 +815,50 @@ class Robot:
             }
         )
 
-    def _arrive(self, node_id: str) -> None:
+    def _arrive(self) -> None:
         node = self.node_states.pop(0)
-        self.last_node_id = node_id
-        self.last_node_sequence_id = node["sequenceId"]
         if self.edge_states and self.edge_states[0]["sequenceId"] < node["sequenceId"]:
-            self.edge_states.pop(0)
+            edge = self.edge_states.pop(0)
+            self._run_actions(self._edge_actions.get(edge["sequenceId"], []))
+        self._traverse(node)
 
-        # Pick/drop happen instantly in the simulator.
-        finished = set(self._actions_by_node.get(node_id, []))
-        for action in self.action_states:
-            if action["actionId"] in finished:
-                action["actionStatus"] = "FINISHED"
+    def _traverse(self, node: dict) -> None:
+        """The robot is at `node` (already removed from nodeStates): run its actions, enter the next edge."""
+        self.last_node_id = node["nodeId"]
+        self.last_node_sequence_id = node["sequenceId"]
+        self._last_node_xy = (node["nodePosition"]["x"], node["nodePosition"]["y"])
+        self._run_actions(self._node_actions.get(node["sequenceId"], []))
+        self._enter_edge()
+
+    def _enter_edge(self) -> None:
+        """Edge actions start (RUNNING) when the edge is entered, i.e. its start node is traversed."""
+        if self.edge_states and self.edge_states[0]["released"]:
+            for action in self._states_of(self._edge_actions.get(self.edge_states[0]["sequenceId"], [])):
+                if action["actionStatus"] == "WAITING":
+                    action["actionStatus"] = "RUNNING"
+
+    def _states_of(self, ids: list[str]) -> list[dict]:
+        return [action for action in self.action_states if action["actionId"] in ids]
+
+    def _run_actions(self, ids: list[str]) -> None:
+        """Pick and drop happen instantly in the simulator; they change `loads`, or fail."""
+        for action in self._states_of(ids):
+            if action["actionStatus"] not in ("WAITING", "RUNNING"):
+                continue  # e.g. an instant action refused for reusing this id
+            if action["actionType"] == "pick" and self.loads:
+                self._set_status(action, "FAILED", "pick failed: the robot already carries a load")
+            elif action["actionType"] == "drop" and not self.loads:
+                self._set_status(action, "FAILED", "drop failed: the robot carries no load")
+            else:
+                self.loads = (
+                    [{"loadId": self._load_ids.get(action["actionId"], "")}] if action["actionType"] == "pick" else []
+                )
+                self._set_status(action, "FINISHED")
+
+    def _set_status(self, action: dict, status: str, result: str | None = None) -> None:
+        action["actionStatus"] = status
+        if result:
+            action["actionResult" if self.vda_major == "v3" else "resultDescription"] = result
 
     def _drain(self, meters: float) -> None:
         self._moved += meters
@@ -437,6 +898,10 @@ class Robot:
             self._velocity > 0,
             self.order_id,
             self.order_update_id,
+            self.new_base_request,
+            tuple(load["loadId"] for load in self.loads),
+            tuple((action["actionId"], action["actionStatus"]) for action in self.instant_action_states),
+            self.paused,
         )
 
     def state_message(self) -> dict:
@@ -452,7 +917,10 @@ class Robot:
             "lastNodeSequenceId": self.last_node_sequence_id,
             "nodeStates": [{**node, "nodePosition": dict(node["nodePosition"])} for node in self.node_states],
             "edgeStates": [dict(edge) for edge in self.edge_states],
+            "newBaseRequest": self.new_base_request,
+            "loads": [dict(load) for load in self.loads],
             "driving": self._velocity > 0,
+            "paused": self.paused,
             "operatingMode": "AUTOMATIC",
             "velocity": {"vx": round(self._velocity, 3), "vy": 0.0, "omega": 0.0},
             "actionStates": [dict(action) for action in self.action_states],
@@ -464,7 +932,7 @@ class Robot:
             state["mobileRobotPosition"] = {**position, "localized": True}
             state["powerSupply"] = {"stateOfCharge": round(self.battery, 1), "charging": self.charging}
             state["safetyState"] = {"activeEmergencyStop": "NONE", "fieldViolation": False}
-            state["instantActionStates"] = []
+            state["instantActionStates"] = [dict(action) for action in self.instant_action_states]
         else:
             state["agvPosition"] = {**position, "positionInitialized": True}
             state["batteryState"] = {"batteryCharge": round(self.battery, 1), "charging": self.charging}
@@ -488,8 +956,22 @@ class Robot:
             }
             for action_type in ("pick", "drop")
         ]
-        # The simulator handles no instantActions yet, so none are listed.
-        features = {"optionalParameters": [], "mobileRobotActions" if v3 else "agvActions": pick_drop}
+        instant = [
+            {
+                "actionType": action_type,
+                "actionScopes": ["INSTANT"],
+                # 3.0: cancelOrder may name the order to cancel.
+                **(
+                    {"actionParameters": [{"key": "orderId", "valueDataType": "STRING", "isOptional": True}]}
+                    if v3 and action_type == "cancelOrder"
+                    else {}
+                ),
+                # Instant actions finish at once, so they can neither be paused nor cancelled (strings: see above).
+                **({"pauseAllowed": "false", "cancelAllowed": "false"} if v3 else {}),
+            }
+            for action_type in (INSTANT_ACTIONS_V3 if v3 else INSTANT_ACTIONS)
+        ]
+        features = {"optionalParameters": [], "mobileRobotActions" if v3 else "agvActions": pick_drop + instant}
         if v3:
             return {
                 **self.header("factsheet"),

@@ -29,6 +29,7 @@ class RobotConnection:
         self.connection_topic = topic(MANUFACTURER, robot.robot_id, "connection", robot.vda_major)
         self.factsheet_topic = topic(MANUFACTURER, robot.robot_id, "factsheet", robot.vda_major)
         self.order_topic = topic(MANUFACTURER, robot.robot_id, "order", robot.vda_major)
+        self.instant_topic = topic(MANUFACTURER, robot.robot_id, "instantActions", robot.vda_major)
         self.inject_topic = control_topic(robot.robot_id, "inject")
         self.inbox: queue.Queue[tuple[str, bytes]] = queue.Queue()
 
@@ -87,6 +88,13 @@ class RobotConnection:
     def _apply(self, topic_name: str, payload: bytes) -> None:
         if topic_name == self.inject_topic:
             log.warning("%s: failure injection: %s", self.robot.robot_id, self.robot.handle_command_payload(payload))
+        elif topic_name == self.instant_topic:
+            if not self.robot.handle_instant_actions_payload(payload):
+                # Malformed: neither 2.1 nor 3.0 names an error for it, so it is only logged.
+                log.warning("%s: ignored malformed instantActions message", self.robot.robot_id)
+            if self.robot.factsheet_requested:
+                self.robot.factsheet_requested = False
+                self.publish_factsheet()
         elif self.robot.handle_order_payload(payload):
             log.info("%s: accepted order %s", self.robot.robot_id, self.robot.order_id)
         else:
@@ -96,6 +104,12 @@ class RobotConnection:
         if self._client.is_connected():
             self._publish(self.state_topic, self.robot.state_message())
 
+    def publish_factsheet(self) -> None:
+        # The factsheet is mandatory: retained (a master that connects later still gets it), QoS 0 like every
+        # topic except connection (2.1 §6.15 and §6.4, 3.0 §6.10).
+        if self._client.is_connected():
+            self._publish(self.factsheet_topic, self.robot.factsheet_message(), qos=0, retain=True)
+
     def _publish(self, topic_name: str, message: dict, qos: int = 0, retain: bool = False):
         return self._client.publish(topic_name, json.dumps(message), qos=qos, retain=retain)
 
@@ -104,11 +118,10 @@ class RobotConnection:
             log.warning("%s: MQTT connect failed: %s", self.robot.robot_id, reason_code)
             return
         log.info("%s: connected to %s:%s", self.robot.robot_id, self.host, self.port)
-        # VDA 5050 section 6.2: order at QoS 0. The inject topic is ActuNode's own; commands use QoS 1.
-        client.subscribe([(self.order_topic, 0), (self.inject_topic, 1)])
+        # VDA 5050 section 6.2: order and instantActions at QoS 0. The inject topic is ActuNode's own; commands
+        # use QoS 1.
+        client.subscribe([(self.order_topic, 0), (self.instant_topic, 0), (self.inject_topic, 1)])
         self._publish(self.connection_topic, self.robot.connection_message("ONLINE"), qos=1, retain=True)
-        # The factsheet is mandatory: retained (a master that connects later still gets it), QoS 0 like every
-        # topic except connection (2.1 §6.15 and §6.4, 3.0 §6.10).
         self._publish(self.factsheet_topic, self.robot.factsheet_message(), qos=0, retain=True)
         # Refresh the will's headerId and timestamp. paho only uses a will_set in the NEXT connect, so the will
         # active during this session is older than this session's ONLINE; the spec allows that (2.1 section 6.14:
@@ -117,7 +130,7 @@ class RobotConnection:
 
     def _on_message(self, client, userdata, message):
         # Only act on our own topics, whatever the broker delivers.
-        if message.topic not in (self.order_topic, self.inject_topic):
+        if message.topic not in (self.order_topic, self.instant_topic, self.inject_topic):
             log.warning("%s: ignoring message on %s", self.robot.robot_id, message.topic)
             return
         self.inbox.put((message.topic, message.payload))
