@@ -129,3 +129,36 @@ def test_failed_login_memory_is_bounded(monkeypatch):
     assert len(sessions._failures) <= 50
     assert sessions.login("10.9.9.9", TOKEN) is not None
     assert "10.9.9.9" not in sessions._failures  # a successful login leaves no entry behind
+
+
+def _rotating_logins(client, count=12):
+    return [
+        client.post("/api/login", json={"token": f"{i:032d}"}, headers={"X-Real-IP": f"10.0.0.{i}"}).status_code
+        for i in range(count)
+    ]
+
+
+def test_x_real_ip_from_an_untrusted_peer_cannot_dodge_the_rate_limit(client, monkeypatch):
+    monkeypatch.setattr(auth, "trusted_proxies", auth.TrustedProxies(["frontend"]))  # the peer here is "testclient"
+
+    codes = _rotating_logins(client)
+
+    assert codes[:5] == [401] * 5
+    assert codes[-1] == 429
+
+
+def test_x_real_ip_from_a_trusted_proxy_is_the_client(client, monkeypatch):
+    monkeypatch.setattr(auth, "trusted_proxies", auth.TrustedProxies(["testclient"]))
+
+    assert _rotating_logins(client) == [401] * 12  # every header value is another client
+
+
+def test_trusted_proxy_names_are_resolved_to_addresses(monkeypatch):
+    import socket
+
+    monkeypatch.setattr(socket, "getaddrinfo", lambda host, *a, **k: [(socket.AF_INET, 0, 0, "", ("172.18.0.5", 0))])
+    proxies = auth.TrustedProxies(["frontend"])
+    proxies.refresh()
+
+    assert proxies.contains("172.18.0.5")
+    assert not proxies.contains("172.18.0.6")

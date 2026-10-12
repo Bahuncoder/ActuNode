@@ -54,5 +54,6 @@
     "stateFromMessage": true,
     "vdaMajor": "v2"
   },
-  "type": "message"
+  "type": "message",
+  "validationEpoch": 0
 }

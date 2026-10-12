@@ -10,6 +10,7 @@ HttpOnly, SameSite=Strict cookie. Sessions live in memory (a restart logs everyo
 
 import hmac
 import secrets
+import socket
 import threading
 import time
 from collections import deque
@@ -168,9 +169,49 @@ class LoginRequest(BaseModel):
     token: str = Field(min_length=1, max_length=200)
 
 
+class TrustedProxies:
+    """Addresses of the proxies whose X-Real-IP is believed (issue 23). Names are resolved by `refresh()`, run
+    at startup and then in a background thread at most every REFRESH_S (started by a lookup, never waited
+    for), so a request never blocks on DNS and a restarted proxy with a new address is picked up."""
+
+    REFRESH_S = 60
+
+    def __init__(self, names):
+        self._names = frozenset(names)
+        self._addresses: frozenset[str] = frozenset()
+        self._last = -self.REFRESH_S  # monotonic seconds of the last refresh start
+        self._lock = threading.Lock()
+
+    def refresh(self) -> None:
+        found = set()
+        for name in self._names:
+            try:
+                found.update(info[4][0] for info in socket.getaddrinfo(name, None))
+            except OSError:
+                pass  # not resolvable (yet): retried on the next refresh
+        with self._lock:
+            self._addresses = frozenset(found)
+
+    def contains(self, host: str) -> bool:
+        now = time.monotonic()
+        with self._lock:
+            stale = now - self._last >= self.REFRESH_S
+            if stale:
+                self._last = now
+            trusted = host in self._names or host in self._addresses
+        if stale:
+            threading.Thread(target=self.refresh, daemon=True).start()
+        return trusted
+
+
+trusted_proxies = TrustedProxies(settings.trusted_proxies)
+
+
 def _client(request: Request) -> str:
-    # nginx sets X-Real-IP to the connecting address (it overwrites any value a client sends).
-    return request.headers.get("x-real-ip") or (request.client.host if request.client else "unknown")
+    # nginx sets X-Real-IP to the connecting address (it overwrites any value a client sends). Anyone else
+    # reaching the API directly could send any value, so the header counts only from a trusted proxy.
+    peer = request.client.host if request.client else "unknown"
+    return (trusted_proxies.contains(peer) and request.headers.get("x-real-ip")) or peer
 
 
 @router.get("/session")

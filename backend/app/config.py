@@ -28,6 +28,10 @@ class Settings:
         for h in os.getenv("ACTUNODE_ALLOWED_HOSTS", "localhost,127.0.0.1,::1").split(",")
         if h.strip()
     )
+    # Peers whose X-Real-IP is believed (the nginx service); anyone else is identified by its own address.
+    trusted_proxies: tuple[str, ...] = tuple(
+        h.strip() for h in os.getenv("ACTUNODE_TRUSTED_PROXIES", "frontend").split(",") if h.strip()
+    )
     # Two live robots closer than this (metres) raise a `proximity` warning (D-22).
     proximity_m: float = float(os.getenv("ACTUNODE_PROXIMITY_M", "1.0"))
     # A recording stops itself at this size. Fractions allowed (useful for testing the limit).

@@ -381,3 +381,95 @@ def test_live_message_event_matches_the_shared_contract_fixture():
     if os.environ.get("ACTUNODE_UPDATE_CONTRACTS"):
         fixture.write_text(json.dumps(event, indent=2, sort_keys=True) + "\n")
     assert json.loads(fixture.read_text()) == json.loads(json.dumps(event))
+
+
+def _big_state(lists=120, pad=700):
+    return {
+        "serialNumber": "r1",
+        "batteryState": {"batteryCharge": 50.0},
+        "nodeStates": [{"nodeId": f"n{i}", "pad": "x" * pad} for i in range(lists)],
+        "errors": [],
+        "actunode": {"missionStatus": "MOVING"},
+    }
+
+
+def test_big_state_is_stored_reduced_with_a_marker():
+    live = LiveHub()
+    events = _capture(live)
+    raw = json.dumps(_big_state()).encode()
+    assert len(raw) > 64 * 1024
+
+    live.handle_mqtt("uagv/v2/ActuNode/r1/state", raw)
+
+    stored = live.snapshot()["robots"][0]["state"]
+    assert len(stored["nodeStates"]) == 50
+    assert stored["serialNumber"] == "r1" and stored["actunode"] == {"missionStatus": "MOVING"}
+    assert stored["_truncated"] == {"bytes": len(raw), "lists": {"nodeStates": 120}}
+    [event] = [e for e in events if e["type"] == "message"]
+    assert event["robot"]["state"] == stored and "stateFromMessage" not in event["robot"]
+    assert isinstance(event["message"]["payload"], str)  # the display preview is unchanged
+
+
+def test_small_state_is_stored_unchanged():
+    live = LiveHub()
+    events = _capture(live)
+    raw = json.dumps(_big_state(lists=60, pad=10)).encode()
+    assert len(raw) < 64 * 1024
+
+    live.handle_mqtt("uagv/v2/ActuNode/r1/state", raw)
+
+    stored = live.snapshot()["robots"][0]["state"]
+    assert "_truncated" not in stored and len(stored["nodeStates"]) == 60
+    [event] = [e for e in events if e["type"] == "message"]
+    assert event["robot"]["stateFromMessage"] is True
+
+
+def test_stored_state_memory_is_bounded_under_a_flood():
+    from app import live as live_module
+
+    live = LiveHub()
+    pad = "x" * 100_000  # a scalar field alone is big: the flood must not get this stored whole
+    body = {"serialNumber": "r", "nodeStates": [{"a": 1}] * 10_000, "pad": pad}
+    raw = json.dumps(body).encode()
+    assert len(raw) <= live_module.MAX_PAYLOAD_BYTES
+    for i in range(live_module.MAX_ROBOTS):  # straight to the store: validating 1000 huge states is slow
+        live._update_robot(f"uagv/v2/ActuNode/r{i}/state", json.loads(raw), "now", len(raw))
+
+    total = sum(len(json.dumps(r["state"])) for r in live.snapshot()["robots"])
+    assert len(live.snapshot()["robots"]) == live_module.MAX_ROBOTS
+    assert total <= live_module.MAX_ROBOTS * live_module.MAX_STORED_STATE_BYTES
+
+
+def test_validation_epoch_increments_on_reset():
+    live = LiveHub()
+    assert live.validation()["epoch"] == 0
+    live.reset_validation()
+    live.reset_validation()
+    assert live.validation()["epoch"] == 2
+    assert live.snapshot()["validation"]["epoch"] == 2
+
+
+def test_message_carries_the_epoch_it_was_counted_under_even_if_broadcast_after_a_reset():
+    live = LiveHub()
+    events = _capture(live)
+    capture = live.broadcast
+
+    def reset_first(event):  # a reset sneaks in between counting the message and broadcasting it
+        live.broadcast = capture
+        live.reset_validation()
+        capture(event)
+
+    live.broadcast = reset_first
+
+    live.handle_mqtt("uagv/v2/ActuNode/r1/state", state("r1"))
+
+    [message] = [e for e in events if e["type"] == "message"]
+    assert message["validationEpoch"] == 0
+    assert live.validation()["epoch"] == 1
+
+
+def test_reset_event_carries_the_new_epoch():
+    live = LiveHub()
+    events = _capture(live)
+    live.reset_validation()
+    assert events[-1]["validation"]["epoch"] == 1

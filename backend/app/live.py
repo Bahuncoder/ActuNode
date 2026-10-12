@@ -36,6 +36,12 @@ MAX_DEPTH = 32
 # Bigger payloads are shown (message log, WebSocket) as a text preview; the recorder still gets them whole.
 DISPLAY_PAYLOAD_BYTES = 16 * 1024
 PREVIEW_BYTES = 1024
+# The last state of each robot is kept whole up to this size (raw payload); bigger ones are reduced, so a flood of
+# max-size states from logged-in robots cannot hold MAX_ROBOTS x MAX_PAYLOAD_BYTES in memory (issue 21).
+MAX_STORED_STATE_BYTES = 64 * 1024
+STORED_LIST_ENTRIES = 50
+STATE_LISTS = ("nodeStates", "edgeStates", "actionStates", "instantActionStates", "errors", "information", "loads")
+_MARKER_RESERVE = 1024
 
 
 def _now() -> str:
@@ -88,8 +94,28 @@ def parse_payload(payload: bytes) -> tuple[object, str | None]:
     return body, None
 
 
-def _empty_validation() -> dict:
-    return {"since": _now(), "checked": 0, "withIssues": 0, "byRule": {}}
+def _reduce_state(body: dict, size: int) -> dict:
+    """A copy of an oversized state: the long lists cut to STORED_LIST_ENTRIES, and (so the bound holds
+    whatever the payload looks like) fields dropped once the copy would pass MAX_STORED_STATE_BYTES. The
+    `_truncated` marker says what was cut."""
+    lists, dropped, reduced = {}, [], {}
+    budget = MAX_STORED_STATE_BYTES - _MARKER_RESERVE
+    for name, value in body.items():
+        if name in STATE_LISTS and isinstance(value, list) and len(value) > STORED_LIST_ENTRIES:
+            lists[name] = len(value)
+            value = value[:STORED_LIST_ENTRIES]
+        budget -= len(json.dumps({name: value}))
+        if budget < 0:
+            dropped.append(name)
+            budget = 0
+        else:
+            reduced[name] = value
+    reduced["_truncated"] = {"bytes": size, "lists": lists} | ({"dropped": dropped} if dropped else {})
+    return reduced
+
+
+def _empty_validation(epoch: int = 0) -> dict:
+    return {"since": _now(), "epoch": epoch, "checked": 0, "withIssues": 0, "byRule": {}}
 
 
 class LiveHub:
@@ -151,11 +177,12 @@ class LiveHub:
             }
             self._next_id += 1
             self._count_issues(message)
+            epoch = self._validation["epoch"]  # same lock as the count: a reset cannot fall between them
             shown = message
             if len(payload) > DISPLAY_PAYLOAD_BYTES:
                 shown = {**message, "payload": _preview(payload)}
             self._messages.append(shown)
-            robot = self._update_robot(topic, body, message["receivedAt"]) if valid_json else None
+            robot = self._update_robot(topic, body, message["receivedAt"], len(payload)) if valid_json else None
             if robot is not None and robot["state"] is body and shown["payload"] is body:
                 # The event's message already carries this state in full: send it once.
                 robot = {k: v for k, v in robot.items() if k != "state"} | {"stateFromMessage": True}
@@ -165,7 +192,7 @@ class LiveHub:
                 listener(message)
             except Exception:
                 log.exception("Message listener failed")
-        self.broadcast({"type": "message", "message": shown, "robot": robot})
+        self.broadcast({"type": "message", "message": shown, "robot": robot, "validationEpoch": epoch})
         if pairs_event is not None:
             self.broadcast(pairs_event)
 
@@ -189,7 +216,7 @@ class LiveHub:
             self._proximity.forget(vda5050.robot_key(parts))
         return []
 
-    def _update_robot(self, topic: str, body, received_at: str) -> dict | None:
+    def _update_robot(self, topic: str, body, received_at: str, size: int) -> dict | None:
         parsed = vda5050.topic_parts(topic)
         if parsed is None or not isinstance(body, dict) or parsed.name not in ("state", "connection"):
             return None  # command traffic (our own orders echoed back, ...) must not create or evict robots
@@ -216,7 +243,7 @@ class LiveHub:
             },
         )
         if parsed.name == "state":
-            robot["state"] = body
+            robot["state"] = _reduce_state(body, size) if size > MAX_STORED_STATE_BYTES else body
             robot["lastStateAt"] = received_at
         else:
             robot["connection"] = body.get("connectionState")
@@ -244,7 +271,7 @@ class LiveHub:
 
     def reset_validation(self) -> None:
         with self._lock:
-            self._validation = _empty_validation()
+            self._validation = _empty_validation(self._validation["epoch"] + 1)
         self.broadcast({"type": "validation", "validation": self.validation()})
 
     def validation(self) -> dict:
