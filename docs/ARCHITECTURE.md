@@ -146,6 +146,7 @@ WebSocket client's queue → `send_json`.
 | GET | `/api/session` | Whether login is required and the caller is logged in |
 | POST | `/api/login`, `/api/logout` | Exchange the API token for a session cookie / end it (D-25) |
 | GET | `/api/locations` | Named warehouse locations |
+| GET | `/api/map` | The warehouse map: `size`, `zones` (incl. CHARGING and PARKING), `racks`, `locations` (single source for UI and simulator tests, D-37) |
 | POST | `/api/missions` | Send a mission (robot, source, destination, load; optional `manufacturer`, `vda_version`) |
 | POST | `/api/missions/{robot}/cancel` | Send a `cancelOrder` instant action (optional `manufacturer`, `vda_version`); 202 with `actionId`, `topic` (D-35) |
 | POST | `/api/missions/{robot}/extend` | Order update extending the order the robot reports running (from its own state, if ActuNode sent it) to `to_location` (optional `action`, `manufacturer`, `vda_version`); 409 if unknown, cancelled, foreign or the previous update is unconfirmed (D-35) |
@@ -172,12 +173,16 @@ Interactive docs: http://localhost:8080/api/docs (served under `/api`, so the UI
 | `type` | When | Payload |
 |---|---|---|
 | `snapshot` | On connect | `robots`, `messages`, `failures`, `validation`, `recording`, `replay` |
-| `message` | Every MQTT message | `message` (with `issues`), `robot` (updated robot, if any) |
+| `message` | Every MQTT message | `message` (with `issues`), `robot` (updated robot, if any; for a state message whose full payload is in `message`, `robot` omits `state` and carries `stateFromMessage: true`, D-38) |
 | `failure` | Failure injected/cleared | `failure` |
 | `recording` | Recording started/stopped | `recording` or null |
 | `replay` | Replay progress (≈2/s) and end | `replay` |
-| `proximity` | Near-miss pairs changed | `pairs` |
+| `proximity` | Set of near-miss pairs changed (distances refreshed at most once a second, D-38) | `pairs` |
 | `validation` | Counters reset | `validation` |
+
+Events are encoded once and the same text is sent to every client. A client that falls behind (its queue
+of 1,000 events overflows) is closed with code 1013 and reconnects for a fresh snapshot (D-38); the UI
+applies queued events once per animation frame.
 
 ### Session file format (v1)
 
@@ -255,3 +260,4 @@ can go first).
 | Simulator | `simulator/.venv/bin/pytest simulator` | ✅ |
 | Frontend | `cd frontend && nvm use && npm run lint && npm test && npm run build` (Node 24, D-19) | ✅ |
 | End to end | `pytest tests/e2e` (needs Docker; starts its own isolated stack, D-16); includes real-browser tests in Chromium via Playwright (`playwright install chromium` once, D-29) | ✅ |
+| Load | `tests/e2e/.venv/bin/python tests/load/run_load.py` (needs Docker; isolated stack; 10/25/50 robots with missions; ~4 min; thresholds and how to read results in [tests/load/README.md](../tests/load/README.md); latest summary in `tests/load/results/latest.md`) | By hand, not in CI |

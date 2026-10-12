@@ -14,7 +14,7 @@ the status line, the schedule table, the session log, and the open issues.
 |---|---|
 | **Calendar** | Week 1 of 8 by date (Fri 9 Oct – Thu 15 Oct 2026); dates no longer gate the work (D-30) |
 | **Last updated** | Mon 12 Oct 2026 |
-| **Status** | **Weeks 1–3 complete** (quality gates passed 11–12 Oct, D-30). Next: Week 4, 5–10 robots and a warehouse map: the feature exists since Day 4; the load test (10/25/50 robots) is the open work. |
+| **Status** | **Weeks 1–4 complete** (quality gates passed 11–12 Oct, D-30). Next: code-quality backlog (issues 21–24, load test in CI), then the Week 5 and Week 7 quality gates (features built early), then Week 6 (three remaining failure types). |
 | **Working rule** | A week is done when its work is fully done (D-30): features, then a quality gate (independent bug and security review, scans, a test for every fix, all suites and e2e green, docs). Then the next week starts, whatever the date. |
 
 ## Schedule
@@ -26,7 +26,7 @@ Week 1 started on Friday 9 October 2026 (Day 1). Each week runs Friday to Thursd
 | **1** | 9–15 Oct | VDA 5050 concepts, MQTT topics, AMR state machines | Notes + message schemas + Docker Mosquitto | ✅ Done | ✅ Quality gate passed 11 Oct (D-30, see below) |
 | 2 | 16–22 Oct | One fake AMR with battery, pose, state | Robot publishes status every second | ✅ Built early (Day 2) | ✅ Quality gate passed 11 Oct (charging, VDA 5050 state events, factsheet; timing measured at 50 robots) |
 | 3 | 23–29 Oct | Mission sender + state transitions | Move job from start to destination | ✅ Built early (Day 3); completed 12 Oct (D-35) | ✅ Quality gate passed 12 Oct: VDA 5050 order handling, order updates, cancel/pause, review fixes |
-| 4 | 30 Oct – 5 Nov | 5–10 robots + simple warehouse map | Multi-robot screen with location/state | ✅ Built early (Day 4, 10 Oct) | 🟡 Not load-tested beyond 10 robots. Near-collisions detected and reported, never avoided (D-22) |
+| 4 | 30 Oct – 5 Nov | 5–10 robots + simple warehouse map | Multi-robot screen with location/state | ✅ Built early (Day 4); completed 12 Oct (D-37, D-38) | ✅ Quality gate passed 12 Oct: load test 10/25/50 robots, one map, parking, live feed at scale |
 | 5 | 6–12 Nov | Message inspector + validation | Readable message stream + errors | ✅ Built early (Day 4, 10 Oct) | 🟡 Official VDA 5050 2.1.0 and 3.0.0 schemas, chosen by topic (D-15, D-20). No offline validation of session files yet |
 | 21 | Each robot's last state is stored whole (up to 256 KiB, D-31), so 1,000 robots could hold ~256 MB | Memory pressure only under a deliberate flood by logged-in clients | Store large states as a preview, or cap total bytes |
 | 22 | Suspected UI races (found by reading, not reproduced): a message counted during "reset validation" may be counted twice in the UI; a recording started from another tab shows the previous recording's counters | Wrong numbers in the UI, not in files | Reproduce with a test first, then fix |
@@ -52,6 +52,36 @@ the 8-week plan; the 8-week plan is the full roadmap. All of Days 1–7 were bui
 | Day 5 | `BLOCKED_PATH` failure | Week 6 (1 of 4 failures) |
 | Days 6–7 | Record to JSONL, replay | Week 7 |
 | 10 Oct | 10 robots; validator, schemas, VDA 5050 notes | Weeks 4, 5, 1 (rest) |
+
+## Week 4: load test and quality gate (12 Oct, D-37, D-38)
+
+A repeatable load test (`tests/load/run_load.py`, isolated stack, missions keeping half the robots busy)
+plus a code review of the multi-robot surface.
+
+Review findings fixed: robots 11–50 parked in RECEIVING and STORAGE RACKS, some on racks, and could not
+charge there (new PARKING zone; layout tested for all 50, D-37); a slow WebSocket client was never resynced
+and could show wrong near-collisions for good (now closed with 1013, reconnects for a snapshot); the map
+existed in two copies (now one, served at `GET /api/map`); off-map robots were invisible; UI and backend
+read 3.0 positions differently. Expected, not fixed: straight-line driving at 50 robots produces frequent
+near-collision warnings (D-22).
+
+Load test at 50 robots, before → after the fixes (same script, same machine):
+
+| | Before | After |
+|---|---|---|
+| Live feed | 133 kB/s, 66 events/s | 76 kB/s, 60 events/s |
+| Proximity events | 12.5/s | 5.9/s |
+| UI | 55 fps, frame p95 33.3 ms, main thread 58 % busy | 59 fps, frame p95 16.8 ms, 48 % busy |
+| Robot → browser latency p99 | 72 ms | 75 ms (unchanged) |
+
+Caught on the way: the backend put the new `stateFromMessage` flag inside the robot, the UI builder read it
+from the event; each side's unit tests used its own idea of the shape, so only the real-browser e2e tests
+failed (robots showed UNKNOWN). Fixed, and a shared contract fixture now ties both sides
+(`contracts/live_message_event.json`). An intermediate load run that looked like a big UI win (13 % busy)
+was the broken build rendering nothing; the numbers above are from the fixed build.
+
+Verified: backend 282, simulator 337, frontend 59; e2e 22/22 (2.1), 22/22 (3.0), 25/25 (2.1 with login);
+load test 18/18 at 10, 25 and 50 robots.
 
 ## Week 3 second review (12 Oct, D-36)
 
@@ -210,7 +240,7 @@ Struck-through items are already done:
 |---|---|
 | 2 | ~~End-to-end tests in CI; fix battery-at-0; reconnect behaviour~~ (done 10 Oct, see Week 2 above) |
 | 3 | ~~`instantActions` cancelOrder (the "cancel" in *cancel, reroute or escalate*); order updates (`orderUpdateId`)~~ (done 12 Oct, D-35) |
-| 4 | Load test 10/25/50 robots (CPU, message rate, UI frame rate); ~~decide whether to model traffic/near-collisions~~ (D-22: detect, never avoid) |
+| 4 | ~~Load test 10/25/50 robots (CPU, message rate, UI frame rate)~~ (done 12 Oct, D-38); ~~decide whether to model traffic/near-collisions~~ (D-22: detect, never avoid) |
 | 5 | ~~Version-aware validation with the official 2.1.0 and 3.0.0 schemas, chosen by topic~~ (D-15, D-20); offline validation of session files |
 | 6 | Remaining failures: low battery, disconnect, invalid payload, timeouts; simulator safety stops (`fieldViolation`) when a robot is in the path (D-22) |
 | 7 | ~~Session size limits~~; retention; upload a session someone sent you; ~~streaming replay~~ |
@@ -239,17 +269,17 @@ exercised by hand with a real browser and MQTT traffic.
 
 | Area | How it was verified | Gaps |
 |---|---|---|
-| Backend API | 269 unit/API tests (pytest), run in CI, including a shutdown test under a real uvicorn server | |
-| Simulator | 333 tests (pytest, incl. conformance against the official 2.1.0 and 3.0.0 schemas), run in CI | |
+| Backend API | 282 unit/API tests (pytest), run in CI, including a shutdown test under a real uvicorn server | |
+| Simulator | 337 tests (pytest, incl. conformance against the official 2.1.0 and 3.0.0 schemas), run in CI | |
 | Python style | `ruff check` + `ruff format --check` in CI (backend, simulator) | |
-| Frontend | Type check, lint, 46 unit/component tests (`npm test`, incl. malformed robot data, both VDA versions, login, nothing opened before the session check) and production build, in CI; real-browser tests in the e2e suite (below) | |
+| Frontend | Type check, lint, 59 unit/component tests (incl. the shared backend contract fixture) (`npm test`, incl. malformed robot data, both VDA versions, login, nothing opened before the session check) and production build, in CI; real-browser tests in the e2e suite (below) | |
 | MQTT flow | Automated against Mosquitto in Docker (`tests/e2e`) | |
 | Shutdown | Automated in `tests/e2e` (broker first, then backend; recording gets its end line) and `backend/tests/test_shutdown.py` | |
 | Docker stack, end to end | **Automated** (`tests/e2e`, 26 tests incl. 3 in Chromium via Playwright and 5 for Week 3 orders, in CI for VDA 2.1, 3.0 and 2.1 with login): health, state every second, mission state machine, BLOCKED_PATH, near-collision warning, validation clean, record/replay, last will on kill, broker restart recovery, shutdown with open recording; in the browser: live robots, map and stream over a real WebSocket, a mission sent from the form completes, login screen refuses a wrong token, no console errors | Browser tests use the local plain-HTTP UI, not HTTPS (D-29) |
 | P-1042 scenario (mission → block → clear → complete) | E2E, several times | |
 | Record → replay | E2E; replay timing matched the recording within ~25 ms at 5×. Size limit stops a recording by itself (unit test); replay streams the file (unit test: 25 MB file, peak memory under 5 MB) | No retention or upload |
 | Validator | Official VDA 5050 2.1.0 schemas (D-20); real and generated messages in every mission state pass them; planted bad messages flagged; e2e: all live traffic clean. 3.0.0 schemas on `v3` topics (D-15), tested with valid 3.0 messages and 2.1 messages on a `v3` topic | No offline validation of session files |
-| 10 robots, 6 concurrent missions | E2E screenshot | No load test |
+| 10/25/50 robots with missions | Load test (`tests/load`, D-38): all 18 thresholds met at every size; at 50 robots cadence p99 1.03 s, robot→browser p99 75 ms, backend CPU 10 %, UI 59 fps (p95 frame 16.8 ms), nothing dropped | Run by hand, not in CI; 50 robots is the simulator maximum |
 | State every second (Week 2) | Measured on the real stack, 75 s windows with missions: 1, 10 and 50 robots; worst interval 1.068 s, p99 ≤ 1.064 s, no headerId gaps, drift 0, at most one message per 0.1 s tick; one retained factsheet per robot | Not automated (scratch script); 50 robots is the simulator maximum |
 | Dependencies and images | `pip-audit` (backend, simulator, e2e), `npm audit`, `bandit`, `trivy` images and Dockerfiles: 0 known HIGH/CRITICAL after the gate (11 Oct) | Not yet automated in CI |
 | Security (D-18, D-23–D-28, D-31, D-32) | E2E: MQTT logins and ACL (spoofing refused, incl. own serial under another manufacturer; old serial-only login refused), Host/Origin checks, nothing works without a session in login mode, plain ports unreachable from the LAN, TLS refuses clients that do not trust the CA | |
@@ -266,6 +296,13 @@ Numbered so they can be referenced from commits. Remove an item only when it is 
 ## Session log
 
 Newest first. One entry per work session: what was done, what was learned, what is next.
+
+### Mon 12 Oct 2026 (evening): Week 4 (D-37, D-38)
+
+- Load test built and run; code review in parallel; fixes in three parts (backend, simulator, UI).
+- Lesson 1: a contract between two codebases needs a shared fixture, not two sets of unit tests.
+- Lesson 2: a performance number from a broken build is not a result; re-measure after every fix.
+- Week 4 complete. Next: code-quality backlog (issues 21–24, load test in CI), then Weeks 5 and 7 gates.
 
 ### Mon 12 Oct 2026 (later): Week 3 second review (D-36)
 

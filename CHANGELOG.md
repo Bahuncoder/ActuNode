@@ -4,6 +4,18 @@ What changed, per commit, newest first. Status and plans are in [docs/PROGRESS.m
 
 ## Unreleased
 
+### Week 4: many robots, one map, live feed at scale (D-37, D-38)
+- Load test `tests/load/run_load.py` (isolated stack, 10/25/50 robots with missions, 18 thresholds, ~4 min).
+- One warehouse map in `backend/app/warehouse.py`, served at `GET /api/map`; the UI draws it, simulator tests
+  check against it. New PARKING zone; robots park in the charging area, then PARKING, never on racks or in
+  working zones.
+- Live feed: proximity events only when pairs change (distances ≤ 1/s); a state's event carries it once;
+  events encoded once for all clients; a lagging client is closed (1013) and reconnects for a snapshot.
+- UI: events applied once per frame; unchanged rows and markers don't re-render; off-map and other-map robots
+  shown; 3.0 position read like the backend.
+- Shared contract fixture `contracts/live_message_event.json` (backend generates, frontend tests read): a
+  shape mismatch between the two had broken the live view and was caught only by the browser tests.
+
 ### Week 3 second review (D-36)
 - Security: a robot could make the backend publish an order over the broker limit (disconnecting the
   backend); a crafted session file could pass the replay live check and fake a live robot. Fixed: every

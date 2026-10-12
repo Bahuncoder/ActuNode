@@ -257,6 +257,8 @@ authentication with per-robot topic permissions (issue 12).
 collisions is traffic management: the job of the fleet manager under test (or Open-RMF), which the plan
 positions ActuNode to complement, not replace. Building it would make ActuNode a fleet manager and
 break the founder rule "do not start as a generic fleet dashboard; start at the debugging pain".
+*Amended 12 Oct (D-37):* at 25–50 robots, straight-line driving out of the parking grid produces frequent
+warnings; that is expected.
 **Decision.** Stage 1 (debugging lab) detects and records, it does not steer: the backend reports a
 `proximity` warning when two live robots on the same map come closer than `ACTUNODE_PROXIMITY_M`
 (default 1.0 m), once per incident (re-armed beyond 1.2×), attached to the state message so it lands in
@@ -580,3 +582,35 @@ over the broker limit; and `simulator/robot.py` had grown to 1,131 lines (mainta
   actions live in one list (2.1 publishes them inside `actionStates`, after the order's actions).
 **Consequences.** Every module now rates A for maintainability. The offline demo (`python3 main.py`), broken
 by the Week 3 start-node rule without anyone noticing, is fixed and covered by a test.
+
+## D-37 · One warehouse map; robots park in the charging area, then a parking zone
+12 Oct 2026 · Accepted (Week 4)
+
+**Context.** The map existed twice (UI constants and simulator constants; the backend had only named
+locations), and the simulator parked robots 11–50 in rows climbing into RECEIVING and STORAGE RACKS, some on
+rack rows and next to the receiving doors, where they also could not charge (D-33).
+**Decision.** `backend/app/warehouse.py` is the map: size, zones, racks and locations, served at
+`GET /api/map`; the UI draws from it (built-in fallback while it loads), and simulator tests read that file
+to check its charging and parking areas. A new PARKING zone (x 0–8.5, y 5–10.5, free floor between charging
+and receiving) holds the robots that do not fit the charging area. Parking spots: 21 in the charging area,
+then 30 in PARKING; every spot ≥ 1.3 m from every other (above the 1.2 m proximity re-arm distance, so
+parked robots never warn each other), ≥ 1.5 m from every named location, ≥ 0.5 m inside its zone, and
+clear of every other zone and rack (tests for all 50). Robots in PARKING do not charge where they stand.
+**Consequences.** The map shown, the map the simulator uses and the map the backend serves cannot drift.
+Robots that leave the parking grid on straight lines still pass close to parked robots; near-collision
+warnings during busy demos are expected (D-22: ActuNode reports, it does not steer).
+
+## D-38 · Live feed at scale: send less, resync slow clients, render once per frame
+12 Oct 2026 · Accepted (Week 4)
+
+**Context.** The Week 4 load test (10/25/50 robots, all thresholds met) and review showed what grows with
+the fleet: proximity events on every distance change (12.5/s at 50 robots, 19 % of the feed), every state
+sent twice per event, events JSON-encoded once per client, a full UI re-render per WebSocket frame, and a
+slow client whose queue overflowed lost events silently, possibly for good (proximity, failures).
+**Decision.** Proximity events when the set of pairs changes, distances at most once a second; a state
+message's event carries the state once (`stateFromMessage`); each event is encoded once for all clients;
+an overflowing client is logged once and closed with 1013 so it reconnects for a fresh snapshot; the UI
+batches events per animation frame and memoises rows and markers so unchanged robots do not re-render.
+Validators were already built once; the remaining per-message cost is jsonschema itself (the load test
+projects the 250 ms latency budget holding to roughly 170 robots).
+**Consequences.** Measured before and after with the same load test (PROGRESS, Week 4).
