@@ -14,7 +14,7 @@ the status line, the schedule table, the session log, and the open issues.
 |---|---|
 | **Calendar** | Week 1 of 8 by date (Fri 9 Oct – Thu 15 Oct 2026); dates no longer gate the work (D-30) |
 | **Last updated** | Mon 12 Oct 2026 |
-| **Status** | **Weeks 1–4 complete** (quality gates passed 11–12 Oct, D-30). No open issues (21–24 closed, D-39). Next: the Week 5 and Week 7 quality gates (features built early), then Week 6 (three remaining failure types). |
+| **Status** | **Weeks 1–5 and 7 complete** (quality gates passed 11–13 Oct, D-30). No open issues. Next: Week 6 (three remaining failure types: low battery, disconnect, invalid payload), then Week 8 (demo video, README, publish). |
 | **Working rule** | A week is done when its work is fully done (D-30): features, then a quality gate (independent bug and security review, scans, a test for every fix, all suites and e2e green, docs). Then the next week starts, whatever the date. |
 
 ## Schedule
@@ -27,8 +27,8 @@ Week 1 started on Friday 9 October 2026 (Day 1). Each week runs Friday to Thursd
 | 2 | 16–22 Oct | One fake AMR with battery, pose, state | Robot publishes status every second | ✅ Built early (Day 2) | ✅ Quality gate passed 11 Oct (charging, VDA 5050 state events, factsheet; timing measured at 50 robots) |
 | 3 | 23–29 Oct | Mission sender + state transitions | Move job from start to destination | ✅ Built early (Day 3); completed 12 Oct (D-35) | ✅ Quality gate passed 12 Oct: VDA 5050 order handling, order updates, cancel/pause, review fixes |
 | 4 | 30 Oct – 5 Nov | 5–10 robots + simple warehouse map | Multi-robot screen with location/state | ✅ Built early (Day 4); completed 12 Oct (D-37, D-38) | ✅ Quality gate passed 12 Oct: load test 10/25/50 robots, one map, parking, live feed at scale |
-| 5 | 6–12 Nov | Message inspector + validation | Readable message stream + errors | ✅ Built early (Day 4, 10 Oct) | 🟡 Official VDA 5050 2.1.0 and 3.0.0 schemas, chosen by topic (D-15, D-20). No offline validation of session files yet |
-| 7 | 20–26 Nov | Record/replay | Session file can reproduce incident | ✅ Built early (Days 6–7) | 🟡 Size limit (`ACTUNODE_MAX_SESSION_MB`, default 200) and streaming replay. No retention or upload yet |
+| 5 | 6–12 Nov | Message inspector + validation | Readable message stream + errors | ✅ Built early (Day 4); completed 13 Oct (D-40) | ✅ Quality gate passed 13 Oct: offline validation (API, UI, CLI) matching live validation |
+| 7 | 20–26 Nov | Record/replay | Session file can reproduce incident | ✅ Built early (Days 6–7); completed 13 Oct (D-41) | ✅ Quality gate passed 13 Oct: retention, upload of a session someone sent you, hostile-file checks |
 | 8 | 27 Nov – 3 Dec | Demo + README + 3-minute video | GitHub repo + pitch demo | 🟡 README + demo script written | ⬜ Video not recorded |
 
 Legend: ✅ done · 🟡 partly done / known gaps · ⬜ not started
@@ -48,6 +48,30 @@ the 8-week plan; the 8-week plan is the full roadmap. All of Days 1–7 were bui
 | Day 5 | `BLOCKED_PATH` failure | Week 6 (1 of 4 failures) |
 | Days 6–7 | Record to JSONL, replay | Week 7 |
 | 10 Oct | 10 robots; validator, schemas, VDA 5050 notes | Weeks 4, 5, 1 (rest) |
+
+## Weeks 5 and 7: features finished, quality gate (13 Oct, D-40, D-41)
+
+Built (design first, test-first): offline validation of a saved session (API, Validate button, CLI for a
+customer's CI); session retention by age and total size; uploading a session file someone sent you.
+
+Gate: a security review and a correctness review (which recorded real traffic in-process and fed it back
+through the new code — the first tests never did that).
+
+| Severity | Finding | Fix |
+|---|---|---|
+| P1 | Upload rejected legitimate recordings (large snapshots, non-ASCII text, recorded invalid payloads) | Per-record line bounds; round-trip tests with real recordings |
+| P1 / Medium | Retention deleted a just-uploaded file (500) or just-stopped recording, and an upload could evict colleagues' sessions | Uploads never delete (507 when full); just-stopped session protected |
+| Medium (security) | A crafted upload crashed the UI for every user (wrongly typed fields) | Types checked on upload, sanitised in listing, UI defensive |
+| Medium (security) | Validation had no CPU/concurrency bound (could starve live-feed connections) | One at a time on its own worker; cached |
+| Medium (security) | UTF-16 file passed upload, broke validate and replay | Strict UTF-8 everywhere |
+| P2 | Offline validation disagreed with live for invalid payloads | Recorder stores the rejection rule |
+| P2 | Crash-cut and size-limit-stopped recordings refused on upload | Torn last line accepted; end-record reserve |
+| Low (security) | Uploads could stall forever and use 2× disk; nginx's 1 MB default broke every UI upload over 1 MB | Timeout, one at a time, disk check, single copy; nginx 201 MB on the upload path |
+| P2 | UI/backend field type mismatch (`t`), the D-38 pattern again | Shared contract fixtures for all session responses |
+| Quality | Four copies of the session-file parser; private imports | One record reader; `jsonsafe.py` |
+
+Verified: backend 389, simulator 337, frontend 82 (incl. contract fixtures); e2e 26/26 (2.1), 26/26 (3.0),
+29/29 (2.1 with login).
 
 ## Week 4: load test and quality gate (12 Oct, D-37, D-38)
 
@@ -237,9 +261,9 @@ Struck-through items are already done:
 | 2 | ~~End-to-end tests in CI; fix battery-at-0; reconnect behaviour~~ (done 10 Oct, see Week 2 above) |
 | 3 | ~~`instantActions` cancelOrder (the "cancel" in *cancel, reroute or escalate*); order updates (`orderUpdateId`)~~ (done 12 Oct, D-35) |
 | 4 | ~~Load test 10/25/50 robots (CPU, message rate, UI frame rate)~~ (done 12 Oct, D-38); ~~decide whether to model traffic/near-collisions~~ (D-22: detect, never avoid) |
-| 5 | ~~Version-aware validation with the official 2.1.0 and 3.0.0 schemas, chosen by topic~~ (D-15, D-20); offline validation of session files |
+| 5 | ~~Version-aware validation with the official 2.1.0 and 3.0.0 schemas, chosen by topic~~ (D-15, D-20); ~~offline validation of session files~~ (done 13 Oct, D-40) |
 | 6 | Remaining failures: low battery, disconnect, invalid payload, timeouts; simulator safety stops (`fieldViolation`) when a robot is in the path (D-22) |
-| 7 | ~~Session size limits~~; retention; upload a session someone sent you; ~~streaming replay~~ |
+| 7 | ~~Session size limits~~; ~~retention; upload a session someone sent you~~ (done 13 Oct, D-41); ~~streaming replay~~ |
 | 8 | Record the demo video ([DEMO.md](DEMO.md)); polish README; publish |
 
 ## Customer discovery
@@ -265,16 +289,16 @@ exercised by hand with a real browser and MQTT traffic.
 
 | Area | How it was verified | Gaps |
 |---|---|---|
-| Backend API | 282 unit/API tests (pytest), run in CI, including a shutdown test under a real uvicorn server | |
+| Backend API | 389 unit/API tests (pytest), run in CI, including a shutdown test under a real uvicorn server | |
 | Simulator | 337 tests (pytest, incl. conformance against the official 2.1.0 and 3.0.0 schemas), run in CI | |
 | Python style | `ruff check` + `ruff format --check` in CI (backend, simulator) | |
-| Frontend | Type check, lint, 59 unit/component tests (incl. the shared backend contract fixture) (`npm test`, incl. malformed robot data, both VDA versions, login, nothing opened before the session check) and production build, in CI; real-browser tests in the e2e suite (below) | |
+| Frontend | Type check, lint, 82 unit/component tests (incl. the shared backend contract fixtures) (`npm test`, incl. malformed robot data, both VDA versions, login, nothing opened before the session check) and production build, in CI; real-browser tests in the e2e suite (below) | |
 | MQTT flow | Automated against Mosquitto in Docker (`tests/e2e`) | |
 | Shutdown | Automated in `tests/e2e` (broker first, then backend; recording gets its end line) and `backend/tests/test_shutdown.py` | |
-| Docker stack, end to end | **Automated** (`tests/e2e`, 26 tests incl. 3 in Chromium via Playwright and 5 for Week 3 orders, in CI for VDA 2.1, 3.0 and 2.1 with login): health, state every second, mission state machine, BLOCKED_PATH, near-collision warning, validation clean, record/replay, last will on kill, broker restart recovery, shutdown with open recording; in the browser: live robots, map and stream over a real WebSocket, a mission sent from the form completes, login screen refuses a wrong token, no console errors | Browser tests use the local plain-HTTP UI, not HTTPS (D-29) |
+| Docker stack, end to end | **Automated** (`tests/e2e`, 30 tests incl. 3 in Chromium via Playwright, 5 for Week 3 orders and 4 for session validation and upload, in CI for VDA 2.1, 3.0 and 2.1 with login): health, state every second, mission state machine, BLOCKED_PATH, near-collision warning, validation clean, record/replay, last will on kill, broker restart recovery, shutdown with open recording; in the browser: live robots, map and stream over a real WebSocket, a mission sent from the form completes, login screen refuses a wrong token, no console errors | Browser tests use the local plain-HTTP UI, not HTTPS (D-29) |
 | P-1042 scenario (mission → block → clear → complete) | E2E, several times | |
-| Record → replay | E2E; replay timing matched the recording within ~25 ms at 5×. Size limit stops a recording by itself (unit test); replay streams the file (unit test: 25 MB file, peak memory under 5 MB) | No retention or upload |
-| Validator | Official VDA 5050 2.1.0 schemas (D-20); real and generated messages in every mission state pass them; planted bad messages flagged; e2e: all live traffic clean. 3.0.0 schemas on `v3` topics (D-15), tested with valid 3.0 messages and 2.1 messages on a `v3` topic | No offline validation of session files |
+| Record → replay | E2E; replay timing matched the recording within ~25 ms at 5×. Size limit stops a recording by itself (unit test); replay streams the file (unit test: 25 MB file, peak memory under 5 MB). Retention and upload (D-41): unit tests incl. round trips of recordings made from real traffic; e2e: download → upload → validate, replay of an uploaded file refused while robots are live (D-36), bad uploads refused, 1.7 MB upload through nginx | |
+| Validator | Official VDA 5050 2.1.0 schemas (D-20); real and generated messages in every mission state pass them; planted bad messages flagged; e2e: all live traffic clean. 3.0.0 schemas on `v3` topics (D-15), tested with valid 3.0 messages and 2.1 messages on a `v3` topic. Offline validation (D-40): unit tests show message-by-message parity with the live hub; e2e: a recorded session validates with no errors | Near-collision warnings and pre-recording header history are not part of offline validation (by design) |
 | 10/25/50 robots with missions | Load test (`tests/load`, D-38): all 18 thresholds met at every size; at 50 robots cadence p99 1.03 s, robot→browser p99 75 ms, backend CPU 10 %, UI 59 fps (p95 frame 16.8 ms), nothing dropped | Run by hand, not in CI; 50 robots is the simulator maximum |
 | State every second (Week 2) | Measured on the real stack, 75 s windows with missions: 1, 10 and 50 robots; worst interval 1.068 s, p99 ≤ 1.064 s, no headerId gaps, drift 0, at most one message per 0.1 s tick; one retained factsheet per robot | Not automated (scratch script); 50 robots is the simulator maximum |
 | Dependencies and images | `pip-audit` (backend, simulator, e2e), `npm audit`, `trivy` images and Dockerfiles: 0 known HIGH/CRITICAL; automated weekly and on dependency changes (`security.yml`, D-39) | `bandit` still by hand |
@@ -293,6 +317,18 @@ Numbered so they can be referenced from commits. Remove an item only when it is 
 ## Session log
 
 Newest first. One entry per work session: what was done, what was learned, what is next.
+
+### Tue 13 Oct 2026: Weeks 5 and 7 finished (D-40, D-41)
+
+- Designed first, built test-first (backend, UI), then a security review and a correctness review in
+  parallel; every confirmed finding fixed with a regression test (table above).
+- Lesson: tests must round-trip real data. Recordings made from real traffic exposed four upload and parity
+  bugs that tests with hand-written files missed.
+- My retention design was wrong for uploads (an upload could evict other people's sessions); uploads now
+  never delete anything.
+- Also corrected: the backend test count in the verification table was stale (282, should have read 291
+  after D-39); now 389.
+- Next: Week 6 (low battery, disconnect, invalid payload failures), then Week 8.
 
 ### Mon 12 Oct 2026 (night): code-quality backlog closed (D-39)
 

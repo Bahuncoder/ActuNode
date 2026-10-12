@@ -635,3 +635,57 @@ projects the 250 ms latency budget holding to roughly 170 robots).
   and on demand, keeping the results as an artifact.
 **Consequences.** No open issues. New CVEs or a load regression fail a scheduled run instead of waiting for a
 person to remember the scans.
+
+## D-40 · Week 5: validate a saved session offline, with the same validator
+13 Oct 2026 · Accepted (design before code)
+
+**Context.** Week 5 is "message inspector and validation". Live traffic is validated (D-15, D-20, D-31), but
+a session file someone recorded, or sent from a customer site, could only be checked by replaying it.
+**Decision.**
+- `POST /api/sessions/{id}/validate` streams the file once through a fresh `Validator` (the one the live hub
+  uses: version chosen by topic, same rules and D-31 limits) and returns `{sessionId, checked, withIssues,
+  byRule: [{rule, description, severity, count}], issues: [{line, t, topic, rule, severity, message}],
+  truncated}`; `issues` holds the first 100, `byRule` counts everything. 404 for an unknown session, 409
+  while it is being recorded. Messages recorded as invalid JSON (`payloadRaw`) are checked as such.
+- The same function runs without the stack: `python -m app.validate_session <file.jsonl>` prints the
+  summary and exits 1 if any error-severity issue was found (usable in a customer's CI).
+- UI: a Validate button per session in the Sessions panel shows the summary.
+*Amended after the gate (13 Oct):* the recorder now stores why a payload was rejected (`rejected`:
+invalid-json, non-finite-number, too-deep, payload-too-large), and offline validation reports that rule,
+so it matches what the live hub saw message by message. Out of scope by design: near-collision warnings
+(they come from the hub's position tracking, not the validator) and header-id history from before the
+recording started. One validation at a time (429 otherwise) on its own worker, so it cannot starve the
+live feed; results are cached per file version. The CLI applies the same limits and exits 2 on hostile or
+malformed files.
+**Consequences.** A file can be judged before replaying it; replay safety (D-36) is unchanged.
+
+## D-41 · Week 7: session retention and uploading a session someone sent you
+13 Oct 2026 · Accepted (design before code)
+
+**Context.** Recordings are capped per file (`ACTUNODE_MAX_SESSION_MB`) but never deleted, so the sessions
+folder grows without limit; and a session file from elsewhere could only be copied in by hand.
+**Decision.**
+- *Retention:* `ACTUNODE_SESSIONS_KEEP_DAYS` (default 30; 0 keeps forever) and `ACTUNODE_SESSIONS_MAX_TOTAL_MB`
+  (default 2000; 0 unlimited). Enforced at startup and after every recording stops: oldest sessions go first,
+  never the one being recorded or replayed. `GET /api/sessions/storage` → `{keepDays, maxTotalMb, usedMb,
+  sessions}`; the UI shows the usage.
+- *Upload:* `POST /api/sessions/upload?name=<optional>` with the raw file as the request body. The file is
+  untrusted: size ≤ `ACTUNODE_MAX_SESSION_MB` (413), streamed to a temporary file, then checked line by line
+  (session header first with `formatVersion` 1, every line a JSON object of a known record type, line length
+  ≤ the D-31 payload limit plus overhead, at most one end record and only last) → 422 naming the first bad
+  line. The server picks the session id (`YYYYMMDD-HHMMSS_<sanitised name>`), never a client path. Behind the
+  same login and same-origin checks as every state-changing endpoint (D-25, D-32). An uploaded session is
+  listed, validated (D-40) and replayed like a recorded one; replay keeps its safety rules (commands not
+  replayed by default, live-robot check, D-36).
+- UI: an Upload button in the Sessions panel.
+*Amended after the gate (13 Oct):* uploads never delete anything: an upload that would exceed the total
+limit is refused (507), so no user can push colleagues' recordings out; only recordings rotate old
+sessions out, and never the session that just stopped. Upload limits: size ≤ the session limit plus a
+small end-record reserve, one upload at a time (429), 10-minute body timeout (408), free disk ≥ 2 × the
+limit (507), strict UTF-8, field types checked (a wrongly typed field had crashed the UI for everyone); a
+torn last line (crash mid-write) is accepted and dropped; an upload without an end record gets one
+(`reason: "uploaded"`) so listing stays cheap. nginx allows bodies up to 201 MB on the upload path only
+(its 1 MB default had made every UI upload over 1 MB fail). Uploaded sessions are aged from the upload.
+One record reader (`session_records.py`) serves listing, replay, validation and upload checks.
+**Consequences.** Week 7's "session file can reproduce an incident" works for files from another site, and
+disk use is bounded by configuration.

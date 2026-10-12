@@ -233,6 +233,20 @@ A recording stops itself at 200 MB (about 5–6 hours with 10 robots; change wit
 
 Or use the Sessions panel in the UI.
 
+**Validate a session.** `curl -X POST localhost:8000/api/sessions/<sessionId>/validate` (or the Validate button)
+checks every message with the same validator as the live feed and counts problems per rule, with line numbers
+for the first 100. Without the stack, from `backend/`: `python -m app.validate_session file.jsonl` prints the
+summary and exits 1 if any error was found (0 none, 2 not a session file), so it can run in CI.
+
+**Upload a session** someone sent you: `curl -X POST 'localhost:8000/api/sessions/upload?name=incident' --data-binary @file.jsonl`. If the sessions folder is at its total limit the upload is refused (507); an upload never deletes other sessions, so delete some first.
+The file is checked line by line (422 names the first bad line; 413 above `ACTUNODE_MAX_SESSION_MB`) and
+stored under a new id; then it can be validated and replayed like a recording.
+
+**Retention.** Sessions older than `ACTUNODE_SESSIONS_KEEP_DAYS` (default 30) are deleted, then the oldest until
+the folder is under `ACTUNODE_SESSIONS_MAX_TOTAL_MB` (default 2000); `0` turns a rule off. It runs at startup
+and after each recording; the session being recorded or replayed is never deleted. `GET /api/sessions/storage`
+shows the usage.
+
 ### Replaying a session
 
 Replay republishes a session's messages to MQTT with the original timing (optionally faster), so

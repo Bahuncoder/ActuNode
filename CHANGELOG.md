@@ -4,6 +4,17 @@ What changed, per commit, newest first. Status and plans are in [docs/PROGRESS.m
 
 ## Unreleased
 
+### Weeks 5 and 7: offline validation, retention, upload (D-40, D-41)
+- Validate a saved session with the live validator: `POST /api/sessions/{id}/validate`, a Validate button,
+  and `python -m app.validate_session file.jsonl` (exit 1 on errors, 2 on a bad file) for CI.
+- Retention: `ACTUNODE_SESSIONS_KEEP_DAYS` (30) and `ACTUNODE_SESSIONS_MAX_TOTAL_MB` (2000); usage shown in the
+  Sessions panel (`GET /api/sessions/storage`).
+- Upload a session file someone sent you: `POST /api/sessions/upload` and an Upload button; untrusted input,
+  strictly checked; never deletes other sessions (507 when storage is full).
+- Recorder stores why a payload was rejected; offline validation matches live validation.
+- Session list refreshes in every tab when it changes (WebSocket `sessions` event).
+- Shared contract fixtures for the session responses (`contracts/session_*.json`).
+
 ### Code-quality backlog (issues 21–24, D-39)
 - Very large robot states are stored as a trimmed copy (≤ 64 KiB, marked `_truncated`, shown in the UI).
 - Validation counters can no longer double count around a reset (`epoch` / `validationEpoch`); recording

@@ -159,6 +159,9 @@ WebSocket client's queue → `send_json`.
 | GET | `/api/recording` | Current recording |
 | POST | `/api/recording/start`, `/api/recording/stop` | Start / stop recording |
 | GET | `/api/sessions` | Recorded sessions |
+| GET | `/api/sessions/storage` | `{keepDays, maxTotalMb, usedMb, sessions}` (D-41) |
+| POST | `/api/sessions/upload?name=` | Upload a session file as the raw body; 413 too large, 422 names the first bad line, 429 an upload is already running, 507 storage full (uploads never delete other sessions) or too little free disk, 408 stalled, 201 returns the session summary (D-41) |
+| POST | `/api/sessions/{id}/validate` | Run a saved session through the validator: `{checked, withIssues, byRule, issues (first 100), truncated}`; 409 while recorded, 429 a validation is already running (one at a time, results cached per file state) (D-40) |
 | GET | `/api/sessions/{id}/download` | Session file (JSONL) |
 | DELETE | `/api/sessions/{id}` | Delete a session (refused while it is recorded or replayed) |
 | POST | `/api/sessions/{id}/replay` | Replay a session (`speed`, `include_commands`) |
@@ -179,6 +182,7 @@ Interactive docs: http://localhost:8080/api/docs (served under `/api`, so the UI
 | `replay` | Replay progress (≈2/s) and end | `replay` |
 | `proximity` | Set of near-miss pairs changed (distances refreshed at most once a second, D-38) | `pairs` |
 | `validation` | Counters reset | `validation` |
+| `sessions` | The session list changed (recording started/stopped, upload, delete, retention) | none: refetch `GET /api/sessions` |
 
 Events are encoded once and the same text is sent to every client. A client that falls behind (its queue
 of 1,000 events overflows) is closed with code 1013 and reconnects for a fresh snapshot (D-38); the UI
@@ -235,6 +239,8 @@ can go first).
 | `ACTUNODE_MQTT_USERNAME`, `ACTUNODE_MQTT_PASSWORD_FILE` | backend (login; password read from the file); simulator uses the password file with `ActuNode.<serial>` as each robot's username (D-28) | unset = anonymous |
 | `ACTUNODE_SESSIONS_DIR` | backend | `<repo>/sessions` |
 | `ACTUNODE_MAX_SESSION_MB` | backend (recording stops itself at this size; fractions allowed) | `200` |
+| `ACTUNODE_SESSIONS_KEEP_DAYS` | backend (sessions older than this are deleted at startup and after each recording; `0` keeps forever; D-41) | `30` |
+| `ACTUNODE_SESSIONS_MAX_TOTAL_MB` | backend (oldest sessions deleted until the folder fits; `0` unlimited; D-41) | `2000` |
 | `ACTUNODE_PROXIMITY_M` | backend (near-collision distance in metres, D-22) | `1.0` |
 | `ACTUNODE_ALLOWED_HOSTS` | backend (host names the API answers to, D-24) | `localhost,127.0.0.1,::1` |
 | `ACTUNODE_TRUSTED_PROXIES` | backend (comma-separated hosts/IPs whose `X-Real-IP` the login rate limit believes; resolved at startup, refreshed every 60 s; issue 23) | `frontend` |
