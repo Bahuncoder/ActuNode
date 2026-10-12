@@ -153,6 +153,8 @@ type LiveEvent =
   // robot.stateFromMessage: the robot carries no state of its own; its state is message.payload (D-38).
   | { type: 'message'; message: MqttMessage; robot: (Robot & { stateFromMessage?: boolean }) | null; validationEpoch?: number }
   | { type: 'failure'; failure: FailureEntry }
+  // The session list changed on the server (stop, delete, upload, retention): refetch it.
+  | { type: 'sessions' }
 
 export type Feed = {
   connected: boolean
@@ -164,6 +166,7 @@ export type Feed = {
   replay: ReplayStatus | null
   validation: ValidationSummary | null
   proximity: ProximityPair[]
+  sessionsVersion: number
 }
 
 type Action = { type: 'connected' | 'disconnected' } | { type: 'event'; event: LiveEvent } | { type: 'events'; events: LiveEvent[] }
@@ -209,6 +212,9 @@ function applyEvent(feed: Feed, event: LiveEvent): Feed {
           ? null // a new recording clears an old notice
           : feed.recordingStopped
     return { ...feed, recording: event.recording, recordingStopped }
+  }
+  if (event.type === 'sessions') {
+    return { ...feed, sessionsVersion: feed.sessionsVersion + 1 }
   }
   if (event.type === 'replay') {
     return { ...feed, replay: event.replay }
@@ -281,6 +287,7 @@ export function useLiveFeed(): Feed {
     replay: null,
     validation: null,
     proximity: [],
+    sessionsVersion: 0,
   })
 
   useEffect(() => {

@@ -138,6 +138,39 @@ export async function deleteSession(sessionId: string): Promise<void> {
   }
 }
 
+export type ValidationReport = {
+  sessionId: string
+  checked: number
+  withIssues: number
+  byRule: { rule: string; description: string; severity: string; count: number }[]
+  issues: { line: number; t: number; topic: string; rule: string; severity: string; message: string }[]
+  truncated: boolean
+}
+
+export async function validateSession(sessionId: string): Promise<ValidationReport> {
+  return (await postJson(`/api/sessions/${encodeURIComponent(sessionId)}/validate`, {})) as ValidationReport
+}
+
+export async function uploadSession(file: File, name?: string): Promise<SessionSummary> {
+  const query = name?.trim() ? `?name=${encodeURIComponent(name.trim())}` : ''
+  const response = await fetch(`/api/sessions/upload${query}`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/x-ndjson' },
+    body: file,
+  })
+  const body = await response.json().catch(() => ({}))
+  if (!response.ok) throw new Error(errorDetail(body) ?? `Upload failed: ${response.status}`)
+  return body
+}
+
+export type SessionStorage = { keepDays: number; maxTotalMb: number; usedMb: number; sessions: number }
+
+export async function fetchSessionStorage(): Promise<SessionStorage> {
+  const response = await fetch('/api/sessions/storage')
+  if (!response.ok) throw new Error(`Could not read session storage: ${response.status}`)
+  return response.json()
+}
+
 export async function startRecording(name: string): Promise<void> {
   await postJson('/api/recording/start', { name: name.trim() || null })
 }

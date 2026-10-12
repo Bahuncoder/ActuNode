@@ -2,13 +2,18 @@ import { useEffect, useRef, useState } from 'react'
 import {
   deleteSession,
   fetchRecording,
+  fetchSessionStorage,
   fetchSessions,
   startRecording,
   startReplay,
   stopRecording,
+  uploadSession,
+  validateSession,
+  type SessionStorage,
+  type ValidationReport,
   type SessionSummary,
 } from './api'
-import type { RecordingStatus, RecordingStopped, ReplayStatus } from './live'
+import { num, text, type RecordingStatus, type RecordingStopped, type ReplayStatus } from './live'
 
 const POLL_MS = 1000
 const SPEEDS = [1, 2, 5, 10]
@@ -29,19 +34,63 @@ function stopExplanation(reason: string): string {
   return reason
 }
 
+// The session list is data from files anyone can upload: read every field through text()/num().
 function sessionDuration(session: SessionSummary): string {
-  if (!session.startedAt || !session.endedAt) return '—'
-  return formatDuration((Date.parse(session.endedAt) - Date.parse(session.startedAt)) / 1000)
+  const seconds = (Date.parse(text(session.endedAt)) - Date.parse(text(session.startedAt))) / 1000
+  return Number.isFinite(seconds) ? formatDuration(seconds) : '—'
+}
+
+function sessionStart(session: SessionSummary): string {
+  const start = Date.parse(text(session.startedAt))
+  return Number.isFinite(start) ? new Date(start).toLocaleString() : '—'
+}
+
+function ValidationResult({ report }: { report: ValidationReport | string }) {
+  if (typeof report === 'string') return <p className="result mono error">{report}</p>
+  return (
+    <div className="result mono">
+      <p>
+        {report.checked} messages checked, {report.withIssues} with issues
+      </p>
+      <ul>
+        {report.byRule.map((rule) => (
+          <li key={rule.rule} title={rule.description}>
+            <span>{rule.rule}</span> <span className={`badge ${rule.severity === 'error' ? 'down' : 'warn'}`}>{rule.severity}</span> ×{rule.count}
+          </li>
+        ))}
+      </ul>
+      <ul>
+        {report.issues.slice(0, 10).map((issue, index) => (
+          <li key={index}>
+            line {issue.line} · {issue.topic} · {issue.message}
+          </li>
+        ))}
+      </ul>
+      {(report.issues.length > 10 || report.truncated) && (
+        <p className="muted">
+          {[
+            report.issues.length > 10 && `showing first 10 of ${report.issues.length} listed issues`,
+            report.truncated && 'the report lists the first 100 issues',
+          ]
+            .filter(Boolean)
+            .join(' · ')}
+        </p>
+      )}
+    </div>
+  )
 }
 
 export default function RecorderPanel({
   recording,
   recordingStopped,
   replay,
+  sessionsVersion = 0,
 }: {
   recording: RecordingStatus | null
   recordingStopped: RecordingStopped | null
   replay: ReplayStatus | null
+  // Bumped by the live feed whenever the server changed the session list (stop, delete, upload, retention).
+  sessionsVersion?: number
 }) {
   const [name, setName] = useState('')
   const [busy, setBusy] = useState(false)
@@ -51,13 +100,28 @@ export default function RecorderPanel({
   const [now, setNow] = useState(() => Date.now())
   const [speed, setSpeed] = useState(1)
   const [includeCommands, setIncludeCommands] = useState(false)
+  const [storage, setStorage] = useState<SessionStorage | null>(null)
+  const [reports, setReports] = useState<Record<string, ValidationReport | string>>({})
+  const [uploadName, setUploadName] = useState('')
+  const [uploadMessage, setUploadMessage] = useState<{ text: string; error: boolean } | null>(null)
 
   // Refresh the list whenever recording starts or stops (from this tab or another).
   const recordingId = recording?.sessionId ?? null
   const [listVersion, setListVersion] = useState(0)
   useEffect(() => {
-    fetchSessions().then(setSessions).catch(() => {})
-  }, [recordingId, listVersion])
+    fetchSessions()
+      .then((list) => {
+        const valid = list.filter((session) => typeof session?.sessionId === 'string')
+        setSessions(valid)
+        const ids = new Set(valid.map((session) => session.sessionId))
+        setReports((current) => {
+          const kept = Object.entries(current).filter(([id]) => ids.has(id))
+          return kept.length === Object.keys(current).length ? current : Object.fromEntries(kept)
+        })
+      })
+      .catch(() => {})
+    fetchSessionStorage().then(setStorage).catch(() => {})
+  }, [recordingId, listVersion, sessionsVersion])
 
   // Live counter while recording. Counts belong to one session: a different sessionId (started from any
   // tab or the API) shows no counts until its own poll answers, and an answer for another session is dropped.
@@ -110,6 +174,28 @@ export default function RecorderPanel({
       setListVersion((version) => version + 1)
     } catch (err) {
       setError((err as Error).message)
+    }
+  }
+
+  async function validate(sessionId: string) {
+    try {
+      const report = await validateSession(sessionId)
+      setReports((current) => ({ ...current, [sessionId]: report }))
+    } catch (err) {
+      setReports((current) => ({ ...current, [sessionId]: (err as Error).message }))
+    }
+  }
+
+  async function upload(file: File | undefined) {
+    if (!file) return
+    setUploadMessage(null)
+    try {
+      const created = await uploadSession(file, uploadName)
+      setUploadMessage({ text: `Uploaded ${created.name ?? created.sessionId}`, error: false })
+      setUploadName('')
+      setListVersion((version) => version + 1)
+    } catch (err) {
+      setUploadMessage({ text: (err as Error).message, error: true })
     }
   }
 
@@ -172,6 +258,39 @@ export default function RecorderPanel({
       )}
       {error && <p className="result mono error">{error}</p>}
 
+      <div className="mission-form">
+        <label>
+          Upload name
+          <input
+            value={uploadName}
+            onChange={(e) => setUploadName(e.target.value)}
+            placeholder="optional"
+            maxLength={40}
+          />
+        </label>
+        <label>
+          Upload session file
+          <input
+            type="file"
+            accept=".jsonl,application/x-ndjson"
+            onChange={(e) => {
+              const input = e.target
+              void upload(input.files?.[0]).then(() => {
+                input.value = ''
+              })
+            }}
+          />
+        </label>
+      </div>
+      {uploadMessage && <p className={`result mono${uploadMessage.error ? ' error' : ''}`}>{uploadMessage.text}</p>}
+      {storage && (
+        <p className="muted">
+          Storage: {storage.usedMb.toFixed(1)} MB
+          {storage.maxTotalMb > 0 ? ` of ${storage.maxTotalMb} MB` : ' · no size limit'} ·{' '}
+          {storage.keepDays > 0 ? `keeps ${storage.keepDays} days` : 'kept forever'}
+        </p>
+      )}
+
       <div className="table-scroll">
         <table className="robot-table sessions-table">
           <thead>
@@ -192,35 +311,45 @@ export default function RecorderPanel({
                 </td>
               </tr>
             )}
-            {sessions.map((session) => (
+            {sessions.flatMap((session) => [
               <tr key={session.sessionId}>
                 <td className="mono">
                   {session.sessionId}
-                  {session.recording && <span className="badge down session-badge">REC</span>}
+                  {session.recording === true && <span className="badge down session-badge">REC</span>}
                   {session.reason === 'sizeLimit' && (
                     <span className="badge down session-badge" title="Stopped at the size limit">
                       SIZE LIMIT
                     </span>
                   )}
-                  {session.reason?.startsWith('writeError') && (
+                  {typeof session.reason === 'string' && session.reason.startsWith('writeError') && (
                     <span className="badge down session-badge" title={session.reason}>
                       WRITE ERROR
                     </span>
                   )}
-                  {!session.recording && session.complete === false && (
+                  {session.recording !== true && session.complete === false && (
                     <span className="badge session-badge" title="No end record: the backend stopped while recording">
                       INCOMPLETE
                     </span>
                   )}
                 </td>
-                <td className="mono">{session.startedAt ? new Date(session.startedAt).toLocaleString() : '—'}</td>
-                <td className="mono">{session.recording ? 'recording…' : sessionDuration(session)}</td>
+                <td className="mono">{sessionStart(session)}</td>
+                <td className="mono">{session.recording === true ? 'recording…' : sessionDuration(session)}</td>
                 <td className="mono">
-                  {session.recording ? (live?.messageCount ?? session.messageCount) : session.messageCount}
+                  {session.recording === true ? (live?.messageCount ?? num(session.messageCount) ?? '—') : (num(session.messageCount) ?? '—')}
                 </td>
-                <td className="mono">{formatSize(session.sizeBytes)}</td>
+                <td className="mono">{formatSize(num(session.sizeBytes) ?? 0)}</td>
                 <td>
-                  {!session.recording && (
+                  {session.recording === true && (
+                    <button
+                      type="button"
+                      className="link-button"
+                      aria-label={`Validate session ${text(session.name) === '—' ? session.sessionId : text(session.name)}`}
+                      disabled
+                    >
+                      Validate
+                    </button>
+                  )}
+                  {session.recording !== true && (
                     <span className="session-actions">
                       <button
                         type="button"
@@ -229,6 +358,14 @@ export default function RecorderPanel({
                         onClick={() => replaySession(session.sessionId)}
                       >
                         ▶ Replay
+                      </button>
+                      <button
+                        type="button"
+                        className="link-button"
+                        aria-label={`Validate session ${text(session.name) === '—' ? session.sessionId : text(session.name)}`}
+                        onClick={() => validate(session.sessionId)}
+                      >
+                        Validate
                       </button>
                       <a className="link" href={`/api/sessions/${session.sessionId}/download`} download>
                         Download
@@ -244,8 +381,15 @@ export default function RecorderPanel({
                     </span>
                   )}
                 </td>
-              </tr>
-            ))}
+              </tr>,
+              reports[session.sessionId] !== undefined && (
+                <tr key={`${session.sessionId}-validation`}>
+                  <td colSpan={6}>
+                    <ValidationResult report={reports[session.sessionId]} />
+                  </td>
+                </tr>
+              ),
+            ])}
           </tbody>
         </table>
       </div>

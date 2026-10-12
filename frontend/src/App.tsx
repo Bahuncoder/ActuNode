@@ -130,7 +130,7 @@ function Lab({ onLogout }: { onLogout?: () => void }) {
         </PanelBoundary>
 
         <PanelBoundary title="Sessions">
-          <RecorderPanel recording={feed.recording} recordingStopped={feed.recordingStopped} replay={feed.replay} />
+          <RecorderPanel recording={feed.recording} recordingStopped={feed.recordingStopped} replay={feed.replay} sessionsVersion={feed.sessionsVersion} />
         </PanelBoundary>
 
         <PanelBoundary title="Validation">

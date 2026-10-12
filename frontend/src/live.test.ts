@@ -29,6 +29,7 @@ const empty: Feed = {
   replay: null,
   validation: { since: 'x', checked: 0, withIssues: 0, byRule: [] },
   proximity: [],
+  sessionsVersion: 0,
 }
 
 function message(id: number, issues: MqttMessage['issues'] = []): MqttMessage {
@@ -369,5 +370,13 @@ describe('live feed batching and backend contract', () => {
     expect(sockets).toHaveLength(3)
     vi.useRealTimers()
     vi.unstubAllGlobals()
+  })
+})
+
+describe('sessions event', () => {
+  it('bumps sessionsVersion on every sessions event', () => {
+    const once = reducer(empty, { type: 'event', event: { type: 'sessions' } })
+    const twice = reducer(once, { type: 'events', events: [{ type: 'sessions' }] })
+    expect([once.sessionsVersion, twice.sessionsVersion]).toEqual([1, 2])
   })
 })
