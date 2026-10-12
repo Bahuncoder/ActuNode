@@ -70,6 +70,7 @@ export async function sendMission(mission: MissionRequest): Promise<MissionRespo
   return body
 }
 
+// Serial only: failure injection targets the simulator's control topic actunode/v1/sim/<serial>/inject, no VDA identity involved.
 export async function injectFailure(robotId: string, action: 'inject' | 'clear'): Promise<void> {
   const response = await fetch('/api/failures', {
     method: 'POST',

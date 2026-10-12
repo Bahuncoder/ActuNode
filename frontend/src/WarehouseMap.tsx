@@ -133,7 +133,7 @@ function RobotMarker({ robot, near }: { robot: Robot; near: boolean }) {
       className={`robot status-${status} ${isOnline(robot) ? '' : 'offline'} ${near ? 'near' : ''}`}
       style={{ transform: `translate(${px(position.x)}px, ${py(position.y)}px)` }}
     >
-      <title>{`${robot.robotId}: ${missionStatus(robot)}`}</title>
+      <title>{`${robot.robotId}: ${missionStatus(robot)}${robot.state?.paused === true ? ' (paused)' : ''}`}</title>
       <circle r={9} />
       <line x1={0} y1={0} x2={13} y2={0} transform={`rotate(${heading})`} />
       <text y={-14}>{shortLabel(robot.robotId)}</text>

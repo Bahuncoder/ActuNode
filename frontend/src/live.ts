@@ -22,6 +22,8 @@ export type RobotState = {
   orderId: string
   lastNodeId: string
   driving: boolean
+  // VDA 5050 startPause/stopPause; persists across orders until stopPause.
+  paused?: boolean
   version?: string
   // VDA 5050 2.x names ...
   agvPosition?: { x: number; y: number; theta: number }
@@ -337,6 +339,9 @@ export function missionStatus(robot: Robot): string {
   const status = robot.state?.actunode?.missionStatus
   return typeof status === 'string' ? status : 'UNKNOWN'
 }
+
+// FAILED keeps its order (VDA 5050 3.0 §6.6.5.1: errors never clear an order), so it can be cancelled too.
+export const CANCELLABLE_STATUSES = ['ACCEPTED', 'MOVING', 'WAITING', 'BLOCKED', 'FAILED']
 
 export function isOnline(robot: Robot): boolean {
   return robot.connection === 'ONLINE'

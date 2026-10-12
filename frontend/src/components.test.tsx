@@ -236,7 +236,7 @@ describe('RobotTable cancel and load (D-35)', () => {
 
     fireEvent.click(screen.getByRole('button', { name: 'Cancel mission for robot_01' }))
 
-    expect((await screen.findByText('no active order')).className).toContain('error')
+    expect((await screen.findByText('robot_01: no active order')).className).toContain('error')
   })
 
   it('renders the Load column', () => {
@@ -256,5 +256,41 @@ describe('RobotTable cancel and load (D-35)', () => {
     render(<RobotTable robots={[{ ...status(healthy, 'WAITING'), key: 'w', robotId: 'w' }, { ...status(healthy, 'CANCELLED'), key: 'c', robotId: 'c' }]} />)
     expect(screen.getByText('WAITING').className).toContain('status-waiting')
     expect(screen.getByText('CANCELLED').className).toContain('status-cancelled')
+  })
+
+  it('keeps both buttons disabled while two cancels are in flight', () => {
+    vi.stubGlobal('fetch', vi.fn(() => new Promise(() => {})))
+    const a = { ...status(healthy, 'MOVING'), key: 'a', robotId: 'r_a' }
+    const b = { ...status(healthy, 'MOVING'), key: 'b', robotId: 'r_b' }
+    render(<RobotTable robots={[a, b]} />)
+    fireEvent.click(screen.getByRole('button', { name: 'Cancel mission for r_a' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Cancel mission for r_b' }))
+    expect((screen.getByRole('button', { name: 'Cancel mission for r_a' }) as HTMLButtonElement).disabled).toBe(true)
+    expect((screen.getByRole('button', { name: 'Cancel mission for r_b' }) as HTMLButtonElement).disabled).toBe(true)
+  })
+
+  it('names the failing robot in the error', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue({ ok: false, status: 409, json: async () => ({ detail: 'no active order' }) }))
+    const a = { ...status(healthy, 'MOVING'), key: 'a', robotId: 'r_a' }
+    const b = { ...status(healthy, 'MOVING'), key: 'b', robotId: 'r_b' }
+    render(<RobotTable robots={[a, b]} />)
+    fireEvent.click(screen.getByRole('button', { name: 'Cancel mission for r_a' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Cancel mission for r_b' }))
+    expect(await screen.findByText('r_a: no active order')).toBeTruthy()
+    expect(await screen.findByText('r_b: no active order')).toBeTruthy()
+  })
+
+  it('shows a PAUSED badge only when paused', () => {
+    const p = { ...status(healthy, 'MOVING', { paused: true }), key: 'p', robotId: 'r_p' }
+    const n = { ...status(healthy, 'MOVING', { paused: false }), key: 'n', robotId: 'r_n' }
+    render(<RobotTable robots={[p, n]} />)
+    expect(screen.getAllByText('PAUSED')).toHaveLength(1)
+    expect(screen.getByText('PAUSED').className).toContain('status-paused')
+  })
+
+  it('marks paused robots in the map tooltip', () => {
+    const p = withState(healthy, { paused: true })
+    const { container } = render(<WarehouseMap robots={[p]} locations={{}} />)
+    expect(container.querySelector('title')?.textContent).toContain('paused')
   })
 })

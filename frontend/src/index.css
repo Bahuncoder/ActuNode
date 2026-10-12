@@ -547,6 +547,12 @@ code,
   background: #ffb86b;
 }
 
+.badge.status-paused {
+  margin-left: 4px;
+  color: var(--node-navy);
+  background: #ffb86b;
+}
+
 .badge.status-cancelled {
   color: var(--fog-white);
   background: #3a4b5c;

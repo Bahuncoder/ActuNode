@@ -1,9 +1,6 @@
 import { useState } from 'react'
 import { cancelMission } from './api'
-import { batteryCharge, isOnline, missionStatus, robotErrors, robotPose, text, type Robot } from './live'
-
-// FAILED keeps its order (VDA 5050 3.0 §6.6.5.1: errors never clear an order), so it can be cancelled too.
-const CANCELLABLE = ['ACCEPTED', 'MOVING', 'WAITING', 'BLOCKED', 'FAILED']
+import { batteryCharge, CANCELLABLE_STATUSES, isOnline, missionStatus, robotErrors, robotPose, text, type Robot } from './live'
 
 function loadText(robot: Robot): string {
   const loads = robot.state?.loads
@@ -12,18 +9,24 @@ function loadText(robot: Robot): string {
 }
 
 export default function RobotTable({ robots }: { robots: Robot[] }) {
-  const [cancelling, setCancelling] = useState<string | null>(null)
-  const [error, setError] = useState<string | null>(null)
+  const [cancelling, setCancelling] = useState<Set<string>>(new Set())
+  // Latest error per robot key, so concurrent failures each name their robot.
+  const [errors, setErrors] = useState<Record<string, string>>({})
 
   async function cancel(robot: Robot) {
-    setCancelling(robot.key)
-    setError(null)
+    setCancelling((keys) => new Set(keys).add(robot.key))
+    setErrors(({ [robot.key]: _cleared, ...rest }) => rest)
     try {
       await cancelMission(robot)
     } catch (err) {
-      setError(err instanceof Error ? err.message : String(err))
+      const detail = err instanceof Error ? err.message : String(err)
+      setErrors((current) => ({ ...current, [robot.key]: `${robot.robotId}: ${detail}` }))
     } finally {
-      setCancelling(null)
+      setCancelling((keys) => {
+        const next = new Set(keys)
+        next.delete(robot.key)
+        return next
+      })
     }
   }
 
@@ -70,6 +73,7 @@ export default function RobotTable({ robots }: { robots: Robot[] }) {
                   <td className="mono">{text(robot.state?.version)}</td>
                   <td>
                     <span className={`badge status-${status.toLowerCase()}`}>{status}</span>
+                    {robot.state?.paused === true && <span className="badge status-paused">PAUSED</span>}
                   </td>
                   <td>
                     {battery === undefined ? '—' : (
@@ -85,10 +89,10 @@ export default function RobotTable({ robots }: { robots: Robot[] }) {
                   <td className="mono">{loadText(robot)}</td>
                   <td className={errors.length ? 'error-text' : ''}>{errors.length ? errors.join('; ') : '—'}</td>
                   <td>
-                    {CANCELLABLE.includes(status) && (
+                    {CANCELLABLE_STATUSES.includes(status) && (
                       <button
                         aria-label={`Cancel mission for ${robot.robotId}`}
-                        disabled={cancelling === robot.key}
+                        disabled={cancelling.has(robot.key)}
                         onClick={() => cancel(robot)}
                       >
                         Cancel
@@ -101,7 +105,9 @@ export default function RobotTable({ robots }: { robots: Robot[] }) {
           </tbody>
         </table>
       </div>
-      {error && <p className="result error">{error}</p>}
+      {Object.values(errors).map((message) => (
+        <p key={message} className="result error">{message}</p>
+      ))}
     </>
   )
 }
