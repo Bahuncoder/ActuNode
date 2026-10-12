@@ -13,7 +13,7 @@ from collections.abc import Callable
 REARM = 1.2
 
 
-def _position(state: dict) -> tuple[str, float, float, str] | None:
+def state_position(state: dict) -> tuple[str, float, float, str] | None:
     """(json path, x, y, mapId) from a 2.x agvPosition or a 3.0 mobileRobotPosition, if well formed."""
     for key in ("agvPosition", "mobileRobotPosition"):
         position = state.get(key)
@@ -43,7 +43,7 @@ class ProximityMonitor:
         """Record a robot's position; return a `proximity` issue for each pair that just got too close."""
         if not isinstance(state, dict):
             return []
-        position = _position(state)
+        position = state_position(state)
         if position is None:
             return []
         path, x, y, map_id = position

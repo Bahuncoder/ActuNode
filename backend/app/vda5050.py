@@ -91,7 +91,7 @@ def build_order(
                 "nodeId": stop["nodeId"],
                 "sequenceId": index * 2,
                 "released": True,
-                "nodePosition": {"x": stop["x"], "y": stop["y"], "mapId": MAP_ID},
+                "nodePosition": {"x": stop["x"], "y": stop["y"], "mapId": stop.get("mapId", MAP_ID)},
                 "actions": stop.get("actions", []),
             }
         )
@@ -109,6 +109,44 @@ def build_order(
         "nodes": nodes,
         "edges": edges,
     }
+
+
+def build_order_update(
+    serial_number: str,
+    order_id: str,
+    update_id: int,
+    stitch_node: dict,
+    stop: dict,
+    major: str = MAJOR_VERSION,
+    manufacturer: str = MANUFACTURER,
+) -> dict:
+    """Extend an order: resend `stitch_node` (the last released node, unchanged) and add `stop` after it."""
+    sequence = stitch_node["sequenceId"]
+    edge = {"edgeId": f"{stitch_node['nodeId']}->{stop['nodeId']}", "sequenceId": sequence + 1, "released": True}
+    if major == "v2":
+        edge |= {"startNodeId": stitch_node["nodeId"], "endNodeId": stop["nodeId"]}
+    new_node = {
+        "nodeId": stop["nodeId"],
+        "sequenceId": sequence + 2,
+        "released": True,
+        "nodePosition": {"x": stop["x"], "y": stop["y"], "mapId": MAP_ID},
+        "actions": stop.get("actions", []),
+    }
+    return {
+        **header(serial_number, "order", major, manufacturer),
+        "orderId": order_id,
+        "orderUpdateId": update_id,
+        "nodes": [stitch_node, new_node],
+        "edges": [{**edge, "actions": []}],
+    }
+
+
+def cancel_order_message(
+    serial_number: str, action_id: str, major: str = MAJOR_VERSION, manufacturer: str = MANUFACTURER
+) -> dict:
+    """An instantActions message with one cancelOrder action (both versions use the top-level key `actions`)."""
+    action = {"actionType": "cancelOrder", "actionId": action_id, "blockingType": "NONE", "actionParameters": []}
+    return {**header(serial_number, "instantActions", major, manufacturer), "actions": [action]}
 
 
 def load_action(action_type: str, action_id: str, load_id: str | None) -> dict:

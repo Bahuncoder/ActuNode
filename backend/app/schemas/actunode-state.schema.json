@@ -8,7 +8,7 @@
     "actunode": {
       "type": "object",
       "properties": {
-        "missionStatus": { "enum": ["IDLE", "ACCEPTED", "MOVING", "BLOCKED", "COMPLETED", "FAILED"] }
+        "missionStatus": { "enum": ["IDLE", "ACCEPTED", "MOVING", "WAITING", "BLOCKED", "COMPLETED", "FAILED", "CANCELLED"] }
       }
     }
   }

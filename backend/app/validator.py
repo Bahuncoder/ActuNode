@@ -27,11 +27,13 @@ MAX_HISTORY = 2000
 # ActuNode mission status machine (IDLE is always allowed: robot stopped or restarted).
 ALLOWED_TRANSITIONS = {
     "IDLE": {"ACCEPTED"},
-    "ACCEPTED": {"MOVING", "BLOCKED"},
-    "MOVING": {"BLOCKED", "COMPLETED", "FAILED"},
-    "BLOCKED": {"MOVING"},
-    "COMPLETED": {"ACCEPTED"},
-    "FAILED": {"ACCEPTED"},
+    "ACCEPTED": {"MOVING", "BLOCKED", "WAITING", "CANCELLED"},
+    "MOVING": {"BLOCKED", "WAITING", "COMPLETED", "FAILED", "CANCELLED"},
+    "WAITING": {"MOVING", "BLOCKED", "COMPLETED", "FAILED", "CANCELLED"},
+    "BLOCKED": {"MOVING", "CANCELLED"},
+    "COMPLETED": {"ACCEPTED", "WAITING"},
+    "FAILED": {"ACCEPTED", "MOVING", "CANCELLED"},  # keeps its order until cancelled; an update resumes it (D-35)
+    "CANCELLED": {"ACCEPTED"},
 }
 
 RULES = {

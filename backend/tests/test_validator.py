@@ -376,3 +376,58 @@ def test_validator_history_is_capped(monkeypatch):
         )
 
     assert len(validator._last_header_id) == len(validator._last_status) == len(validator._last_node) == 5
+
+
+@pytest.mark.parametrize(
+    "path",
+    [
+        ["IDLE", "ACCEPTED", "WAITING", "MOVING", "WAITING", "MOVING", "COMPLETED"],
+        ["IDLE", "ACCEPTED", "MOVING", "CANCELLED", "ACCEPTED"],
+        ["IDLE", "ACCEPTED", "WAITING", "CANCELLED"],
+        ["IDLE", "ACCEPTED", "MOVING", "BLOCKED", "CANCELLED"],
+        ["IDLE", "ACCEPTED", "MOVING", "FAILED", "CANCELLED", "ACCEPTED"],
+    ],
+)
+def test_waiting_and_cancelled_transitions_are_allowed(path):
+    validator = Validator()
+    topic, base = fixture("state_moving")
+
+    for header_id, status in enumerate(path, 1):
+        issues = validator.check(topic, state(base, status, header_id), valid_json=True)
+        assert "mission-transition" not in rules(issues), status
+
+
+def test_cancelled_cannot_resume_moving_or_complete():
+    validator = Validator()
+    topic, base = fixture("state_moving")
+    for header_id, status in enumerate(["IDLE", "ACCEPTED", "CANCELLED"], 1):
+        validator.check(topic, state(base, status, header_id), valid_json=True)
+
+    issues = validator.check(topic, state(base, "MOVING", 4), valid_json=True)
+
+    assert rules(issues) == ["mission-transition"]
+
+
+def test_driving_while_waiting_or_cancelled_is_inconsistent():
+    topic, base = fixture("state_moving")
+
+    for status in ("WAITING", "CANCELLED"):
+        issues = Validator().check(topic, state(base, status, 1, driving=True), valid_json=True)
+        assert rules(issues) == ["driving-consistency"]
+
+
+@pytest.mark.parametrize(
+    "path",
+    [
+        ["IDLE", "ACCEPTED", "WAITING", "COMPLETED"],  # an update drops the horizon at the decision point
+        ["IDLE", "ACCEPTED", "MOVING", "COMPLETED", "WAITING"],  # an update adds only horizon to a completed order
+        ["IDLE", "ACCEPTED", "MOVING", "FAILED", "MOVING"],  # an update resumes a recharged robot (D-35)
+    ],
+)
+def test_order_update_transitions_are_allowed(path):
+    validator = Validator()
+    topic, base = fixture("state_moving")
+
+    for header_id, status in enumerate(path, 1):
+        issues = validator.check(topic, state(base, status, header_id), valid_json=True)
+        assert "mission-transition" not in rules(issues), status
