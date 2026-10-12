@@ -1,0 +1,82 @@
+name: Security scans
+
+on:
+  schedule:
+    - cron: "0 6 * * 1"  # Mondays 06:00 UTC: new advisories appear without any commit
+  workflow_dispatch:
+  push:
+    paths:
+      - "backend/requirements*.txt"
+      - "simulator/requirements*.txt"
+      - "tests/e2e/requirements.txt"
+      - "frontend/package*.json"
+      - "**/Dockerfile"
+      - "docker-compose.yml"
+      - ".github/workflows/security.yml"
+  pull_request:
+    paths:
+      - "backend/requirements*.txt"
+      - "simulator/requirements*.txt"
+      - "tests/e2e/requirements.txt"
+      - "frontend/package*.json"
+      - "**/Dockerfile"
+      - "docker-compose.yml"
+      - ".github/workflows/security.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  python-deps:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.12"
+      - run: pip install pip-audit==2.10.1
+      - run: pip-audit -r backend/requirements.txt
+      - run: pip-audit -r simulator/requirements.txt
+      - run: pip-audit -r tests/e2e/requirements.txt
+
+  npm-deps:
+    runs-on: ubuntu-24.04
+    defaults:
+      run:
+        working-directory: frontend
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version-file: frontend/.nvmrc
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+      - run: npm ci
+      - run: npm audit --audit-level=high
+
+  images:
+    runs-on: ubuntu-24.04
+    env:
+      TRIVY_VERSION: "0.71.2"
+    steps:
+      - uses: actions/checkout@v7
+      - name: Install Trivy
+        run: |
+          curl -fsSL -o trivy.deb "https://github.com/aquasecurity/trivy/releases/download/v${TRIVY_VERSION}/trivy_${TRIVY_VERSION}_Linux-64bit.deb"
+          sudo dpkg -i trivy.deb
+          trivy --version
+      - name: Build images
+        run: |
+          docker build -t actunode-backend:ci backend
+          docker build -t actunode-simulator:ci -f simulator/Dockerfile .
+          docker build -t actunode-frontend:ci frontend
+      - name: Scan Dockerfiles
+        run: |
+          for dir in backend simulator frontend; do
+            trivy config --severity HIGH,CRITICAL --exit-code 1 "$dir"
+          done
+      - name: Scan images
+        run: |
+          for image in actunode-backend:ci actunode-simulator:ci actunode-frontend:ci eclipse-mosquitto:2; do
+            trivy image --severity HIGH,CRITICAL --ignore-unfixed --exit-code 1 "$image"
+          done

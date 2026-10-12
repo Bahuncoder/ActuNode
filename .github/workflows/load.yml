@@ -1,0 +1,38 @@
+name: Load test
+
+on:
+  schedule:
+    - cron: "0 5 * * 1"
+  workflow_dispatch:
+    inputs:
+      robots:
+        description: "Comma-separated robot counts (1-50)"
+        default: "10,25,50"
+      window:
+        description: "Measurement window per robot count, seconds"
+        default: "60"
+
+jobs:
+  load:
+    # Runs the real Docker Compose stack (own project name) and fails if any threshold fails.
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.12"
+      - run: pip install -r tests/e2e/requirements.txt
+      - run: python -m playwright install --with-deps chromium
+      - run: python tests/load/run_load.py --robots "${ROBOTS}" --window "${WINDOW}"
+        env:
+          ROBOTS: ${{ inputs.robots || '10,25,50' }}
+          WINDOW: ${{ inputs.window || '60' }}
+      - if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: load-results
+          path: tests/load/results/
+          if-no-files-found: warn

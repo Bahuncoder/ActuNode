@@ -110,3 +110,10 @@ Things to look at beyond pass/fail:
 - **UI main-thread busy %** against frames/s: frames stay at 60 until the main thread is close to 100 %.
 - `environment.host_cpu_pct_all_cores` and `loadavg_1m_before`: if other work was running, compare
   runs with care.
+
+## In CI
+
+`.github/workflows/load.yml` ("Load test") runs this script weekly and on demand (Actions tab, Run
+workflow; inputs `robots` and `window`). The job fails if any threshold fails, and `tests/load/results/`
+is always uploaded as the `load-results` artifact. Hosted runners are small and shared, so compare runs
+with each other, not with numbers from a workstation.
