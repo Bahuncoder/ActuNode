@@ -6,7 +6,7 @@ from fastapi import FastAPI, WebSocket, WebSocketDisconnect
 
 from app import auth, failures, missions, sessions
 from app.config import settings
-from app.live import hub
+from app.live import LAGGED, hub
 from app.mqtt_state import mqtt_bridge
 from app.security import LocalWebGuard
 
@@ -128,7 +128,11 @@ async def live_feed(websocket: WebSocket):
             if next_event not in done:
                 next_event.cancel()  # nothing arrived; only the session was checked
                 continue
-            await websocket.send_json(next_event.result())
+            item = next_event.result()
+            if item is LAGGED:
+                await websocket.close(code=1013, reason="lagging; reconnect for a fresh snapshot")
+                break
+            await websocket.send_text(item)
     except (WebSocketDisconnect, RuntimeError):
         pass
     finally:

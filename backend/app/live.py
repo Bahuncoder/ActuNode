@@ -8,6 +8,7 @@ import asyncio
 import json
 import logging
 import threading
+import time
 from collections import deque
 from collections.abc import Callable
 from datetime import UTC, datetime
@@ -25,6 +26,10 @@ MAX_ROBOTS = 1000
 FAILURE_BUFFER = 200
 SNAPSHOT_MESSAGES = 200
 CLIENT_QUEUE = 1000
+# Distance-only changes of an unchanged set of near pairs are broadcast at most this often.
+PROXIMITY_REFRESH_S = 1.0
+# Queued for a client that fell too far behind: the WebSocket handler closes it so it resyncs from a snapshot.
+LAGGED = object()
 # Untrusted MQTT payload limits. MAX_PAYLOAD_BYTES equals the broker's max_packet_size.
 MAX_PAYLOAD_BYTES = 256 * 1024
 MAX_DEPTH = 32
@@ -98,6 +103,10 @@ class LiveHub:
         self._validation = _empty_validation()
         self._next_id = 1
         self._clients: set[asyncio.Queue] = set()
+        self._lagged: set[asyncio.Queue] = set()
+        self._clock: Callable[[], float] = time.monotonic
+        self._sent_pairs: set[tuple] = set()
+        self._sent_pairs_at = 0.0
         self._listeners: list[Callable[[dict], None]] = []
         self._loop: asyncio.AbstractEventLoop | None = None
 
@@ -126,10 +135,11 @@ class LiveHub:
             issues = [issue("error", "validator-error", f"{RULES['validator-error']}: {type(error).__name__}: {error}")]
 
         with self._lock:
-            pairs_before = self._proximity.active_pairs()
-            if valid_json and not retained:
-                issues += self._observe_proximity(topic, body)
-            pairs_after = self._proximity.active_pairs()
+            pairs_event = None
+            parts = vda5050.topic_parts(topic)
+            if valid_json and not retained and parts is not None and parts.name in ("state", "connection"):
+                issues += self._observe_proximity(parts, body)  # only these can change the near pairs
+                pairs_event = self._pairs_to_broadcast()
             message = {
                 "id": self._next_id,
                 "receivedAt": _now(),
@@ -146,6 +156,9 @@ class LiveHub:
                 shown = {**message, "payload": _preview(payload)}
             self._messages.append(shown)
             robot = self._update_robot(topic, body, message["receivedAt"]) if valid_json else None
+            if robot is not None and robot["state"] is body and shown["payload"] is body:
+                # The event's message already carries this state in full: send it once.
+                robot = {k: v for k, v in robot.items() if k != "state"} | {"stateFromMessage": True}
 
         for listener in self._listeners:
             try:
@@ -153,12 +166,22 @@ class LiveHub:
             except Exception:
                 log.exception("Message listener failed")
         self.broadcast({"type": "message", "message": shown, "robot": robot})
-        if pairs_after != pairs_before:
-            self.broadcast({"type": "proximity", "pairs": pairs_after})
+        if pairs_event is not None:
+            self.broadcast(pairs_event)
 
-    def _observe_proximity(self, topic: str, body) -> list[dict]:
-        parts = vda5050.topic_parts(topic)
-        if parts is None or not isinstance(body, dict):
+    def _pairs_to_broadcast(self) -> dict | None:
+        """A proximity event if the set of near pairs changed, or its distances did and the last one is
+        older than PROXIMITY_REFRESH_S; else None. Called with the lock held."""
+        pairs = self._proximity.active_pairs()
+        keys = {tuple(p["robots"]) for p in pairs}
+        now = self._clock()
+        if keys == self._sent_pairs and (not keys or now - self._sent_pairs_at < PROXIMITY_REFRESH_S):
+            return None
+        self._sent_pairs, self._sent_pairs_at = keys, now
+        return {"type": "proximity", "pairs": pairs}
+
+    def _observe_proximity(self, parts, body) -> list[dict]:
+        if not isinstance(body, dict):
             return []
         if parts.name == "state":
             return self._proximity.observe(vda5050.robot_key(parts), body)
@@ -267,6 +290,7 @@ class LiveHub:
 
     def unsubscribe(self, queue: asyncio.Queue) -> None:
         self._clients.discard(queue)
+        self._lagged.discard(queue)
 
     def broadcast(self, event: dict) -> None:
         """Push an event to all live clients; safe to call from any thread."""
@@ -278,11 +302,20 @@ class LiveHub:
             pass  # loop shutting down
 
     def _deliver(self, event: dict) -> None:
+        if not self._clients:
+            return
+        text = vda5050.dumps(event)  # encoded once for every client
         for queue in list(self._clients):
+            if queue in self._lagged:
+                continue  # waiting to be closed; it resyncs with a snapshot on reconnect
             try:
-                queue.put_nowait(event)
+                queue.put_nowait(text)
             except asyncio.QueueFull:
-                log.warning("Live client is too slow; dropping event")
+                log.warning("Live client is too slow; closing it so it can resync")
+                self._lagged.add(queue)
+                while not queue.empty():
+                    queue.get_nowait()
+                queue.put_nowait(LAGGED)
 
 
 hub = LiveHub()

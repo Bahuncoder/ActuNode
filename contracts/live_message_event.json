@@ -1,0 +1,58 @@
+{
+  "message": {
+    "issues": [
+      {
+        "message": "'headerId' is a required property",
+        "path": "/",
+        "rule": "schema",
+        "severity": "error"
+      },
+      {
+        "message": "'timestamp' is a required property",
+        "path": "/",
+        "rule": "schema",
+        "severity": "error"
+      },
+      {
+        "message": "'version' is a required property",
+        "path": "/",
+        "rule": "schema",
+        "severity": "error"
+      },
+      {
+        "message": "'manufacturer' is a required property",
+        "path": "/",
+        "rule": "schema",
+        "severity": "error"
+      },
+      {
+        "message": "'orderId' is a required property",
+        "path": "/",
+        "rule": "schema",
+        "severity": "error"
+      }
+    ],
+    "payload": {
+      "actunode": {
+        "missionStatus": "MOVING"
+      },
+      "agvPosition": {
+        "x": 4.0,
+        "y": 2.0
+      },
+      "serialNumber": "robot_c"
+    },
+    "retained": false,
+    "topic": "uagv/v2/ActuNode/robot_c/state",
+    "validJson": true
+  },
+  "robot": {
+    "connection": null,
+    "key": "v2/ActuNode/robot_c",
+    "manufacturer": "ActuNode",
+    "robotId": "robot_c",
+    "stateFromMessage": true,
+    "vdaMajor": "v2"
+  },
+  "type": "message"
+}

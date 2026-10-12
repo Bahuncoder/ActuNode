@@ -11,7 +11,7 @@ from app.mqtt import PayloadTooLarge
 from app.mqtt_state import mqtt_bridge
 from app.proximity import state_position
 from app.sent_orders import sent_orders
-from app.warehouse import LOCATIONS
+from app.warehouse import LOCATIONS, MAP_SIZE, RACKS, ZONES
 
 router = APIRouter(prefix="/api")
 
@@ -41,6 +41,11 @@ class MissionRequest(Address):
 class ExtendRequest(Address):
     to_location: str = Field(examples=["CHARGING"])
     action: Literal["pick", "drop"] = "drop"
+
+
+@router.get("/map")
+def warehouse_map() -> dict:
+    return {"size": MAP_SIZE, "zones": ZONES, "racks": RACKS, "locations": LOCATIONS}
 
 
 @router.get("/locations")

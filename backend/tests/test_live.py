@@ -101,7 +101,8 @@ def test_websocket_sends_snapshot_then_live_messages(client):
         event = ws.receive_json()
 
     assert event["type"] == "message"
-    assert event["robot"]["state"]["actunode"]["missionStatus"] == "MOVING"
+    assert event["message"]["payload"]["actunode"]["missionStatus"] == "MOVING"
+    assert event["robot"]["stateFromMessage"] is True
 
 
 def test_robot_list_is_capped_by_evicting_the_longest_silent():
@@ -231,3 +232,152 @@ def test_message_ids_are_unique_and_sequential_under_rejection():
     live.handle_mqtt(T_STATE, state("robot_01"))
 
     assert [m["id"] for m in live.snapshot()["messages"]] == [1, 2]
+
+
+# --- Week 4: lagging clients, proximity throttle, payload sent once, one encoding --------------
+
+
+def _capture(live):
+    events = []
+    live.broadcast = events.append
+    return events
+
+
+def _move(live, serial, x, y=0.0):
+    body = {"serialNumber": serial, "agvPosition": {"x": x, "y": y, "theta": 0, "mapId": "w"}}
+    live.handle_mqtt(f"uagv/v2/ActuNode/{serial}/state", json.dumps(body).encode())
+
+
+def _fake_clock(live):
+    clock = [0.0]
+    live._clock = lambda: clock[0]
+    live._proximity._now = lambda: clock[0]
+    return clock
+
+
+def test_proximity_broadcasts_when_the_pair_set_changes_and_throttles_distance_changes():
+    live = LiveHub()
+    clock = _fake_clock(live)
+    events = _capture(live)
+    pairs = lambda: [e for e in events if e["type"] == "proximity"]  # noqa: E731
+
+    _move(live, "a", 0.0)
+    _move(live, "b", 0.5)  # pair appears: immediately
+    assert len(pairs()) == 1
+    clock[0] = 0.1
+    _move(live, "b", 0.4)  # only the distance changed, inside the refresh interval
+    _move(live, "b", 0.3)
+    assert len(pairs()) == 1
+    clock[0] = 1.2
+    _move(live, "b", 0.2)  # refresh interval passed
+    assert len(pairs()) == 2 and pairs()[-1]["pairs"][0]["distance"] == 0.2
+    clock[0] = 1.3
+    _move(live, "b", 5.0)  # pair gone: immediately, even inside the interval
+    assert len(pairs()) == 3 and pairs()[-1]["pairs"] == []
+    _move(live, "b", 6.0)  # still nothing close: no event
+    assert len(pairs()) == 3
+
+
+def test_proximity_is_not_recomputed_for_messages_that_cannot_change_it(monkeypatch):
+    live = LiveHub()
+    calls = []
+    original = live._proximity.active_pairs
+    live._proximity.active_pairs = lambda: calls.append(1) or original()
+
+    live.handle_mqtt("uagv/v2/ActuNode/r/order", b'{"orderId": "o1"}')
+    assert calls == []
+    _move(live, "a", 0.0)
+    assert len(calls) == 1
+
+
+def test_state_message_event_sends_the_state_once():
+    live = LiveHub()
+    events = _capture(live)
+
+    live.handle_mqtt("uagv/v2/ActuNode/r1/state", state("r1", "MOVING"))
+    live.handle_mqtt("uagv/v2/ActuNode/r1/connection", b'{"connectionState": "ONLINE"}')
+
+    state_event, connection_event = [e for e in events if e["type"] == "message"]
+    assert state_event["message"]["payload"]["actunode"]["missionStatus"] == "MOVING"
+    assert "state" not in state_event["robot"] and state_event["robot"]["stateFromMessage"] is True
+    assert state_event["robot"]["robotId"] == "r1"
+    assert connection_event["robot"]["state"]["actunode"]["missionStatus"] == "MOVING"
+    assert "stateFromMessage" not in connection_event["robot"]
+    assert live.snapshot()["robots"][0]["state"] is not None  # snapshot keeps state
+
+
+def test_previewed_state_message_keeps_robot_state():
+    live = LiveHub()
+    events = _capture(live)
+    big = json.dumps({"serialNumber": "r1", "pad": "x" * 20000}).encode()
+
+    live.handle_mqtt("uagv/v2/ActuNode/r1/state", big)
+
+    [event] = [e for e in events if e["type"] == "message"]
+    assert isinstance(event["message"]["payload"], str)
+    assert event["robot"]["state"]["serialNumber"] == "r1"
+    assert "stateFromMessage" not in event["robot"]
+
+
+def test_slow_client_is_marked_lagged_once_and_gets_only_the_sentinel(monkeypatch, caplog):
+    from app import live as live_module
+
+    monkeypatch.setattr(live_module, "CLIENT_QUEUE", 2)
+    live = LiveHub()
+    queue = live.subscribe()
+
+    with caplog.at_level("WARNING"):
+        for number in range(10):
+            live._deliver({"type": "n", "n": number})
+
+    assert [queue.get_nowait() for _ in range(queue.qsize())] == [live_module.LAGGED]
+    assert len([r for r in caplog.records if r.levelname == "WARNING"]) == 1
+
+
+def test_slow_websocket_client_is_closed_with_1013(client, monkeypatch, caplog):
+    from starlette.websockets import WebSocketDisconnect
+
+    from app import live as live_module
+
+    monkeypatch.setattr(live_module, "CLIENT_QUEUE", 1)
+    with caplog.at_level("WARNING"), client.websocket_connect("/api/ws") as ws:
+        assert ws.receive_json()["type"] == "snapshot"
+        # One loop callback, so the handler cannot drain the queue in between.
+        hub._loop.call_soon_threadsafe(lambda: [hub._deliver({"type": "n", "n": n}) for n in range(20)])
+        with pytest.raises(WebSocketDisconnect) as closed:
+            ws.receive_json()
+    assert closed.value.code == 1013
+    assert "lagging" in closed.value.reason
+    assert len([r for r in caplog.records if r.levelname == "WARNING"]) == 1
+
+
+def test_broadcast_encodes_once_and_all_clients_get_the_same_text():
+    live = LiveHub()
+    first, second = live.subscribe(), live.subscribe()
+
+    live._deliver({"type": "failure", "failure": {"text": "päck", "n": 1.5}})
+
+    a, b = first.get_nowait(), second.get_nowait()
+    assert a is b and isinstance(a, str)
+    assert json.loads(a) == {"type": "failure", "failure": {"text": "päck", "n": 1.5}}
+
+
+def test_live_message_event_matches_the_shared_contract_fixture():
+    """contracts/live_message_event.json is read by the frontend tests too (frontend/src/live.test.ts), so the
+    WebSocket event shape cannot drift between the two sides unnoticed (a mismatch once broke the live view,
+    D-38). Regenerate with ACTUNODE_UPDATE_CONTRACTS=1 after a deliberate change."""
+    import os
+    from pathlib import Path
+
+    fixture = Path(__file__).resolve().parents[2] / "contracts" / "live_message_event.json"
+    live, events = LiveHub(), []
+    live.broadcast = events.append
+    live.handle_mqtt("uagv/v2/ActuNode/robot_c/state", state("robot_c", "MOVING", x=4.0))
+    event = events[0]
+    for volatile in ("receivedAt", "id"):
+        event["message"].pop(volatile)
+    event["robot"].pop("lastSeen")
+    event["robot"].pop("lastStateAt")
+    if os.environ.get("ACTUNODE_UPDATE_CONTRACTS"):
+        fixture.write_text(json.dumps(event, indent=2, sort_keys=True) + "\n")
+    assert json.loads(fixture.read_text()) == json.loads(json.dumps(event))
