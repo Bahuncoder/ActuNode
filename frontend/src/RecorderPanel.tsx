@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import {
   deleteSession,
   fetchRecording,
@@ -47,7 +47,7 @@ export default function RecorderPanel({
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [sessions, setSessions] = useState<SessionSummary[]>([])
-  const [live, setLive] = useState<RecordingStatus | null>(null)
+  const [polled, setPolled] = useState<RecordingStatus | null>(null)
   const [now, setNow] = useState(() => Date.now())
   const [speed, setSpeed] = useState(1)
   const [includeCommands, setIncludeCommands] = useState(false)
@@ -59,12 +59,20 @@ export default function RecorderPanel({
     fetchSessions().then(setSessions).catch(() => {})
   }, [recordingId, listVersion])
 
-  // Live counter while recording.
+  // Live counter while recording. Counts belong to one session: a different sessionId (started from any
+  // tab or the API) shows no counts until its own poll answers, and an answer for another session is dropped.
+  const live = polled && polled.sessionId === recordingId ? polled : null
+  const latest = useRef(0)
   useEffect(() => {
     if (!recordingId) return
     const timer = setInterval(() => {
       setNow(Date.now())
-      fetchRecording().then(setLive).catch(() => {})
+      const sequence = ++latest.current
+      fetchRecording()
+        .then((next) => {
+          if (sequence === latest.current && next?.sessionId === recordingId) setPolled(next)
+        })
+        .catch(() => {})
     }, POLL_MS)
     return () => clearInterval(timer)
   }, [recordingId])
@@ -77,7 +85,6 @@ export default function RecorderPanel({
         await stopRecording()
       } else {
         await startRecording(name)
-        setLive(null)
       }
     } catch (err) {
       setError((err as Error).message)

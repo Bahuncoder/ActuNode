@@ -138,6 +138,33 @@ describe('live feed reducer', () => {
     expect(feed.validation?.byRule[0]).toMatchObject({ rule: 'schema', count: 1 })
   })
 
+  describe('validation epochs (Issue 22)', () => {
+    const issue = { severity: 'error' as const, rule: 'schema', message: 'bad', path: '/x' }
+    const summary = (epoch?: number): NonNullable<Feed['validation']> => ({ since: 'x', checked: 0, withIssues: 0, byRule: [], ...(epoch !== undefined && { epoch }) })
+    const send = (feed: Feed, validationEpoch?: number) =>
+      reducer(feed, {
+        type: 'event',
+        event: { type: 'message', message: message(feed.messages.length + 1, [issue]), robot: null, validationEpoch },
+      })
+
+    it('does not count a message from before a reset that arrives after it', () => {
+      let feed: Feed = { ...empty, validation: summary(1) }
+      feed = reducer(feed, { type: 'event', event: { type: 'validation', validation: summary(2) } })
+      feed = send(feed, 1)
+      expect(feed.validation).toMatchObject({ checked: 0, withIssues: 0, byRule: [] })
+    })
+
+    it('counts a message with the current epoch', () => {
+      const feed = send({ ...empty, validation: summary(2) }, 2)
+      expect(feed.validation).toMatchObject({ checked: 1, withIssues: 1 })
+    })
+
+    it('still counts when either side has no epoch (older backend)', () => {
+      expect(send({ ...empty, validation: summary(2) }).validation?.checked).toBe(1)
+      expect(send({ ...empty, validation: summary() }, 1).validation?.checked).toBe(1)
+    })
+  })
+
   it('remembers why a recording stopped by itself, and clears it when a new one starts', () => {
     const recording = { sessionId: 's1', name: null, startedAt: 'x', messageCount: 3, duration: 1 }
     const stopped = reducer(empty, {

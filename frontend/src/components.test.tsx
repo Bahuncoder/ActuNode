@@ -288,6 +288,18 @@ describe('RobotTable cancel and load (D-35)', () => {
     expect(screen.getByText('PAUSED').className).toContain('status-paused')
   })
 
+  it('says when the backend stored a trimmed copy of a large state (issue 21)', () => {
+    const trimmed = {
+      ...status(healthy, 'MOVING', { _truncated: { bytes: 200000, lists: { nodeStates: 900 }, dropped: ['information'] } }),
+      key: 't',
+      robotId: 'r_t',
+    }
+    render(<RobotTable robots={[trimmed, { ...status(healthy, 'MOVING'), key: 'f', robotId: 'r_f' }]} />)
+    const notes = screen.getAllByText('state trimmed')
+    expect(notes).toHaveLength(1)
+    expect(notes[0].getAttribute('title')).toContain('200000 bytes')
+  })
+
   it('marks paused robots in the map tooltip', () => {
     const p = withState(healthy, { paused: true })
     const { container } = render(<WarehouseMap robots={[p]} locations={{}} />)

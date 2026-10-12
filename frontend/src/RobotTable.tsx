@@ -8,6 +8,13 @@ function loadText(robot: Robot): string {
   return loads.length === 0 ? 'empty' : loads.map((load) => text(load?.loadId)).join(', ')
 }
 
+// The backend keeps only a trimmed copy of very large states (issue 21); say what is missing.
+function trimmedTitle(trimmed: NonNullable<Robot['state']>['_truncated']): string {
+  const lists = Object.entries(trimmed?.lists ?? {}).map(([name, length]) => `${name}: first 50 of ${length}`)
+  const dropped = trimmed?.dropped?.length ? [`not stored: ${trimmed.dropped.join(', ')}`] : []
+  return [`state of ${trimmed?.bytes ?? '?'} bytes stored trimmed`, ...lists, ...dropped].join('; ')
+}
+
 export default function RobotTable({ robots }: { robots: Robot[] }) {
   const [cancelling, setCancelling] = useState<Set<string>>(new Set())
   // Latest error per robot key, so concurrent failures each name their robot.
@@ -107,6 +114,12 @@ const RobotRow = memo(function RobotRow({
           <td>
             <span className={`badge status-${status.toLowerCase()}`}>{status}</span>
             {robot.state?.paused === true && <span className="badge status-paused">PAUSED</span>}
+            {robot.state?._truncated && (
+              <span className="muted" title={trimmedTitle(robot.state._truncated)}>
+                {' '}
+                state trimmed
+              </span>
+            )}
           </td>
           <td>
             {battery === undefined ? '—' : (

@@ -28,6 +28,8 @@ export type RobotState = {
   driving: boolean
   // VDA 5050 startPause/stopPause; persists across orders until stopPause.
   paused?: boolean
+  // Set by the backend when it stored a trimmed copy of a very large state (issue 21).
+  _truncated?: { bytes?: number; lists?: Record<string, number>; dropped?: string[] }
   version?: string
   // VDA 5050 2.x names ...
   agvPosition?: { x: number; y: number; theta: number }
@@ -93,6 +95,8 @@ export type ValidationSummary = {
   checked: number
   withIssues: number
   byRule: RuleCount[]
+  // Increments on every reset; absent on an older backend.
+  epoch?: number
 }
 
 export type FailureEntry = {
@@ -147,7 +151,7 @@ type LiveEvent =
   | { type: 'recording'; recording: RecordingStatus | null; stoppedReason?: string; stopped?: RecordingStatus }
   | { type: 'replay'; replay: ReplayStatus | null }
   // robot.stateFromMessage: the robot carries no state of its own; its state is message.payload (D-38).
-  | { type: 'message'; message: MqttMessage; robot: (Robot & { stateFromMessage?: boolean }) | null }
+  | { type: 'message'; message: MqttMessage; robot: (Robot & { stateFromMessage?: boolean }) | null; validationEpoch?: number }
   | { type: 'failure'; failure: FailureEntry }
 
 export type Feed = {
@@ -232,7 +236,13 @@ function applyEvent(feed: Feed, event: LiveEvent): Feed {
     ...feed,
     robots,
     messages: [...feed.messages, event.message].slice(-MAX_MESSAGES),
-    validation: countIssues(feed.validation, event.message),
+    // A message the backend counted before a reset can arrive after it: it belongs to the old epoch.
+    validation:
+      event.validationEpoch !== undefined &&
+      feed.validation?.epoch !== undefined &&
+      event.validationEpoch !== feed.validation.epoch
+        ? feed.validation
+        : countIssues(feed.validation, event.message),
   }
 }
 
