@@ -15,6 +15,7 @@ from datetime import UTC, datetime
 
 from app import vda5050
 from app.config import settings
+from app.jsonsafe import parse_payload, preview
 from app.proximity import ProximityMonitor
 from app.validator import RULES, Validator, issue
 
@@ -30,12 +31,8 @@ CLIENT_QUEUE = 1000
 PROXIMITY_REFRESH_S = 1.0
 # Queued for a client that fell too far behind: the WebSocket handler closes it so it resyncs from a snapshot.
 LAGGED = object()
-# Untrusted MQTT payload limits. MAX_PAYLOAD_BYTES equals the broker's max_packet_size.
-MAX_PAYLOAD_BYTES = 256 * 1024
-MAX_DEPTH = 32
 # Bigger payloads are shown (message log, WebSocket) as a text preview; the recorder still gets them whole.
 DISPLAY_PAYLOAD_BYTES = 16 * 1024
-PREVIEW_BYTES = 1024
 # The last state of each robot is kept whole up to this size (raw payload); bigger ones are reduced, so a flood of
 # max-size states from logged-in robots cannot hold MAX_ROBOTS x MAX_PAYLOAD_BYTES in memory (issue 21).
 MAX_STORED_STATE_BYTES = 64 * 1024
@@ -46,52 +43,6 @@ _MARKER_RESERVE = 1024
 
 def _now() -> str:
     return datetime.now(UTC).isoformat(timespec="milliseconds").replace("+00:00", "Z")
-
-
-class _NonFinite(ValueError):
-    pass
-
-
-def _reject_constant(name: str):
-    raise _NonFinite(name)
-
-
-def _too_deep(body) -> bool:
-    """True if `body` nests containers deeper than MAX_DEPTH. Iterative: recursion is what deep payloads attack."""
-    level = [body] if isinstance(body, dict | list) else []
-    depth = 1
-    while level:
-        if depth > MAX_DEPTH:
-            return True
-        level = [
-            c
-            for item in level
-            for c in (item.values() if isinstance(item, dict) else item)
-            if isinstance(c, dict | list)
-        ]
-        depth += 1
-    return False
-
-
-def _preview(raw: bytes) -> str:
-    return f"{raw[:PREVIEW_BYTES].decode('utf-8', errors='replace')}… ({len(raw)} bytes, truncated for display)"
-
-
-def parse_payload(payload: bytes) -> tuple[object, str | None]:
-    """(body, None) for a usable JSON payload, else (text kept for display, rule that rejected it)."""
-    if len(payload) > MAX_PAYLOAD_BYTES:
-        return _preview(payload), "payload-too-large"
-    try:
-        body = json.loads(payload, parse_constant=_reject_constant)
-    except RecursionError:
-        return payload.decode("utf-8", errors="replace"), "too-deep"
-    except _NonFinite:
-        return payload.decode("utf-8", errors="replace"), "non-finite-number"
-    except ValueError:  # JSONDecodeError and UnicodeDecodeError
-        return payload.decode("utf-8", errors="replace"), "invalid-json"
-    if _too_deep(body):
-        return payload.decode("utf-8", errors="replace"), "too-deep"
-    return body, None
 
 
 def _reduce_state(body: dict, size: int) -> dict:
@@ -180,16 +131,17 @@ class LiveHub:
             epoch = self._validation["epoch"]  # same lock as the count: a reset cannot fall between them
             shown = message
             if len(payload) > DISPLAY_PAYLOAD_BYTES:
-                shown = {**message, "payload": _preview(payload)}
+                shown = {**message, "payload": preview(payload)}
             self._messages.append(shown)
             robot = self._update_robot(topic, body, message["receivedAt"], len(payload)) if valid_json else None
             if robot is not None and robot["state"] is body and shown["payload"] is body:
                 # The event's message already carries this state in full: send it once.
                 robot = {k: v for k, v in robot.items() if k != "state"} | {"stateFromMessage": True}
 
+        heard = {**message, "rejected": rejected}  # listeners (the recorder) learn which rule rejected it
         for listener in self._listeners:
             try:
-                listener(message)
+                listener(heard)
             except Exception:
                 log.exception("Message listener failed")
         self.broadcast({"type": "message", "message": shown, "robot": robot, "validationEpoch": epoch})

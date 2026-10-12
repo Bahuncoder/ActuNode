@@ -9,7 +9,10 @@ File layout, one JSON object per line:
 
 `t` is seconds since recording started. `payload` is the parsed JSON; a message
 that was not valid JSON is stored as the raw string in `payloadRaw` instead.
-`issues` (validator findings) is present only when the message had any.
+`issues` (validator findings) is present only when the message had any. `rejected` (the rule's name:
+invalid-json, non-finite-number, too-deep, payload-too-large) is present only when the live parse rules
+rejected the payload; what is stored then is only display text (decoded with replacement characters, or a
+1 KiB preview), so offline validation reads the rule from here instead of re-parsing.
 `reason` says why recording ended: "stopped" (by the user or at shutdown), "sizeLimit", or
 "writeError: ..." (e.g. disk full). Older files may lack it.
 """
@@ -23,12 +26,15 @@ from collections.abc import Callable
 from datetime import UTC, datetime
 from pathlib import Path
 
+from app.session_records import MESSAGE_LINE_BYTES, iter_records, parse_line
+
 log = logging.getLogger("actunode.recorder")
 
 FORMAT_VERSION = 1
 DEFAULT_MAX_BYTES = 200 * 1024 * 1024
 # Read at most this much from the end of a file to find its end record.
 TAIL_BYTES = 64 * 1024
+MAX_FIELD_CHARS = 200
 SESSION_ID = re.compile(r"^[0-9]{8}-[0-9]{6}(_[A-Za-z0-9_-]{1,40})?$")
 
 
@@ -66,10 +72,7 @@ class SessionRecorder:
                 raise RecorderError(f"Already recording {self._current['sessionId']}")
 
             self.directory.mkdir(parents=True, exist_ok=True)
-            session_id = self._free_session_id(datetime.now(UTC).strftime("%Y%m%d-%H%M%S"), name)
-            path = self.directory / f"{session_id}.jsonl"
-
-            self._file = path.open("w", encoding="utf-8")
+            session_id, self._file = self._create(datetime.now(UTC).strftime("%Y%m%d-%H%M%S"), name)
             self._bytes = 0
             self._started_monotonic = time.monotonic()
             self._current = {
@@ -82,16 +85,18 @@ class SessionRecorder:
             self._write({"type": "snapshot", "robots": robots})
             return self._status()
 
-    def _free_session_id(self, stamp: str, name: str | None) -> str:
-        """Timestamp (to the second) plus name; a suffix keeps two starts in the same second apart."""
+    def _create(self, stamp: str, name: str | None):
+        """Create the session file: timestamp (to the second) plus name; a suffix keeps two starts in the
+        same second apart. Opened exclusively, so a file that appears under the same id meanwhile (an
+        upload) is never truncated."""
         base = f"{stamp}_{name}" if name else stamp
-        candidate, n = base, 2
-        while (self.directory / f"{candidate}.jsonl").exists():
-            if n > 99:
-                raise RecorderError(f"Too many sessions named {base}")
-            candidate = f"{stamp}_{name[:37]}-{n}" if name else f"{stamp}_{n}"
-            n += 1
-        return candidate
+        candidate = base
+        for n in range(2, 101):
+            try:
+                return candidate, (self.directory / f"{candidate}.jsonl").open("x", encoding="utf-8")
+            except FileExistsError:
+                candidate = f"{stamp}_{name[:37]}-{n}" if name else f"{stamp}_{n}"
+        raise RecorderError(f"Too many sessions named {base}")
 
     def stop(self) -> dict:
         with self._lock:
@@ -132,6 +137,8 @@ class SessionRecorder:
                 line["payload"] = message["payload"]
             else:
                 line["payloadRaw"] = message["payload"]
+            if message.get("rejected"):
+                line["rejected"] = message["rejected"]
             if message.get("issues"):
                 line["issues"] = message["issues"]
             encoded = json.dumps(line, separators=(",", ":")) + "\n"
@@ -199,9 +206,15 @@ class SessionRecorder:
         return sessions
 
 
+def _text(value) -> str | None:
+    """A header/end field shown in the UI: a short string, or None (a file may hold anything)."""
+    return value if isinstance(value, str) and len(value) <= MAX_FIELD_CHARS else None
+
+
 def summarize(path: Path) -> dict:
     """Summary from the header (first line) and end record (last line). Only a file without an end
-    record (cut off by a crash) is scanned to count its messages."""
+    record (cut off by a crash) is scanned to count its messages. Fields are sanitised: the file may
+    be an upload or hand-edited, and the UI must get strings and numbers."""
     summary = {
         "sessionId": path.stem,
         "name": None,
@@ -214,33 +227,29 @@ def summarize(path: Path) -> dict:
         "sizeBytes": path.stat().st_size,
     }
     with path.open("rb") as file:
-        header = _parse(file.readline())
+        header = _parse(file.readline(MESSAGE_LINE_BYTES))
         if header and header.get("type") == "session":
-            summary["name"] = header.get("name")
-            summary["startedAt"] = header.get("startedAt")
+            summary["name"] = _text(header.get("name"))
+            summary["startedAt"] = _text(header.get("startedAt"))
 
         file.seek(max(0, summary["sizeBytes"] - TAIL_BYTES))
         tail = [line for line in file.read().splitlines() if line.strip()]
         end = _parse(tail[-1]) if tail else None
         if end and end.get("type") == "end":
+            count = end.get("messageCount")
             summary.update(
-                endedAt=end.get("endedAt"),
-                messageCount=end.get("messageCount", 0),
+                endedAt=_text(end.get("endedAt")),
+                messageCount=count if isinstance(count, int) and not isinstance(count, bool) and count >= 0 else 0,
                 complete=True,
-                reason=end.get("reason"),
+                reason=_text(end.get("reason")),
             )
             return summary
 
-        # No end record: the recording was cut off. Rare, so parse every line rather than guess,
-        # which also skips a half-written last line.
-        file.seek(0)
-        summary["messageCount"] = sum(1 for line in file if (_parse(line) or {}).get("type") == "message")
+    # No end record: the recording was cut off. Rare, so read every line rather than guess, which
+    # also skips a half-written last line.
+    summary["messageCount"] = sum(1 for _, record in iter_records(path) if (record or {}).get("type") == "message")
     return summary
 
 
 def _parse(line: bytes) -> dict | None:
-    try:
-        record = json.loads(line)
-    except (json.JSONDecodeError, UnicodeDecodeError):
-        return None  # a crash can leave a half-written line
-    return record if isinstance(record, dict) else None
+    return parse_line(line)[0]

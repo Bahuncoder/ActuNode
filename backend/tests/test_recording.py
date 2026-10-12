@@ -183,7 +183,7 @@ def test_summary_of_complete_session_reads_only_header_and_end(tmp_path, monkeyp
 
     calls = []
     real_loads = json_module.loads
-    monkeypatch.setattr("app.recorder.json.loads", lambda s: calls.append(1) or real_loads(s))
+    monkeypatch.setattr("app.recorder.json.loads", lambda s, **kw: calls.append(1) or real_loads(s, **kw))
     summary = summarize(path)
 
     assert summary["messageCount"] == 5000
@@ -229,3 +229,29 @@ def test_two_recordings_started_in_the_same_second_get_different_ids(tmp_path, m
 
     assert ids == ["20261011-120000", "20261011-120000_2", "20261011-120000_demo", "20261011-120000_demo-2"]
     assert all(recorder.path_for(i) for i in ids)
+
+
+def test_start_never_truncates_a_file_that_appeared_with_the_same_id(tmp_path, monkeypatch):
+    from datetime import datetime
+    from pathlib import Path
+
+    from app import recorder as recorder_module
+
+    class Frozen:
+        @staticmethod
+        def now(tz=None):
+            return datetime(2026, 10, 12, 12, 0, 0, tzinfo=tz)
+
+    monkeypatch.setattr(recorder_module, "datetime", Frozen)
+    existing = tmp_path / "20261012-120000_x.jsonl"
+    existing.write_text("their session\n")
+    real_exists = Path.exists
+    # The file shows up between the free-id check and the open: exists() still says no.
+    monkeypatch.setattr(Path, "exists", lambda self: False if self == existing else real_exists(self))
+    recorder = SessionRecorder(tmp_path)
+
+    status = recorder.start("x", [])
+    recorder.stop()
+
+    assert existing.read_text() == "their session\n"
+    assert status["sessionId"] == "20261012-120000_x-2"

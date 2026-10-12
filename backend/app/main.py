@@ -22,6 +22,7 @@ async def lifespan(app: FastAPI):
     auth.check_sharing(settings.bind_address, settings.require_login)
     threading.Thread(target=auth.trusted_proxies.refresh, daemon=True).start()  # DNS must not delay startup
     hub.attach_loop(asyncio.get_running_loop())
+    sessions.startup()
     mqtt_bridge.start()
     yield
     if sessions.replayer.running:

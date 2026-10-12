@@ -9,7 +9,6 @@ Commands (orders, instant actions, ActuNode failure injections) are opt-in.
 """
 
 import asyncio
-import json
 import logging
 import re
 import time
@@ -19,6 +18,7 @@ from pathlib import Path
 
 from app import vda5050
 from app.mqtt import PayloadTooLarge
+from app.session_records import iter_records
 
 log = logging.getLogger("actunode.replay")
 
@@ -38,15 +38,12 @@ def is_command(topic: str) -> bool:
 
 
 def _records(path: Path):
-    """(record or None) per line; None for a line that is not a JSON object (half-written, foreign)."""
-    with path.open(encoding="utf-8") as file:
-        for line in file:
-            try:
-                record = json.loads(line)
-            except json.JSONDecodeError:
-                yield None
-                continue
-            yield record if isinstance(record, dict) else None
+    """(record or None) per line; None for a line that is not a usable JSON object (half-written, foreign)."""
+    try:
+        for _, record in iter_records(path):
+            yield record
+    except OSError as error:
+        raise ReplayError(f"Cannot read {Path(path).name}: {error}") from error
 
 
 def _is_message(record: dict | None) -> bool:

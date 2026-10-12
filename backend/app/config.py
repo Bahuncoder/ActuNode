@@ -36,6 +36,9 @@ class Settings:
     proximity_m: float = float(os.getenv("ACTUNODE_PROXIMITY_M", "1.0"))
     # A recording stops itself at this size. Fractions allowed (useful for testing the limit).
     max_session_mb: float = float(os.getenv("ACTUNODE_MAX_SESSION_MB", "200"))
+    # Retention (D-41): oldest sessions are deleted past this age / total size. 0 turns a rule off.
+    sessions_keep_days: int = max(0, int(os.getenv("ACTUNODE_SESSIONS_KEEP_DAYS", "30")))
+    sessions_max_total_mb: int = max(0, int(os.getenv("ACTUNODE_SESSIONS_MAX_TOTAL_MB", "2000")))
     sessions_dir: Path = field(
         default_factory=lambda: Path(os.getenv("ACTUNODE_SESSIONS_DIR", _REPO_ROOT / "sessions"))
     )

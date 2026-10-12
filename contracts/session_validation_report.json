@@ -1,0 +1,816 @@
+{
+  "byRule": [
+    {
+      "count": 101,
+      "description": "Payload is not valid JSON",
+      "rule": "invalid-json",
+      "severity": "error"
+    }
+  ],
+  "checked": 101,
+  "issues": [
+    {
+      "line": 3,
+      "message": "Payload is not valid JSON",
+      "rule": "invalid-json",
+      "severity": "error",
+      "t": 0,
+      "topic": "uagv/v2/ActuNode/r/state"
+    },
+    {
+      "line": 4,
+      "message": "Payload is not valid JSON",
+      "rule": "invalid-json",
+      "severity": "error",
+      "t": 0,
+      "topic": "uagv/v2/ActuNode/r/state"
+    },
+    {
+      "line": 5,
+      "message": "Payload is not valid JSON",
+      "rule": "invalid-json",
+      "severity": "error",
+      "t": 0,
+      "topic": "uagv/v2/ActuNode/r/state"
+    },
+    {
+      "line": 6,
+      "message": "Payload is not valid JSON",
+      "rule": "invalid-json",
+      "severity": "error",
+      "t": 0,
+      "topic": "uagv/v2/ActuNode/r/state"
+    },
+    {
+      "line": 7,
+      "message": "Payload is not valid JSON",
+      "rule": "invalid-json",
+      "severity": "error",
+      "t": 0,
+      "topic": "uagv/v2/ActuNode/r/state"
+    },
+    {
+      "line": 8,
+      "message": "Payload is not valid JSON",
+      "rule": "invalid-json",
+      "severity": "error",
+      "t": 0,
+      "topic": "uagv/v2/ActuNode/r/state"
+    },
+    {
+      "line": 9,
+      "message": "Payload is not valid JSON",
+      "rule": "invalid-json",
+      "severity": "error",
+      "t": 0,
+      "topic": "uagv/v2/ActuNode/r/state"
+    },
+    {
+      "line": 10,
+      "message": "Payload is not valid JSON",
+      "rule": "invalid-json",
+      "severity": "error",
+      "t": 0,
+      "topic": "uagv/v2/ActuNode/r/state"
+    },
+    {
+      "line": 11,
+      "message": "Payload is not valid JSON",
+      "rule": "invalid-json",
+      "severity": "error",
+      "t": 0,
+      "topic": "uagv/v2/ActuNode/r/state"
+    },
+    {
+      "line": 12,
+      "message": "Payload is not valid JSON",
+      "rule": "invalid-json",
+      "severity": "error",
+      "t": 0,
+      "topic": "uagv/v2/ActuNode/r/state"
+    },
+    {
+      "line": 13,
+      "message": "Payload is not valid JSON",
+      "rule": "invalid-json",
+      "severity": "error",
+      "t": 0,
+      "topic": "uagv/v2/ActuNode/r/state"
+    },
+    {
+      "line": 14,
+      "message": "Payload is not valid JSON",
+      "rule": "invalid-json",
+      "severity": "error",
+      "t": 0,
+      "topic": "uagv/v2/ActuNode/r/state"
+    },
+    {
+      "line": 15,
+      "message": "Payload is not valid JSON",
+      "rule": "invalid-json",
+      "severity": "error",
+      "t": 0,
+      "topic": "uagv/v2/ActuNode/r/state"
+    },
+    {
+      "line": 16,
+      "message": "Payload is not valid JSON",
+      "rule": "invalid-json",
+      "severity": "error",
+      "t": 0,
+      "topic": "uagv/v2/ActuNode/r/state"
+    },
+    {
+      "line": 17,
+      "message": "Payload is not valid JSON",
+      "rule": "invalid-json",
+      "severity": "error",
+      "t": 0,
+      "topic": "uagv/v2/ActuNode/r/state"
+    },
+    {
+      "line": 18,
+      "message": "Payload is not valid JSON",
+      "rule": "invalid-json",
+      "severity": "error",
+      "t": 0,
+      "topic": "uagv/v2/ActuNode/r/state"
+    },
+    {
+      "line": 19,
+      "message": "Payload is not valid JSON",
+      "rule": "invalid-json",
+      "severity": "error",
+      "t": 0,
+      "topic": "uagv/v2/ActuNode/r/state"
+    },
+    {
+      "line": 20,
+      "message": "Payload is not valid JSON",
+      "rule": "invalid-json",
+      "severity": "error",
+      "t": 0,
+      "topic": "uagv/v2/ActuNode/r/state"
+    },
+    {
+      "line": 21,
+      "message": "Payload is not valid JSON",
+      "rule": "invalid-json",
+      "severity": "error",
+      "t": 0,
+      "topic": "uagv/v2/ActuNode/r/state"
+    },
+    {
+      "line": 22,
+      "message": "Payload is not valid JSON",
+      "rule": "invalid-json",
+      "severity": "error",
+      "t": 0,
+      "topic": "uagv/v2/ActuNode/r/state"
+    },
+    {
+      "line": 23,
+      "message": "Payload is not valid JSON",
+      "rule": "invalid-json",
+      "severity": "error",
+      "t": 0,
+      "topic": "uagv/v2/ActuNode/r/state"
+    },
+    {
+      "line": 24,
+      "message": "Payload is not valid JSON",
+      "rule": "invalid-json",
+      "severity": "error",
+      "t": 0,
+      "topic": "uagv/v2/ActuNode/r/state"
+    },
+    {
+      "line": 25,
+      "message": "Payload is not valid JSON",
+      "rule": "invalid-json",
+      "severity": "error",
+      "t": 0,
+      "topic": "uagv/v2/ActuNode/r/state"
+    },
+    {
+      "line": 26,
+      "message": "Payload is not valid JSON",
+      "rule": "invalid-json",
+      "severity": "error",
+      "t": 0,
+      "topic": "uagv/v2/ActuNode/r/state"
+    },
+    {
+      "line": 27,
+      "message": "Payload is not valid JSON",
+      "rule": "invalid-json",
+      "severity": "error",
+      "t": 0,
+      "topic": "uagv/v2/ActuNode/r/state"
+    },
+    {
+      "line": 28,
+      "message": "Payload is not valid JSON",
+      "rule": "invalid-json",
+      "severity": "error",
+      "t": 0,
+      "topic": "uagv/v2/ActuNode/r/state"
+    },
+    {
+      "line": 29,
+      "message": "Payload is not valid JSON",
+      "rule": "invalid-json",
+      "severity": "error",
+      "t": 0,
+      "topic": "uagv/v2/ActuNode/r/state"
+    },
+    {
+      "line": 30,
+      "message": "Payload is not valid JSON",
+      "rule": "invalid-json",
+      "severity": "error",
+      "t": 0,
+      "topic": "uagv/v2/ActuNode/r/state"
+    },
+    {
+      "line": 31,
+      "message": "Payload is not valid JSON",
+      "rule": "invalid-json",
+      "severity": "error",
+      "t": 0,
+      "topic": "uagv/v2/ActuNode/r/state"
+    },
+    {
+      "line": 32,
+      "message": "Payload is not valid JSON",
+      "rule": "invalid-json",
+      "severity": "error",
+      "t": 0,
+      "topic": "uagv/v2/ActuNode/r/state"
+    },
+    {
+      "line": 33,
+      "message": "Payload is not valid JSON",
+      "rule": "invalid-json",
+      "severity": "error",
+      "t": 0,
+      "topic": "uagv/v2/ActuNode/r/state"
+    },
+    {
+      "line": 34,
+      "message": "Payload is not valid JSON",
+      "rule": "invalid-json",
+      "severity": "error",
+      "t": 0,
+      "topic": "uagv/v2/ActuNode/r/state"
+    },
+    {
+      "line": 35,
+      "message": "Payload is not valid JSON",
+      "rule": "invalid-json",
+      "severity": "error",
+      "t": 0,
+      "topic": "uagv/v2/ActuNode/r/state"
+    },
+    {
+      "line": 36,
+      "message": "Payload is not valid JSON",
+      "rule": "invalid-json",
+      "severity": "error",
+      "t": 0,
+      "topic": "uagv/v2/ActuNode/r/state"
+    },
+    {
+      "line": 37,
+      "message": "Payload is not valid JSON",
+      "rule": "invalid-json",
+      "severity": "error",
+      "t": 0,
+      "topic": "uagv/v2/ActuNode/r/state"
+    },
+    {
+      "line": 38,
+      "message": "Payload is not valid JSON",
+      "rule": "invalid-json",
+      "severity": "error",
+      "t": 0,
+      "topic": "uagv/v2/ActuNode/r/state"
+    },
+    {
+      "line": 39,
+      "message": "Payload is not valid JSON",
+      "rule": "invalid-json",
+      "severity": "error",
+      "t": 0,
+      "topic": "uagv/v2/ActuNode/r/state"
+    },
+    {
+      "line": 40,
+      "message": "Payload is not valid JSON",
+      "rule": "invalid-json",
+      "severity": "error",
+      "t": 0,
+      "topic": "uagv/v2/ActuNode/r/state"
+    },
+    {
+      "line": 41,
+      "message": "Payload is not valid JSON",
+      "rule": "invalid-json",
+      "severity": "error",
+      "t": 0,
+      "topic": "uagv/v2/ActuNode/r/state"
+    },
+    {
+      "line": 42,
+      "message": "Payload is not valid JSON",
+      "rule": "invalid-json",
+      "severity": "error",
+      "t": 0,
+      "topic": "uagv/v2/ActuNode/r/state"
+    },
+    {
+      "line": 43,
+      "message": "Payload is not valid JSON",
+      "rule": "invalid-json",
+      "severity": "error",
+      "t": 0,
+      "topic": "uagv/v2/ActuNode/r/state"
+    },
+    {
+      "line": 44,
+      "message": "Payload is not valid JSON",
+      "rule": "invalid-json",
+      "severity": "error",
+      "t": 0,
+      "topic": "uagv/v2/ActuNode/r/state"
+    },
+    {
+      "line": 45,
+      "message": "Payload is not valid JSON",
+      "rule": "invalid-json",
+      "severity": "error",
+      "t": 0,
+      "topic": "uagv/v2/ActuNode/r/state"
+    },
+    {
+      "line": 46,
+      "message": "Payload is not valid JSON",
+      "rule": "invalid-json",
+      "severity": "error",
+      "t": 0,
+      "topic": "uagv/v2/ActuNode/r/state"
+    },
+    {
+      "line": 47,
+      "message": "Payload is not valid JSON",
+      "rule": "invalid-json",
+      "severity": "error",
+      "t": 0,
+      "topic": "uagv/v2/ActuNode/r/state"
+    },
+    {
+      "line": 48,
+      "message": "Payload is not valid JSON",
+      "rule": "invalid-json",
+      "severity": "error",
+      "t": 0,
+      "topic": "uagv/v2/ActuNode/r/state"
+    },
+    {
+      "line": 49,
+      "message": "Payload is not valid JSON",
+      "rule": "invalid-json",
+      "severity": "error",
+      "t": 0,
+      "topic": "uagv/v2/ActuNode/r/state"
+    },
+    {
+      "line": 50,
+      "message": "Payload is not valid JSON",
+      "rule": "invalid-json",
+      "severity": "error",
+      "t": 0,
+      "topic": "uagv/v2/ActuNode/r/state"
+    },
+    {
+      "line": 51,
+      "message": "Payload is not valid JSON",
+      "rule": "invalid-json",
+      "severity": "error",
+      "t": 0,
+      "topic": "uagv/v2/ActuNode/r/state"
+    },
+    {
+      "line": 52,
+      "message": "Payload is not valid JSON",
+      "rule": "invalid-json",
+      "severity": "error",
+      "t": 0,
+      "topic": "uagv/v2/ActuNode/r/state"
+    },
+    {
+      "line": 53,
+      "message": "Payload is not valid JSON",
+      "rule": "invalid-json",
+      "severity": "error",
+      "t": 0,
+      "topic": "uagv/v2/ActuNode/r/state"
+    },
+    {
+      "line": 54,
+      "message": "Payload is not valid JSON",
+      "rule": "invalid-json",
+      "severity": "error",
+      "t": 0,
+      "topic": "uagv/v2/ActuNode/r/state"
+    },
+    {
+      "line": 55,
+      "message": "Payload is not valid JSON",
+      "rule": "invalid-json",
+      "severity": "error",
+      "t": 0,
+      "topic": "uagv/v2/ActuNode/r/state"
+    },
+    {
+      "line": 56,
+      "message": "Payload is not valid JSON",
+      "rule": "invalid-json",
+      "severity": "error",
+      "t": 0,
+      "topic": "uagv/v2/ActuNode/r/state"
+    },
+    {
+      "line": 57,
+      "message": "Payload is not valid JSON",
+      "rule": "invalid-json",
+      "severity": "error",
+      "t": 0,
+      "topic": "uagv/v2/ActuNode/r/state"
+    },
+    {
+      "line": 58,
+      "message": "Payload is not valid JSON",
+      "rule": "invalid-json",
+      "severity": "error",
+      "t": 0,
+      "topic": "uagv/v2/ActuNode/r/state"
+    },
+    {
+      "line": 59,
+      "message": "Payload is not valid JSON",
+      "rule": "invalid-json",
+      "severity": "error",
+      "t": 0,
+      "topic": "uagv/v2/ActuNode/r/state"
+    },
+    {
+      "line": 60,
+      "message": "Payload is not valid JSON",
+      "rule": "invalid-json",
+      "severity": "error",
+      "t": 0,
+      "topic": "uagv/v2/ActuNode/r/state"
+    },
+    {
+      "line": 61,
+      "message": "Payload is not valid JSON",
+      "rule": "invalid-json",
+      "severity": "error",
+      "t": 0,
+      "topic": "uagv/v2/ActuNode/r/state"
+    },
+    {
+      "line": 62,
+      "message": "Payload is not valid JSON",
+      "rule": "invalid-json",
+      "severity": "error",
+      "t": 0,
+      "topic": "uagv/v2/ActuNode/r/state"
+    },
+    {
+      "line": 63,
+      "message": "Payload is not valid JSON",
+      "rule": "invalid-json",
+      "severity": "error",
+      "t": 0,
+      "topic": "uagv/v2/ActuNode/r/state"
+    },
+    {
+      "line": 64,
+      "message": "Payload is not valid JSON",
+      "rule": "invalid-json",
+      "severity": "error",
+      "t": 0,
+      "topic": "uagv/v2/ActuNode/r/state"
+    },
+    {
+      "line": 65,
+      "message": "Payload is not valid JSON",
+      "rule": "invalid-json",
+      "severity": "error",
+      "t": 0,
+      "topic": "uagv/v2/ActuNode/r/state"
+    },
+    {
+      "line": 66,
+      "message": "Payload is not valid JSON",
+      "rule": "invalid-json",
+      "severity": "error",
+      "t": 0,
+      "topic": "uagv/v2/ActuNode/r/state"
+    },
+    {
+      "line": 67,
+      "message": "Payload is not valid JSON",
+      "rule": "invalid-json",
+      "severity": "error",
+      "t": 0,
+      "topic": "uagv/v2/ActuNode/r/state"
+    },
+    {
+      "line": 68,
+      "message": "Payload is not valid JSON",
+      "rule": "invalid-json",
+      "severity": "error",
+      "t": 0,
+      "topic": "uagv/v2/ActuNode/r/state"
+    },
+    {
+      "line": 69,
+      "message": "Payload is not valid JSON",
+      "rule": "invalid-json",
+      "severity": "error",
+      "t": 0,
+      "topic": "uagv/v2/ActuNode/r/state"
+    },
+    {
+      "line": 70,
+      "message": "Payload is not valid JSON",
+      "rule": "invalid-json",
+      "severity": "error",
+      "t": 0,
+      "topic": "uagv/v2/ActuNode/r/state"
+    },
+    {
+      "line": 71,
+      "message": "Payload is not valid JSON",
+      "rule": "invalid-json",
+      "severity": "error",
+      "t": 0,
+      "topic": "uagv/v2/ActuNode/r/state"
+    },
+    {
+      "line": 72,
+      "message": "Payload is not valid JSON",
+      "rule": "invalid-json",
+      "severity": "error",
+      "t": 0,
+      "topic": "uagv/v2/ActuNode/r/state"
+    },
+    {
+      "line": 73,
+      "message": "Payload is not valid JSON",
+      "rule": "invalid-json",
+      "severity": "error",
+      "t": 0,
+      "topic": "uagv/v2/ActuNode/r/state"
+    },
+    {
+      "line": 74,
+      "message": "Payload is not valid JSON",
+      "rule": "invalid-json",
+      "severity": "error",
+      "t": 0,
+      "topic": "uagv/v2/ActuNode/r/state"
+    },
+    {
+      "line": 75,
+      "message": "Payload is not valid JSON",
+      "rule": "invalid-json",
+      "severity": "error",
+      "t": 0,
+      "topic": "uagv/v2/ActuNode/r/state"
+    },
+    {
+      "line": 76,
+      "message": "Payload is not valid JSON",
+      "rule": "invalid-json",
+      "severity": "error",
+      "t": 0,
+      "topic": "uagv/v2/ActuNode/r/state"
+    },
+    {
+      "line": 77,
+      "message": "Payload is not valid JSON",
+      "rule": "invalid-json",
+      "severity": "error",
+      "t": 0,
+      "topic": "uagv/v2/ActuNode/r/state"
+    },
+    {
+      "line": 78,
+      "message": "Payload is not valid JSON",
+      "rule": "invalid-json",
+      "severity": "error",
+      "t": 0,
+      "topic": "uagv/v2/ActuNode/r/state"
+    },
+    {
+      "line": 79,
+      "message": "Payload is not valid JSON",
+      "rule": "invalid-json",
+      "severity": "error",
+      "t": 0,
+      "topic": "uagv/v2/ActuNode/r/state"
+    },
+    {
+      "line": 80,
+      "message": "Payload is not valid JSON",
+      "rule": "invalid-json",
+      "severity": "error",
+      "t": 0,
+      "topic": "uagv/v2/ActuNode/r/state"
+    },
+    {
+      "line": 81,
+      "message": "Payload is not valid JSON",
+      "rule": "invalid-json",
+      "severity": "error",
+      "t": 0,
+      "topic": "uagv/v2/ActuNode/r/state"
+    },
+    {
+      "line": 82,
+      "message": "Payload is not valid JSON",
+      "rule": "invalid-json",
+      "severity": "error",
+      "t": 0,
+      "topic": "uagv/v2/ActuNode/r/state"
+    },
+    {
+      "line": 83,
+      "message": "Payload is not valid JSON",
+      "rule": "invalid-json",
+      "severity": "error",
+      "t": 0,
+      "topic": "uagv/v2/ActuNode/r/state"
+    },
+    {
+      "line": 84,
+      "message": "Payload is not valid JSON",
+      "rule": "invalid-json",
+      "severity": "error",
+      "t": 0,
+      "topic": "uagv/v2/ActuNode/r/state"
+    },
+    {
+      "line": 85,
+      "message": "Payload is not valid JSON",
+      "rule": "invalid-json",
+      "severity": "error",
+      "t": 0,
+      "topic": "uagv/v2/ActuNode/r/state"
+    },
+    {
+      "line": 86,
+      "message": "Payload is not valid JSON",
+      "rule": "invalid-json",
+      "severity": "error",
+      "t": 0,
+      "topic": "uagv/v2/ActuNode/r/state"
+    },
+    {
+      "line": 87,
+      "message": "Payload is not valid JSON",
+      "rule": "invalid-json",
+      "severity": "error",
+      "t": 0,
+      "topic": "uagv/v2/ActuNode/r/state"
+    },
+    {
+      "line": 88,
+      "message": "Payload is not valid JSON",
+      "rule": "invalid-json",
+      "severity": "error",
+      "t": 0,
+      "topic": "uagv/v2/ActuNode/r/state"
+    },
+    {
+      "line": 89,
+      "message": "Payload is not valid JSON",
+      "rule": "invalid-json",
+      "severity": "error",
+      "t": 0,
+      "topic": "uagv/v2/ActuNode/r/state"
+    },
+    {
+      "line": 90,
+      "message": "Payload is not valid JSON",
+      "rule": "invalid-json",
+      "severity": "error",
+      "t": 0,
+      "topic": "uagv/v2/ActuNode/r/state"
+    },
+    {
+      "line": 91,
+      "message": "Payload is not valid JSON",
+      "rule": "invalid-json",
+      "severity": "error",
+      "t": 0,
+      "topic": "uagv/v2/ActuNode/r/state"
+    },
+    {
+      "line": 92,
+      "message": "Payload is not valid JSON",
+      "rule": "invalid-json",
+      "severity": "error",
+      "t": 0,
+      "topic": "uagv/v2/ActuNode/r/state"
+    },
+    {
+      "line": 93,
+      "message": "Payload is not valid JSON",
+      "rule": "invalid-json",
+      "severity": "error",
+      "t": 0,
+      "topic": "uagv/v2/ActuNode/r/state"
+    },
+    {
+      "line": 94,
+      "message": "Payload is not valid JSON",
+      "rule": "invalid-json",
+      "severity": "error",
+      "t": 0,
+      "topic": "uagv/v2/ActuNode/r/state"
+    },
+    {
+      "line": 95,
+      "message": "Payload is not valid JSON",
+      "rule": "invalid-json",
+      "severity": "error",
+      "t": 0,
+      "topic": "uagv/v2/ActuNode/r/state"
+    },
+    {
+      "line": 96,
+      "message": "Payload is not valid JSON",
+      "rule": "invalid-json",
+      "severity": "error",
+      "t": 0,
+      "topic": "uagv/v2/ActuNode/r/state"
+    },
+    {
+      "line": 97,
+      "message": "Payload is not valid JSON",
+      "rule": "invalid-json",
+      "severity": "error",
+      "t": 0,
+      "topic": "uagv/v2/ActuNode/r/state"
+    },
+    {
+      "line": 98,
+      "message": "Payload is not valid JSON",
+      "rule": "invalid-json",
+      "severity": "error",
+      "t": 0,
+      "topic": "uagv/v2/ActuNode/r/state"
+    },
+    {
+      "line": 99,
+      "message": "Payload is not valid JSON",
+      "rule": "invalid-json",
+      "severity": "error",
+      "t": 0,
+      "topic": "uagv/v2/ActuNode/r/state"
+    },
+    {
+      "line": 100,
+      "message": "Payload is not valid JSON",
+      "rule": "invalid-json",
+      "severity": "error",
+      "t": 0,
+      "topic": "uagv/v2/ActuNode/r/state"
+    },
+    {
+      "line": 101,
+      "message": "Payload is not valid JSON",
+      "rule": "invalid-json",
+      "severity": "error",
+      "t": 0,
+      "topic": "uagv/v2/ActuNode/r/state"
+    },
+    {
+      "line": 102,
+      "message": "Payload is not valid JSON",
+      "rule": "invalid-json",
+      "severity": "error",
+      "t": 0,
+      "topic": "uagv/v2/ActuNode/r/state"
+    }
+  ],
+  "sessionId": "<id>",
+  "truncated": true,
+  "withIssues": 101
+}

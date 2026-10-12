@@ -55,7 +55,7 @@ def test_publish_refuses_a_payload_over_the_limit_measured_in_utf8_bytes():
 
 
 def test_the_shared_bridge_is_limited_to_the_brokers_max_packet_size():
-    from app.live import MAX_PAYLOAD_BYTES
+    from app.jsonsafe import MAX_PAYLOAD_BYTES
     from app.mqtt_state import mqtt_bridge
 
     assert mqtt_bridge.max_payload_bytes == MAX_PAYLOAD_BYTES

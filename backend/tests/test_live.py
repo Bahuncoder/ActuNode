@@ -426,12 +426,13 @@ def test_small_state_is_stored_unchanged():
 
 def test_stored_state_memory_is_bounded_under_a_flood():
     from app import live as live_module
+    from app.jsonsafe import MAX_PAYLOAD_BYTES
 
     live = LiveHub()
     pad = "x" * 100_000  # a scalar field alone is big: the flood must not get this stored whole
     body = {"serialNumber": "r", "nodeStates": [{"a": 1}] * 10_000, "pad": pad}
     raw = json.dumps(body).encode()
-    assert len(raw) <= live_module.MAX_PAYLOAD_BYTES
+    assert len(raw) <= MAX_PAYLOAD_BYTES
     for i in range(live_module.MAX_ROBOTS):  # straight to the store: validating 1000 huge states is slow
         live._update_robot(f"uagv/v2/ActuNode/r{i}/state", json.loads(raw), "now", len(raw))
 
