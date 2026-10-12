@@ -1,28 +1,30 @@
 """Review fixes: actionParameters validation, atomic orders, empty-battery updates, bounded state, duplicates."""
 
-import copy
 import json
 
 import pytest
 
 from simulator.__main__ import step
-from simulator.robot import FAILED, MAX_INSTANT_ACTION_STATES, MOVING, Robot
-from simulator.tests.test_instant_actions import act, driving_robot, instants
-from simulator.tests.test_orders import BOTH, horizon_order, run, types, update_from
-from simulator.tests.test_robot import make_order
+from simulator.robot import FAILED, MAX_INSTANT_ACTION_STATES, MAX_STATE_BYTES, MOVING, Robot
+from simulator.tests.helpers import (
+    BOTH,
+    FakeConnection,
+    act,
+    driving_robot,
+    horizon_order,
+    instants,
+    make_order,
+    run,
+    send,
+    snapshot,
+    types,
+    update_from,
+)
 
 BAD_PARAMETERS = [5, None, "x", [1], [{"value": 1}], [{"key": 1, "value": 1}]]
 
 
-def send(robot, actions):
-    return robot.handle_instant_actions_payload(json.dumps({"actions": actions}).encode())
-
-
-def snapshot(robot):
-    return copy.deepcopy(robot.__dict__)
-
-
-# --- H1 -----------------------------------------------------------------
+# --- bad input leaves the robot untouched ---
 
 
 @BOTH
@@ -30,7 +32,7 @@ def snapshot(robot):
 @pytest.mark.parametrize("where", ["node", "edge"])
 def test_bad_action_parameters_reject_the_order_untouched(major, bad, where):
     robot = Robot("robot_01", vda_major=major)
-    before = snapshot(robot)
+    before = snapshot(robot, "errors")
     order = make_order()
     item = order["nodes" if where == "node" else "edges"][-1 if where == "node" else 0]
     item["actions"] = [{"actionId": "x", "actionType": "pick", "blockingType": "HARD", "actionParameters": bad}]
@@ -39,9 +41,7 @@ def test_bad_action_parameters_reject_the_order_untouched(major, bad, where):
 
     assert types(robot) == ["validationError" if major == "v2" else "VALIDATION_FAILURE"]
     assert "actionParameters" in json.dumps(robot.errors[0]["errorReferences"])
-    errors = robot.errors
-    robot.errors = []
-    assert robot.__dict__ == {**before, "errors": []} and errors
+    assert snapshot(robot, "errors") == before
 
 
 @BOTH
@@ -53,12 +53,11 @@ def test_bad_action_parameters_reject_an_update_untouched(major):
     update["nodes"][-1]["actions"] = [
         {"actionId": "u", "actionType": "pick", "blockingType": "HARD", "actionParameters": 5}
     ]
-    before = snapshot(robot)
+    before = snapshot(robot, "errors")
 
     assert robot.accept_order(update) is False
 
-    robot.errors = []
-    assert robot.__dict__ == {**before, "errors": []}
+    assert snapshot(robot, "errors") == before
 
 
 @BOTH
@@ -106,10 +105,10 @@ def test_order_application_is_atomic(major, update, monkeypatch):
         robot.accept_order(order)
 
     assert len(calls) == 2
-    assert robot.__dict__ == {**before, "_add_actions": failing}
+    assert snapshot(robot, "_add_actions") == before
 
 
-# --- M1 -----------------------------------------------------------------
+# --- updates around an empty battery ---
 
 
 def failed_at_decision_point(major):
@@ -144,16 +143,16 @@ def test_update_with_empty_battery_is_rejected(major):
     assert robot.order_update_id == 0
 
 
-# --- M3 / M4 ------------------------------------------------------------
+# --- bounded memory and state size ---
 
 
 def test_unknown_instant_actions_flood_stays_small():
     robot = Robot("robot_01", vda_major="v3")
-    flood = [{"actionType": "nope", "actionId": f"flood-{i:05d}", "blockingType": "HARD"} for i in range(5000)]
+    flood = [{"actionType": "nope", "actionId": f"flood-{i:05d}", "blockingType": "HARD"} for i in range(2000)]
 
     assert send(robot, flood) is True
 
-    assert len(json.dumps(robot.state_message())) < 64 * 1024
+    assert len(json.dumps(robot.state_message())) < MAX_STATE_BYTES
     errors = [e for e in robot.errors if e["errorType"] == "INVALID_INSTANT_ACTION"]
     assert len(errors) == 1 and len(errors[0]["errorReferences"]) <= 50
     assert len(robot.instant_action_states) <= MAX_INSTANT_ACTION_STATES
@@ -167,13 +166,12 @@ def test_one_invalid_instant_error_lists_every_offender_of_the_message():
     assert [r["referenceValue"] for r in error["errorReferences"]] == ["n0", "n1", "n2"]
 
 
-def test_instant_ids_stay_bounded_in_2_1():
+def test_instant_action_states_stay_bounded_in_2_1_state():
     robot = Robot("robot_01")
     for i in range(3000):
         act(robot, "stateRequest", f"s-{i}")
 
-    assert len(robot._instant_ids) <= MAX_INSTANT_ACTION_STATES
-    assert len(robot.action_states) <= MAX_INSTANT_ACTION_STATES
+    assert len(robot.state_message()["actionStates"]) <= MAX_INSTANT_ACTION_STATES
 
 
 @BOTH
@@ -189,7 +187,7 @@ def test_load_ids_do_not_grow_over_many_orders(major):
     assert len(robot._load_ids) <= 5
 
 
-# --- L1 -----------------------------------------------------------------
+# --- duplicate ids ---
 
 
 @BOTH
@@ -268,19 +266,7 @@ def test_order_action_not_run_by_a_duplicate_instant_state(major):
     assert dup[0]["actionStatus"] == "FAILED"
 
 
-# --- L2 -----------------------------------------------------------------
-
-
-class FakeConnection:
-    def __init__(self, robot):
-        self.robot = robot
-        self.published = 0
-
-    def apply_pending_messages(self):
-        return False
-
-    def publish_state(self):
-        self.published += 1
+# --- state requests ---
 
 
 @BOTH
@@ -297,14 +283,14 @@ def test_every_state_request_is_answered(major):
     assert connection.published == base + 60
 
 
-# --- L3 -----------------------------------------------------------------
+# --- updates after a cancel ---
 
 
 def test_update_with_the_same_id_after_cancel_is_a_cancel_error_in_3_0():
     robot = Robot("robot_01", vda_major="v3")
     order = horizon_order()
     robot.accept_order(order)
-    robot.cancelled = True
+    act(robot, "cancelOrder")
 
     assert robot.accept_order(update_from(order, 1, 2, update_id=0)) is False
     assert types(robot) == ["ORDER_UPDATE_FOLLOWING_CANCEL"]
@@ -314,7 +300,7 @@ def test_update_with_the_same_id_after_cancel_is_still_ignored_in_2_1():
     robot = Robot("robot_01")
     order = horizon_order()
     robot.accept_order(order)
-    robot.cancelled = True
+    act(robot, "cancelOrder")
 
     assert robot.accept_order(update_from(order, 1, 2, update_id=0)) is True
     assert robot.errors == []

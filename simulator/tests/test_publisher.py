@@ -1,5 +1,6 @@
 import json
 
+from simulator.__main__ import step
 from simulator.publisher import RobotConnection
 from simulator.robot import Robot
 
@@ -129,9 +130,9 @@ def test_instant_actions_are_applied_and_factsheet_request_publishes_retained():
     request = {"actionType": "factsheetRequest", "actionId": "f1", "blockingType": "NONE"}
     connection.inbox.put((connection.instant_topic, instant(request)))
 
-    assert connection.apply_pending_messages() is True
+    step([connection], 1, 1000)  # applies the message, then answers the request
 
-    assert robot.action_states[0]["actionStatus"] == "FINISHED"
+    assert robot.instant_action_states[0]["actionStatus"] == "FINISHED"
     assert robot.factsheet_requested is False
     topic_name, message, kwargs = published[0]
     assert topic_name == connection.factsheet_topic and message["serialNumber"] == "robot_01"

@@ -6,6 +6,7 @@ import pytest
 from jsonschema import Draft202012Validator
 
 from simulator.robot import ACCEPTED, BLOCKED, COMPLETED, IDLE, MOVING, Robot
+from simulator.tests.helpers import make_order, run_until_done
 from simulator.topics import control_topic, topic
 
 REQUIRED_STATE_FIELDS = {
@@ -27,46 +28,6 @@ REQUIRED_STATE_FIELDS = {
     "errors",
     "safetyState",
 }
-
-
-def make_order(serial="robot_01", order_id="order-1", points=((0, 0), (3, 4))):
-    """Order through `points`; first node (where the robot starts) gets a pick, last a drop."""
-    nodes = []
-    for index, (x, y) in enumerate(points):
-        actions = []
-        if index == 0:
-            actions = [{"actionId": "a-pick", "actionType": "pick", "blockingType": "HARD"}]
-        elif index == len(points) - 1:
-            actions = [{"actionId": "a-drop", "actionType": "drop", "blockingType": "HARD"}]
-        nodes.append(
-            {
-                "nodeId": f"N{index}",
-                "sequenceId": index * 2,
-                "released": True,
-                "nodePosition": {"x": x, "y": y, "mapId": "warehouse"},
-                "actions": actions,
-            }
-        )
-    edges = [
-        {
-            "edgeId": f"N{i - 1}->N{i}",
-            "sequenceId": i * 2 - 1,
-            "released": True,
-            "startNodeId": f"N{i - 1}",
-            "endNodeId": f"N{i}",
-            "actions": [],
-        }
-        for i in range(1, len(points))
-    ]
-    return {"serialNumber": serial, "orderId": order_id, "orderUpdateId": 0, "nodes": nodes, "edges": edges}
-
-
-def run_until_done(robot, dt=0.1, limit=10_000):
-    for _ in range(limit):
-        if robot.mission_status not in (ACCEPTED, MOVING):
-            return
-        robot.update(dt)
-    raise AssertionError("mission never finished")
 
 
 def test_state_message_has_required_vda5050_fields():

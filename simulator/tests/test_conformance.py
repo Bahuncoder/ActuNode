@@ -3,22 +3,11 @@
 The schemas are the ones the backend vendors (backend/app/schemas), so both sides use one copy.
 """
 
-import json
-from pathlib import Path
-
 import pytest
-from jsonschema import Draft202012Validator
 
 from simulator.robot import Robot
-from simulator.tests.test_robot import make_order
+from simulator.tests.helpers import make_order, official
 from simulator.topics import topic
-
-SCHEMAS = Path(__file__).resolve().parents[2] / "backend" / "app" / "schemas"
-FOLDERS = {"v2": "vda5050-2.1.0", "v3": "vda5050-3.0.0"}
-
-
-def official(major: str, name: str) -> Draft202012Validator:
-    return Draft202012Validator(json.loads((SCHEMAS / FOLDERS[major] / f"{name}.schema").read_text()))
 
 
 def messages_in_every_state(major: str) -> list[tuple[str, str, dict]]:

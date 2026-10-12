@@ -4,7 +4,7 @@ import pytest
 
 from simulator.__main__ import MAX_ROBOTS, parking_spot, robot_count, step
 from simulator.robot import Robot
-from simulator.tests.test_robot import make_order
+from simulator.tests.helpers import FakeConnection, make_order
 
 
 def test_ten_robots_park_apart_inside_charging_area():
@@ -26,18 +26,6 @@ def test_robot_count_is_bounded(value):
 
 def test_robot_count_accepts_valid_values():
     assert robot_count("10") == 10
-
-
-class FakeConnection:
-    def __init__(self, robot):
-        self.robot = robot
-        self.published = 0
-
-    def apply_pending_messages(self):
-        return False
-
-    def publish_state(self):
-        self.published += 1
 
 
 def test_step_publishes_on_node_traversal_between_periodic_ticks():

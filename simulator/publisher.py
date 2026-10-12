@@ -92,9 +92,6 @@ class RobotConnection:
             if not self.robot.handle_instant_actions_payload(payload):
                 # Malformed: neither 2.1 nor 3.0 names an error for it, so it is only logged.
                 log.warning("%s: ignored malformed instantActions message", self.robot.robot_id)
-            if self.robot.factsheet_requested:
-                self.robot.factsheet_requested = False
-                self.publish_factsheet()
         elif self.robot.handle_order_payload(payload):
             log.info("%s: accepted order %s", self.robot.robot_id, self.robot.order_id)
         else:

@@ -1,35 +1,20 @@
 """Instant actions per D-35: cancelOrder, pause, requests, clearInstantActions, unknown actions, states and caps."""
 
-import json
-
 import pytest
 
 from simulator.robot import CANCELLED, COMPLETED, FAILED, MAX_INSTANT_ACTION_STATES, MOVING, Robot
-from simulator.tests.test_conformance import official
-from simulator.tests.test_orders import BOTH, horizon_order, run, types
-from simulator.tests.test_robot import make_order
-
-
-def act(robot, action_type, action_id="i-1", **parameters):
-    action = {"actionType": action_type, "actionId": action_id, "blockingType": "HARD"}
-    if parameters:
-        action["actionParameters"] = [{"key": k, "value": v} for k, v in parameters.items()]
-    return robot.handle_instant_actions_payload(json.dumps({"actions": [action]}).encode())
-
-
-def instants(robot):
-    return robot.instant_action_states if robot.vda_major == "v3" else robot.action_states
-
-
-def status(robot, action_id):
-    return next(a["actionStatus"] for a in instants(robot) if a["actionId"] == action_id)
-
-
-def driving_robot(major, order_id="o-1"):
-    robot = Robot("robot_01", vda_major=major)
-    robot.accept_order(make_order(order_id=order_id, points=((0, 0), (10, 0))))
-    run(robot, 2)
-    return robot
+from simulator.tests.helpers import (
+    BOTH,
+    act,
+    driving_robot,
+    horizon_order,
+    instants,
+    make_order,
+    official,
+    run,
+    status,
+    types,
+)
 
 
 @BOTH
@@ -204,8 +189,9 @@ def test_2_1_unknown_action_fails_with_description_only():
     robot = Robot("robot_01")
     act(robot, "dance")
 
-    assert robot.action_states[0]["actionStatus"] == "FAILED"
-    assert "dance" in robot.action_states[0]["resultDescription"]
+    published = robot.state_message()["actionStates"][0]
+    assert published["actionStatus"] == "FAILED"
+    assert "dance" in published["resultDescription"]
     assert robot.errors == []
 
 
@@ -251,10 +237,10 @@ def test_new_order_clears_2_1_instant_states_but_not_3_0():
 def test_new_order_keeps_running_2_1_instant_action():
     robot = Robot("robot_01")
     act(robot, "stateRequest", "s")
-    robot.action_states[0]["actionStatus"] = "RUNNING"  # nothing in the simulator runs long; force it
+    robot.instant_action_states[0]["actionStatus"] = "RUNNING"  # nothing in the simulator runs long; force it
     robot.accept_order(make_order())
 
-    assert [a["actionId"] for a in robot.action_states if a["actionId"] == "s"] == ["s"]
+    assert [a["actionId"] for a in robot.state_message()["actionStates"] if a["actionId"] == "s"] == ["s"]
 
 
 @BOTH

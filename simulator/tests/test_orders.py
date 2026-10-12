@@ -1,66 +1,19 @@
 """Order handling per D-35: error types, idle, first-node reachability, horizon, updates, edge actions, loads."""
 
-import copy
-
 import pytest
 
 from simulator.robot import ACCEPTED, COMPLETED, MOVING, WAITING, Robot
-from simulator.tests.test_conformance import official
-from simulator.tests.test_robot import make_order, run_until_done
-
-BOTH = pytest.mark.parametrize("major", ["v2", "v3"])
-
-
-def types(robot):
-    return [e["errorType"] for e in robot.errors]
-
-
-def run(robot, seconds, dt=0.1):
-    for _ in range(round(seconds / dt)):
-        robot.update(dt)
-
-
-def horizon_order(order_id="h-1", update_id=0, released=2, drop=True):
-    """N0 (0,0) -> N1 (2,0) -> N2 (2,3) -> N3 (5,3); the first `released` nodes are the base."""
-    points = [("N0", 0, 0), ("N1", 2, 0), ("N2", 2, 3), ("N3", 5, 3)]
-    nodes = [
-        {
-            "nodeId": name,
-            "sequenceId": i * 2,
-            "released": i < released,
-            "nodePosition": {"x": x, "y": y, "mapId": "warehouse"},
-            "actions": [{"actionId": f"act-{name}", "actionType": "drop", "blockingType": "HARD"}]
-            if drop and i == 1
-            else [],
-        }
-        for i, (name, x, y) in enumerate(points)
-    ]
-    edges = [
-        {
-            "edgeId": f"{points[i - 1][0]}->{points[i][0]}",
-            "sequenceId": i * 2 - 1,
-            "released": i < released,
-            "startNodeId": points[i - 1][0],
-            "endNodeId": points[i][0],
-            "actions": [{"actionId": f"e-{i}", "actionType": "pick", "blockingType": "HARD"}] if i == 1 else [],
-        }
-        for i in range(1, len(points))
-    ]
-    return {"serialNumber": "robot_01", "orderId": order_id, "orderUpdateId": update_id, "nodes": nodes, "edges": edges}
-
-
-def update_from(order, first, released_to, update_id=1):
-    """An update that starts at node index `first` of `order`, releasing up to index `released_to`."""
-    update = copy.deepcopy(order)
-    update["orderUpdateId"] = update_id
-    update["nodes"] = update["nodes"][first:]
-    update["edges"] = update["edges"][first:]
-    for node in update["nodes"]:
-        node["released"] = node["sequenceId"] <= released_to * 2
-    for edge in update["edges"]:
-        edge["released"] = edge["sequenceId"] <= released_to * 2 - 1
-    return update
-
+from simulator.tests.helpers import (
+    BOTH,
+    act,
+    horizon_order,
+    make_order,
+    official,
+    run,
+    run_until_done,
+    types,
+    update_from,
+)
 
 # --- 1. error types and persistence -------------------------------------
 
@@ -167,7 +120,7 @@ def test_update_after_cancel_is_rejected_by_version():
         robot = Robot("robot_01", vda_major=major)
         order = horizon_order()
         robot.accept_order(order)
-        robot.cancelled = True  # set by cancelOrder (part A2)
+        act(robot, "cancelOrder")
         assert not robot.accept_order(update_from(order, 1, 2))
         assert types(robot) == [expected]
 

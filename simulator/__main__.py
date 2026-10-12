@@ -71,8 +71,13 @@ def step(connections, tick: int, ticks_per_publish: int) -> None:
         before = connection.robot.event_signature()
         connection.robot.update(TICK_S)
         connection.apply_pending_messages()
-        if periodic or connection.robot.state_requested or connection.robot.event_signature() != before:
-            connection.robot.state_requested = False
+        robot = connection.robot
+        # The requests instant actions made (stateRequest, factsheetRequest) are answered here, in one place.
+        if robot.factsheet_requested:
+            robot.factsheet_requested = False
+            connection.publish_factsheet()
+        if periodic or robot.state_requested or robot.event_signature() != before:
+            robot.state_requested = False
             connection.publish_state()
 
 
