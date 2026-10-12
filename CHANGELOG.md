@@ -4,6 +4,20 @@ What changed, per commit, newest first. Status and plans are in [docs/PROGRESS.m
 
 ## Unreleased
 
+### Week 3: orders, order updates, instant actions (D-35)
+- Simulator follows VDA 5050 2.1 and 3.0 order handling: version-specific errors kept until a new order,
+  start node must be reachable, never drives into the horizon (new mission status `WAITING`, plus
+  `newBaseRequest`), order updates stitched at the decision point, edge actions, `loads`, duplicate and
+  malformed orders rejected before anything changes.
+- `instantActions`: `cancelOrder` (new status `CANCELLED`), `startPause`/`stopPause` (`paused`),
+  `stateRequest`, `factsheetRequest`, 3.0 `clearInstantActions`; listed in the factsheet.
+- Backend: orders start at the robot's reported position; `POST /api/missions/{robot_id}/cancel` and
+  `POST /api/missions/{robot_id}/extend` (built from the robot's own state, serialised, 409 when unsafe).
+- UI: Cancel button for robots on a route (and FAILED ones), Load column, WAITING/CANCELLED badges.
+- A robot that ran empty keeps its order (errors never clear an order); after charging it resumes on an
+  order update or needs a cancel (D-33 amended).
+- Validator: `WAITING` and `CANCELLED` in the mission state machine.
+
 ### Week 2 quality gate (D-33, D-34)
 - Battery charges while a robot has no order and stands in the charging area (1 %/s); `charging` is
   reported truthfully; a robot that ran empty there takes orders again once charged. Before, every robot

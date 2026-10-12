@@ -457,7 +457,9 @@ in the charging area. A long lab session degraded silently.
 robot is full within two minutes; `charging` is reported truthfully (2.1 `batteryState`, 3.0
 `powerSupply`). Once an empty robot has charge again its FATAL `batteryEmpty` error is cleared: FATAL
 means "needs a human", and keeping it would make a fleet manager stop sending orders. The mission stays
-FAILED until the next accepted order. A robot that runs empty outside the zone stays empty (that is a
+FAILED until the next accepted order. *Amended by D-35:* the robot keeps its order (errors never clear an
+order, 3.0 §6.6.5.1), so after charging it needs a `cancelOrder` before it takes a new order. A robot
+that runs empty outside the zone stays empty (that is a
 real robot's situation too; low-battery behaviour is Week 6).
 **Consequences.** The lab can run indefinitely. Charging is fast on purpose; it is a lab, not a battery
 model.
@@ -483,3 +485,71 @@ route may truthfully stand still (found when the e2e validation check flagged th
 **Consequences.** Remaining order-handling deviations found by the same review are Week 3 work (horizon
 nodes, edge actions, unknown actions, version-specific error types, start node out of range, loads,
 `instantActions`); listed in PROGRESS.
+
+## D-35 · Week 3: order handling, order updates and instant actions per VDA 5050 2.1 and 3.0
+12 Oct 2026 · Accepted (design before code)
+
+**Context.** Week 3 is "mission sender and state transitions". The Week 2 review listed the deviations
+(PROGRESS, Week 2 gate); the plan adds cancelling and order updates. Rules below quote the official texts
+(2.1 §6.6, §6.8–6.11; 3.0 §6.1–6.2, §6.6). Where 2.1 names no error, ActuNode reuses the closest 2.1 name
+and says so here.
+**Decision (simulator).**
+- *New order* (other `orderId`) only when idle: no node/edge states left and every action FINISHED or
+  FAILED. Otherwise rejected: 3.0 `OTHER_ORDER_ACTIVE`; 2.1 names none → `orderError`.
+- *First node* must be trivially reachable: within `allowedDeviationXY` (2.1 radius in m; 3.0 ellipse
+  `{a, b, theta}`); 0 or absent → the simulator's tolerance (0.25 m). Otherwise rejected: 3.0
+  `START_NODE_OUT_OF_RANGE`; 2.1 → `orderError`. Node 0 counts as traversed at acceptance (its actions run;
+  3.0: not listed in `nodeStates`).
+- *Malformed order*: 2.1 `validationError`, 3.0 `VALIDATION_FAILURE`. *Unsupported action type* (only
+  `pick`, `drop` are supported): 2.1 `orderError`, 3.0 `INVALID_ORDER_ACTION`, with the field as reference.
+  All are WARNING and stay until a new order is accepted.
+- *Order update* (same `orderId`): lower `orderUpdateId` → 2.1 `orderUpdateError`, 3.0
+  `OUTDATED_ORDER_UPDATE`; equal → ignored if identical, 3.0 `SAME_ORDER_UPDATE_ID` if different (2.1:
+  ignored); after a cancel → 3.0 `ORDER_UPDATE_FOLLOWING_CANCEL` (2.1 → `orderUpdateError`). Accepted only
+  if its first node equals the current decision point (last released node: `nodeId` and `sequenceId`; if
+  everything is traversed, that is `lastNodeId`/`lastNodeSequenceId`). Its base is appended after the
+  stitch node (whose actions are not run again), and its horizon replaces the old horizon. A stitch
+  mismatch names no error in either version → 2.1 `orderUpdateError`, 3.0 `VALIDATION_FAILURE`.
+- *Horizon*: `released` is kept from the order; the robot never traverses unreleased nodes or edges. It
+  stops at the decision point: `driving` false, mission status `WAITING`, `newBaseRequest` true when the
+  horizon is non-empty and the decision point is within 1 m.
+- *Actions*: node actions WAITING → FINISHED on traversal (instant, allowed by 3.0 Table 12); edge actions
+  WAITING → RUNNING when the edge is entered → FINISHED when its end node is traversed. Horizon actions
+  stay WAITING. `blockingType` has no effect (all simulated actions are instant).
+- *Loads*: the robot knows its load state, so `loads` is always sent: `[]` empty; after `pick`,
+  `[{"loadId": <parameter or "">}]`; `drop` empties it. A `pick` while loaded or a `drop` while empty
+  FAILS that action.
+- *instantActions* (subscribed now): each gets an action state (2.1 `actionStates`, 3.0
+  `instantActionStates`). `cancelOrder`: stop now (free navigation), clear `nodeStates`/`edgeStates`,
+  WAITING/RUNNING order actions → FAILED, keep `orderId`/`orderUpdateId`/`lastNode*`, mission status
+  `CANCELLED`, action FINISHED; with no active order (or, 3.0, another `orderId` given) → FAILED +
+  `noOrderToCancel` / `NO_ORDER_TO_CANCEL`. `startPause`/`stopPause`: `paused` flag, no driving while
+  paused, then resume. `stateRequest`, `factsheetRequest`: publish now, FINISHED. 3.0
+  `clearInstantActions` empties `instantActionStates`. Unknown instant action: FAILED, plus 3.0
+  `INVALID_INSTANT_ACTION` (2.1 names none: FAILED with a `resultDescription` only). Instant action states
+  are capped (oldest finished first). The factsheet lists these instant actions. The `instantActions` message carries its
+  list under `actions` in both versions (the official 2.1.0 and 3.0.0 schemas require that key).
+**Decision (backend and UI).**
+- Orders start where the robot is: node 0 at the robot's last reported position (observed from its own
+  state; D-28 ties a state topic to the robot's login), followed by pick and drop. If the robot has no
+  position yet, the old shape is sent and the response warns that the robot may reject it.
+- `POST /api/missions/{robot_id}/cancel` sends `cancelOrder`; `POST /api/missions/{robot_id}/extend`
+  sends an order update that continues from the decision point to a new destination. Both use the same
+  addressing rules as orders (D-21: the request names the target or the defaults apply). The backend
+  remembers the last order it sent per robot (memory only) to build updates.
+- Mission statuses `WAITING` and `CANCELLED` join the state machine (validator transitions, UI badges);
+  the UI gets a Cancel button for robots on a route.
+*Amended after the Week 3 review (12 Oct):* `extend` takes the order, update id and decision point from
+the robot's own latest state for the target identity, not from a memory of what was sent; the memory only
+supplies the stitch node's contents. It refuses (409) when the robot has no state, cancelled, runs an
+order ActuNode did not send, or has not confirmed the previous update, and one lock serialises extends
+(two at once could both send the same update id). The simulator validates every field (including
+`actionParameters`, duplicate action and sequence ids) before changing anything and applies an order
+atomically; a recharged FAILED robot resumes on an order update, and an update while the battery is empty
+is rejected (2.1 `orderUpdateError`; 3.0 `MOBILE_ROBOT_NOT_AVAILABLE`, the closest named type; the
+3.0 schema's `errorType` is an extensible string). At most 50 instant actions are handled per message,
+with one `INVALID_INSTANT_ACTION` per message, so a hostile message cannot make the state exceed the
+broker's packet limit. Every `stateRequest` is answered with a publish.
+**Consequences.** Week 3 closes the Week 2 review's order findings and adds cancel and order updates.
+`blockingType`, retriable actions, corridors and zones stay out of scope (not used by ActuNode's
+missions); listed as known limits in VDA5050_NOTES.

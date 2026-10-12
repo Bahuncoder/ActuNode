@@ -55,17 +55,30 @@ duplicate, or replay?"), not an error.
 - Sequence ids alternate: nodes **even**, edges **odd**: node 0, edge 1, node 2, edge 3, node 4.
   Each edge connects the nodes right before and after it.
 - `released: true` nodes/edges are the **base** (robot may drive there); unreleased ones are the
-  **horizon** (planned, not yet authorised). ActuNode currently releases everything.
-- Orders are updated with the same `orderId` and a higher `orderUpdateId`. Not used yet.
-- Actions (`pick`, `drop`, …) have `blockingType` NONE / SOFT / HARD.
+  **horizon** (planned, not yet authorised). The simulator never drives into the horizon: it stops at
+  the last released node (the decision point) and waits (D-35). ActuNode's own missions release
+  everything.
+- Orders are updated with the same `orderId` and a higher `orderUpdateId`; the update's first node must
+  be the decision point (stitching). ActuNode's `extend` endpoint sends such updates (D-35).
+- The first node of an order must be where the robot already is (within `allowedDeviationXY`), so
+  ActuNode's orders start with a node at the robot's reported position.
+- Actions (`pick`, `drop`, …) have `blockingType` NONE / SOFT / HARD (3.0 adds SINGLE).
+- `instantActions` act immediately: `cancelOrder`, `startPause`/`stopPause`, `stateRequest`,
+  `factsheetRequest` (3.0 also `clearInstantActions`). 3.0 makes cancel and pause mandatory.
+- Known limits of the simulator: `blockingType` has no effect (its actions are instant), no retriable
+  actions, no corridors, zones or maps management.
 
 ## State
 
 - Reports `orderId`, `lastNodeId`, `lastNodeSequenceId`, and the **remaining** `nodeStates` and
   `edgeStates`: the robot removes nodes and edges as it passes them.
 - `actionStates` move WAITING → INITIALIZING → RUNNING → FINISHED / FAILED.
-- `errors` have `errorType`, `errorLevel` (WARNING / FATAL) and `errorReferences` pointing at the
-  order, node, edge or action involved.
+- `errors` have `errorType`, `errorLevel` (2.1: WARNING / FATAL; 3.0: WARNING / URGENT / CRITICAL /
+  FATAL) and `errorReferences` pointing at the order, node, edge or action involved. 2.1 names only a
+  few types in prose (`validationError`, `orderError`, `orderUpdateError`, `noOrderToCancel`); 3.0 has
+  a table (`VALIDATION_FAILURE`, `OTHER_ORDER_ACTIVE`, `OUTDATED_ORDER_UPDATE`, …). Order errors stay
+  until a new order is accepted. An error never clears the robot's order.
+- `loads`: omitted if the robot cannot tell; `[]` means unloaded.
 - `driving`, `operatingMode`, `batteryState`, `safetyState` (eStop, fieldViolation), optional
   `agvPosition` and `velocity`.
 

@@ -70,6 +70,7 @@ and produce a `warning` in the mission response when they do not match.
 | Topic | Publisher | Subscriber | QoS | Retained | Content |
 |---|---|---|---|---|---|
 | `uagv/v2/ActuNode/<robot>/order` | backend | that robot | 0 | no | VDA 5050 order |
+| `uagv/v2/ActuNode/<robot>/instantActions` | backend | that robot | 0 | no | VDA 5050 instant actions (`cancelOrder`) |
 | `uagv/v2/ActuNode/<robot>/state` | robot | backend | 0 | no | VDA 5050 state + `actunode.missionStatus`; every 1 s and on every status change |
 | `uagv/v2/ActuNode/<robot>/connection` | robot (and broker, as last will) | backend | 1 | yes | `ONLINE` / `OFFLINE` / `CONNECTIONBROKEN` |
 | `uagv/v2/ActuNode/<robot>/factsheet` | robot, on every connect | backend (validated) | 0 | yes | What the simulated robot is and can do (D-34) |
@@ -140,6 +141,8 @@ WebSocket client's queue → `send_json`.
 | POST | `/api/login`, `/api/logout` | Exchange the API token for a session cookie / end it (D-25) |
 | GET | `/api/locations` | Named warehouse locations |
 | POST | `/api/missions` | Send a mission (robot, source, destination, load; optional `manufacturer`, `vda_version`) |
+| POST | `/api/missions/{robot}/cancel` | Send a `cancelOrder` instant action (optional `manufacturer`, `vda_version`); 202 with `actionId`, `topic` (D-35) |
+| POST | `/api/missions/{robot}/extend` | Order update extending the order the robot reports running (from its own state, if ActuNode sent it) to `to_location` (optional `action`, `manufacturer`, `vda_version`); 409 if unknown, cancelled, foreign or the previous update is unconfirmed (D-35) |
 | GET | `/api/robots` | Latest connection + state per robot |
 | GET | `/api/proximity` | Pairs of live robots (by key, e.g. `v2/ActuNode/robot_01`) currently closer than `ACTUNODE_PROXIMITY_M` (D-22, D-27) |
 | GET | `/api/messages` | Recent MQTT messages with validation issues |
