@@ -197,3 +197,64 @@ describe('payloads that are valid JSON but not what VDA 5050 says', () => {
     expect(screen.getByText('r1')).toBeTruthy()
   })
 })
+
+describe('RobotTable cancel and load (D-35)', () => {
+  const withState = (base: Robot, extra: Record<string, unknown>): Robot => ({
+    ...base,
+    state: { ...base.state, ...extra } as Robot['state'],
+  })
+  const status = (base: Robot, missionStatus: string, extra: Record<string, unknown> = {}) =>
+    withState(base, { actunode: { missionStatus }, ...extra })
+
+  it('offers Cancel only for active missions', () => {
+    const active = ['ACCEPTED', 'MOVING', 'WAITING', 'BLOCKED', 'FAILED'].map((s) => ({ ...status(healthy, s), key: s, robotId: `r_${s}` }))
+    render(<RobotTable robots={active} />)
+    expect(screen.getAllByRole('button', { name: /^Cancel mission for/ })).toHaveLength(5)
+  })
+
+  it('hides Cancel for inactive missions', () => {
+    const inactive = ['IDLE', 'COMPLETED', 'CANCELLED'].map((s) => ({ ...status(healthy, s), key: s, robotId: `r_${s}` }))
+    render(<RobotTable robots={inactive} />)
+    expect(screen.queryAllByRole('button', { name: /^Cancel mission for/ })).toHaveLength(0)
+  })
+
+  it('posts the clicked row identity', async () => {
+    const fetchMock = vi.fn().mockResolvedValue({ ok: true, json: async () => ({ actionId: 'a', topic: 't' }) })
+    vi.stubGlobal('fetch', fetchMock)
+    render(<RobotTable robots={[healthy, status(v3robot, 'MOVING')]} />)
+
+    fireEvent.click(screen.getByRole('button', { name: 'Cancel mission for robot_31' }))
+
+    await waitFor(() => expect(fetchMock).toHaveBeenCalled())
+    expect(fetchMock.mock.calls[0][0]).toBe('/api/missions/robot_31/cancel')
+    expect(JSON.parse(fetchMock.mock.calls[0][1].body)).toEqual({ manufacturer: 'ActuNode', vda_version: '3' })
+  })
+
+  it('shows the server error on a 409', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue({ ok: false, status: 409, json: async () => ({ detail: 'no active order' }) }))
+    render(<RobotTable robots={[healthy]} />)
+
+    fireEvent.click(screen.getByRole('button', { name: 'Cancel mission for robot_01' }))
+
+    expect((await screen.findByText('no active order')).className).toContain('error')
+  })
+
+  it('renders the Load column', () => {
+    const robots = [
+      { ...withState(healthy, { loads: [] }), key: 'a', robotId: 'r_empty' },
+      { ...withState(healthy, { loads: [{ loadId: 'pallet-9' }] }), key: 'b', robotId: 'r_full' },
+      { ...healthy, key: 'c', robotId: 'r_old' },
+    ]
+    render(<RobotTable robots={robots} />)
+    expect(screen.getByText('empty')).toBeTruthy()
+    expect(screen.getByText('pallet-9')).toBeTruthy()
+    const loadCol = screen.getAllByRole('columnheader').findIndex((th) => th.textContent === 'Load')
+    expect(screen.getAllByRole('row')[3].querySelectorAll('td')[loadCol].textContent).toBe('—')
+  })
+
+  it('renders WAITING and CANCELLED badges', () => {
+    render(<RobotTable robots={[{ ...status(healthy, 'WAITING'), key: 'w', robotId: 'w' }, { ...status(healthy, 'CANCELLED'), key: 'c', robotId: 'c' }]} />)
+    expect(screen.getByText('WAITING').className).toContain('status-waiting')
+    expect(screen.getByText('CANCELLED').className).toContain('status-cancelled')
+  })
+})

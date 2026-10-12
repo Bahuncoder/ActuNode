@@ -452,6 +452,14 @@ code,
   fill: var(--signal-blue);
 }
 
+.warehouse-map .robot.status-waiting circle {
+  fill: #ffb86b;
+}
+
+.warehouse-map .robot.status-cancelled circle {
+  fill: #3a4b5c;
+}
+
 .warehouse-map .robot.status-completed circle {
   fill: var(--machine-mint);
 }
@@ -532,6 +540,16 @@ code,
 .badge.status-moving {
   color: var(--node-navy);
   background: var(--signal-blue);
+}
+
+.badge.status-waiting {
+  color: var(--node-navy);
+  background: #ffb86b;
+}
+
+.badge.status-cancelled {
+  color: var(--fog-white);
+  background: #3a4b5c;
 }
 
 .badge.warn {

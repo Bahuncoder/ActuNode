@@ -1,4 +1,4 @@
-import type { RecordingStatus } from './live'
+import type { RecordingStatus, Robot } from './live'
 
 export type Health = {
   status: string
@@ -80,6 +80,14 @@ export async function injectFailure(robotId: string, action: 'inject' | 'clear')
     const body = await response.json().catch(() => ({}))
     throw new Error(errorDetail(body) ?? `Request failed: ${response.status}`)
   }
+}
+
+// The person clicked this row, so its identity is the explicit target (D-21).
+export async function cancelMission(robot: Robot): Promise<void> {
+  await postJson(`/api/missions/${encodeURIComponent(robot.robotId)}/cancel`, {
+    manufacturer: robot.manufacturer,
+    vda_version: robot.vdaMajor?.replace(/^v/, ''),
+  })
 }
 
 export type SessionSummary = {

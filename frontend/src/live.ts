@@ -31,6 +31,7 @@ export type RobotState = {
   powerSupply?: { stateOfCharge: number; charging: boolean }
   nodeStates: NodeState[]
   errors: RobotError[]
+  loads?: { loadId: string }[]
   actunode?: { missionStatus: string }
 }
 
