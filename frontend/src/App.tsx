@@ -2,10 +2,12 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import {
   fetchHealth,
   fetchLocations,
+  fetchMap,
   fetchSession,
   logout,
   type Health,
   type Location,
+  type MapInfo,
   type SessionStatus,
 } from './api'
 import FailurePanel from './FailurePanel'
@@ -38,6 +40,7 @@ function Lab({ onLogout }: { onLogout?: () => void }) {
   const [health, setHealth] = useState<Health | null>(null)
   const [apiUp, setApiUp] = useState<boolean | null>(null)
   const [locations, setLocations] = useState<Record<string, Location>>({})
+  const [map, setMap] = useState<MapInfo | undefined>()
   const feed = useLiveFeed()
 
   useEffect(() => {
@@ -72,6 +75,12 @@ function Lab({ onLogout }: { onLogout?: () => void }) {
     fetchLocations().then(setLocations).catch(() => {})
   }, [apiUp, locations])
 
+  useEffect(() => {
+    // Once is enough; until it loads (or if it fails) the map draws its built-in floor.
+    if (map || !apiUp) return
+    fetchMap().then(setMap).catch(() => {})
+  }, [apiUp, map])
+
   const mqttUp = apiUp === null ? null : (health?.mqtt.connected ?? false)
   const robots = Object.values(feed.robots).sort((a, b) => a.robotId.localeCompare(b.robotId) || a.key.localeCompare(b.key))
 
@@ -102,7 +111,7 @@ function Lab({ onLogout }: { onLogout?: () => void }) {
         <PanelBoundary title="Warehouse">
           <section className="panel panel-wide">
             <h2>Warehouse</h2>
-            <WarehouseMap robots={robots} locations={locations} proximity={feed.proximity} />
+            <WarehouseMap robots={robots} locations={locations} proximity={feed.proximity} map={map} />
           </section>
         </PanelBoundary>
 

@@ -10,6 +10,8 @@ export default defineConfig({
     environment: 'jsdom',
   },
   server: {
+    // Only the shared contract fixtures outside this folder may be read (used by tests, D-38).
+    fs: { allow: ['.', '../contracts'] },
     proxy: {
       '/api': {
         target: process.env.ACTUNODE_API_URL ?? 'http://localhost:8000',

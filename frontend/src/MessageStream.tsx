@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { memo, useCallback, useState } from 'react'
 import { num, point, type MqttMessage } from './live'
 
 const SHOWN = 200
@@ -65,6 +65,7 @@ export default function MessageStream({ messages }: { messages: MqttMessage[] })
   const [onlyIssues, setOnlyIssues] = useState(false)
   const [paused, setPaused] = useState<MqttMessage[] | null>(null)
   const [expanded, setExpanded] = useState<number | null>(null)
+  const toggle = useCallback((id: number) => setExpanded((current) => (current === id ? null : id)), [])
 
   const source = paused ?? messages
   const shown = source
@@ -94,44 +95,56 @@ export default function MessageStream({ messages }: { messages: MqttMessage[] })
 
       <ol className="stream">
         {shown.length === 0 && <li className="empty">No messages yet.</li>}
-        {shown.map((message) => {
-          const kind = kindOf(message.topic)
-          const open = expanded === message.id
-          return (
-            <li key={message.id} className={rowClass(message)}>
-              <button type="button" className="stream-row" onClick={() => setExpanded(open ? null : message.id)}>
-                <span className="mono muted">{time(message.receivedAt)}</span>
-                <span className={`kind kind-${kind}`}>{kind}</span>
-                <span className="mono">{robotOf(message.topic)}</span>
-                <span className="mono stream-summary">{summary(message)}</span>
-                {(message.issues ?? []).length > 0 && (
-                  <span className={`issue-count ${message.issues.some((i) => i.severity === 'error') ? 'error' : 'warning'}`}>
-                    {message.issues.length} issue{message.issues.length > 1 ? 's' : ''}
-                  </span>
-                )}
-              </button>
-              {(message.issues ?? []).length > 0 && (
-                <ul className="issues">
-                  {message.issues.map((issue, index) => (
-                    <li key={index} className={issue.severity}>
-                      <span className="mono">{issue.rule}</span> {issue.message}
-                      {issue.path && <span className="mono muted"> at {issue.path}</span>}
-                    </li>
-                  ))}
-                </ul>
-              )}
-              {open && (
-                <pre className="raw">
-                  {message.topic}
-                  {message.retained ? '  (retained)' : ''}
-                  {'\n\n'}
-                  {message.validJson ? JSON.stringify(message.payload, null, 2) : String(message.payload)}
-                </pre>
-              )}
-            </li>
-          )
-        })}
+        {shown.map((message) => (
+          <MessageRow key={message.id} message={message} open={expanded === message.id} onToggle={toggle} />
+        ))}
       </ol>
     </div>
   )
 }
+
+// Memoized on the message object, which keeps its identity while it stays in the feed.
+const MessageRow = memo(function MessageRow({
+  message,
+  open,
+  onToggle,
+}: {
+  message: MqttMessage
+  open: boolean
+  onToggle: (id: number) => void
+}) {
+  const kind = kindOf(message.topic)
+  return (
+    <li className={rowClass(message)}>
+        <button type="button" className="stream-row" onClick={() => onToggle(message.id)}>
+          <span className="mono muted">{time(message.receivedAt)}</span>
+          <span className={`kind kind-${kind}`}>{kind}</span>
+          <span className="mono">{robotOf(message.topic)}</span>
+          <span className="mono stream-summary">{summary(message)}</span>
+          {(message.issues ?? []).length > 0 && (
+            <span className={`issue-count ${message.issues.some((i) => i.severity === 'error') ? 'error' : 'warning'}`}>
+              {message.issues.length} issue{message.issues.length > 1 ? 's' : ''}
+            </span>
+          )}
+        </button>
+        {(message.issues ?? []).length > 0 && (
+          <ul className="issues">
+            {message.issues.map((issue, index) => (
+              <li key={index} className={issue.severity}>
+                <span className="mono">{issue.rule}</span> {issue.message}
+                {issue.path && <span className="mono muted"> at {issue.path}</span>}
+              </li>
+            ))}
+          </ul>
+        )}
+        {open && (
+          <pre className="raw">
+            {message.topic}
+            {message.retained ? '  (retained)' : ''}
+            {'\n\n'}
+            {message.validJson ? JSON.stringify(message.payload, null, 2) : String(message.payload)}
+          </pre>
+        )}
+      </li>
+  )
+})

@@ -833,3 +833,14 @@ code,
 .connecting {
   padding: 2rem;
 }
+
+/* Robot clamped to the map edge because its position is outside the map. */
+.robot.off-map circle {
+  stroke-dasharray: 3 2;
+}
+
+/* Robot reporting a different map id than the one drawn. */
+.robot.other-map {
+  opacity: 0.35;
+  filter: grayscale(1);
+}

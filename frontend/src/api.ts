@@ -20,6 +20,19 @@ export async function fetchHealth(): Promise<Health> {
 
 export type Location = { x: number; y: number; zone: string }
 
+export type MapInfo = {
+  size: { width: number; height: number }
+  zones: { id: string; label: string; x: number; y: number; w: number; h: number }[]
+  racks: { x: number; y: number; w: number; h: number }[]
+  locations: Record<string, Location>
+}
+
+export async function fetchMap(): Promise<MapInfo> {
+  const response = await fetch('/api/map')
+  if (!response.ok) throw new Error(`Could not load map: ${response.status}`)
+  return response.json()
+}
+
 export type MissionRequest = {
   robot_id: string
   destination: string

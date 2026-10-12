@@ -2,6 +2,10 @@ import { useEffect, useReducer } from 'react'
 
 const MAX_MESSAGES = 500
 const RECONNECT_MS = 2000
+// Close code 1013: the server dropped us for lagging; a fresh snapshot is one reconnect away.
+const LAGGING_CLOSE = 1013
+const LAGGING_RECONNECT_MS = 250
+const FRAME_FALLBACK_MS = 50
 // Same caps as the backend (backend/app/live.py MAX_ROBOTS, FAILURE_BUFFER).
 const MAX_ROBOTS = 1000
 const MAX_FAILURES = 200
@@ -142,7 +146,8 @@ type LiveEvent =
   | { type: 'validation'; validation: ValidationSummary }
   | { type: 'recording'; recording: RecordingStatus | null; stoppedReason?: string; stopped?: RecordingStatus }
   | { type: 'replay'; replay: ReplayStatus | null }
-  | { type: 'message'; message: MqttMessage; robot: Robot | null }
+  // robot.stateFromMessage: the robot carries no state of its own; its state is message.payload (D-38).
+  | { type: 'message'; message: MqttMessage; robot: (Robot & { stateFromMessage?: boolean }) | null }
   | { type: 'failure'; failure: FailureEntry }
 
 export type Feed = {
@@ -157,7 +162,7 @@ export type Feed = {
   proximity: ProximityPair[]
 }
 
-type Action = { type: 'connected' | 'disconnected' } | { type: 'event'; event: LiveEvent }
+type Action = { type: 'connected' | 'disconnected' } | { type: 'event'; event: LiveEvent } | { type: 'events'; events: LiveEvent[] }
 
 // Exported for tests.
 export function reducer(feed: Feed, action: Action): Feed {
@@ -168,6 +173,8 @@ export function reducer(feed: Feed, action: Action): Feed {
       return { ...feed, connected: false }
     case 'event':
       return applyEvent(feed, action.event)
+    case 'events':
+      return action.events.reduce(applyEvent, feed)
   }
 }
 
@@ -212,9 +219,12 @@ function applyEvent(feed: Feed, event: LiveEvent): Feed {
 
   let robots = feed.robots
   if (event.robot) {
+    const { stateFromMessage, ...sent } = event.robot
+    const robot: Robot = stateFromMessage ? { ...sent, state: event.message.payload as RobotState } : sent
     // Delete first so an updated robot moves to the end; the oldest entry is the first key.
-    const { [event.robot.key]: _old, ...rest } = feed.robots
-    robots = { ...rest, [event.robot.key]: event.robot }
+    // Other robots keep their object identity, so memoized rows skip them.
+    const { [robot.key]: _old, ...rest } = feed.robots
+    robots = { ...rest, [robot.key]: robot }
     const keys = Object.keys(robots)
     if (keys.length > MAX_ROBOTS) delete robots[keys[0]]
   }
@@ -267,6 +277,28 @@ export function useLiveFeed(): Feed {
     let socket: WebSocket | null = null
     let retry: ReturnType<typeof setTimeout> | undefined
     let closed = false
+    // Frames queue here and are applied in one state update per animation frame.
+    let queue: LiveEvent[] = []
+    let frame: { cancel: () => void } | null = null
+
+    function flush() {
+      frame = null
+      if (queue.length === 0) return
+      const events = queue
+      queue = []
+      dispatch({ type: 'events', events })
+    }
+
+    function schedule() {
+      if (frame) return
+      if (typeof requestAnimationFrame === 'function') {
+        const id = requestAnimationFrame(flush)
+        frame = { cancel: () => cancelAnimationFrame(id) }
+      } else {
+        const id = setTimeout(flush, FRAME_FALLBACK_MS)
+        frame = { cancel: () => clearTimeout(id) }
+      }
+    }
 
     function connect() {
       const protocol = window.location.protocol === 'https:' ? 'wss' : 'ws'
@@ -274,14 +306,17 @@ export function useLiveFeed(): Feed {
       socket.onopen = () => dispatch({ type: 'connected' })
       socket.onmessage = (message) => {
         try {
-          dispatch({ type: 'event', event: JSON.parse(message.data) })
+          queue.push(JSON.parse(message.data))
+          schedule()
         } catch {
           console.warn('ActuNode: ignored a live frame the browser could not parse')
         }
       }
-      socket.onclose = () => {
+      socket.onclose = (event) => {
+        frame?.cancel()
+        flush() // events that arrived before the drop come before 'disconnected'
         dispatch({ type: 'disconnected' })
-        if (!closed) retry = setTimeout(connect, RECONNECT_MS)
+        if (!closed) retry = setTimeout(connect, event.code === LAGGING_CLOSE ? LAGGING_RECONNECT_MS : RECONNECT_MS)
       }
     }
 
@@ -289,6 +324,7 @@ export function useLiveFeed(): Feed {
     return () => {
       closed = true
       clearTimeout(retry)
+      frame?.cancel()
       socket?.close()
     }
   }, [])
@@ -310,10 +346,16 @@ export function point(value: unknown): { x: number; y: number } | undefined {
   return x === undefined || y === undefined ? undefined : { x, y }
 }
 
-export function robotPose(robot: Robot): { x: number; y: number; theta: number } | undefined {
-  const raw = robot.state?.agvPosition ?? robot.state?.mobileRobotPosition // 2.x or 3.0
-  const position = point(raw)
-  return position && { ...position, theta: num(raw?.theta) ?? 0 }
+export function robotPose(robot: Robot): { x: number; y: number; theta: number; mapId?: string } | undefined {
+  // 2.x or 3.0; the first that is well formed, like the backend (proximity.py state_position).
+  for (const raw of [robot.state?.agvPosition, robot.state?.mobileRobotPosition]) {
+    const position = point(raw)
+    if (position) {
+      const mapId = (raw as { mapId?: unknown }).mapId
+      return { ...position, theta: num(raw?.theta) ?? 0, ...(typeof mapId === 'string' && { mapId }) }
+    }
+  }
+  return undefined
 }
 
 export function batteryCharge(robot: Robot): number | undefined {

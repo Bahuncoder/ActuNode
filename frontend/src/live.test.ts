@@ -1,5 +1,7 @@
 import { renderHook, act } from '@testing-library/react'
 import { describe, expect, it, vi } from 'vitest'
+// Shared with the backend tests (backend/tests/test_live.py): the real shape the hub broadcasts (D-38).
+import contractMessageEvent from '../../contracts/live_message_event.json?raw'
 import {
   batteryCharge,
   identitiesOf,
@@ -38,6 +40,20 @@ function robotWith(state: unknown): Robot {
   return { key: 'v2/ActuNode/r1', robotId: 'r1', connection: 'ONLINE', state: state as Robot['state'], lastSeen: null }
 }
 
+// Manual animation frames: queued callbacks run on flush().
+function stubFrames() {
+  let queue: (() => void)[] = []
+  vi.stubGlobal('requestAnimationFrame', (cb: () => void) => queue.push(cb))
+  vi.stubGlobal('cancelAnimationFrame', () => {})
+  return {
+    flush() {
+      const run = queue
+      queue = []
+      run.forEach((cb) => cb())
+    },
+  }
+}
+
 describe('defensive readers for robot data', () => {
   it('accept only finite numbers', () => {
     expect(num(3.5)).toBe(3.5)
@@ -67,6 +83,11 @@ describe('defensive readers for robot data', () => {
     expect(text(robot.state?.orderId)).toBe('—')
   })
 
+  it('falls back to mobileRobotPosition when agvPosition is malformed', () => {
+    const robot = robotWith({ agvPosition: { x: 'left', y: 2 }, mobileRobotPosition: { x: 3, y: 4, theta: 1 } })
+    expect(robotPose(robot)).toEqual({ x: 3, y: 4, theta: 1 })
+  })
+
   it('read a well-formed state', () => {
     const robot = robotWith({
       agvPosition: { x: 1, y: 2, theta: 0.5 },
@@ -80,6 +101,18 @@ describe('defensive readers for robot data', () => {
     expect(routePoints(robot)).toEqual([{ x: 3, y: 4 }])
     expect(robotErrors(robot)).toEqual(['Path blocked'])
     expect(missionStatus(robot)).toBe('BLOCKED')
+  })
+})
+
+describe('backend contract', () => {
+  it('applies a state event exactly as the backend sends it (robot without state, stateFromMessage)', () => {
+    const event = { ...JSON.parse(contractMessageEvent), id: 1, receivedAt: 'x' }
+    event.message = { ...event.message, id: 1, receivedAt: 'x' }
+    const feed = reducer(empty, { type: 'event', event })
+    const robot = feed.robots[event.robot.key]
+
+    expect(missionStatus(robot)).toBe('MOVING')
+    expect(robotPose(robot)?.x).toBe(4)
   })
 })
 
@@ -135,7 +168,7 @@ describe('VDA 5050 3.0 robots', () => {
   })
 
   it('reads position and charge from the 3.0 field names', () => {
-    expect(robotPose(v3)).toEqual({ x: 4, y: 5, theta: 1 })
+    expect(robotPose(v3)).toEqual({ x: 4, y: 5, theta: 1, mapId: 'warehouse' })
     expect(batteryCharge(v3)).toBe(72.5)
   })
 
@@ -188,11 +221,13 @@ describe('live feed hardening', () => {
       sockets.push(this as (typeof sockets)[number])
     })
     const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
+    const frames = stubFrames()
     const { result } = renderHook(() => useLiveFeed())
     const snap = { type: 'snapshot', robots: [robotWith(null)], messages: [], failures: [], recording: null, replay: null, validation: null }
     act(() => {
       sockets[0].onmessage({ data: '{"type":"snapshot","robots":[{"x":NaN}]}' })
       sockets[0].onmessage({ data: JSON.stringify(snap) })
+      frames.flush()
     })
     expect(Object.keys(result.current.robots)).toEqual(['v2/ActuNode/r1'])
     expect(warn).toHaveBeenCalled()
@@ -215,5 +250,97 @@ describe('live feed hardening', () => {
     }
     expect(feed.failures).toHaveLength(200)
     expect(feed.failures.at(-1)?.injectionId).toBe('f300')
+  })
+})
+
+describe('live feed batching and backend contract', () => {
+  type FakeSocket = { onmessage: (m: { data: string }) => void; onclose: (e: { code: number }) => void; onopen: () => void; close: () => void }
+  function setup() {
+    const sockets: FakeSocket[] = []
+    vi.stubGlobal('WebSocket', function (this: FakeSocket) {
+      this.close = () => {}
+      sockets.push(this)
+    })
+    const frames = stubFrames()
+    let renders = 0
+    const hook = renderHook(() => {
+      renders++
+      return useLiveFeed()
+    })
+    const send = (event: unknown) => sockets.at(-1)!.onmessage({ data: JSON.stringify(event) })
+    return { sockets, frames, hook, send, renders: () => renders }
+  }
+
+  it('applies all frames of one animation frame in one update, in order', () => {
+    const { frames, hook, send, renders } = setup()
+    const before = renders()
+    act(() => {
+      send({ type: 'message', message: message(1), robot: null })
+      send({ type: 'message', message: message(2), robot: null })
+      send({ type: 'message', message: message(2), robot: null })
+      send({ type: 'message', message: message(3), robot: null })
+    })
+    expect(renders()).toBe(before)
+    act(() => frames.flush())
+    expect(renders()).toBe(before + 1)
+    expect(hook.result.current.messages.map((m) => m.id)).toEqual([1, 2, 3])
+    vi.unstubAllGlobals()
+  })
+
+  it('falls back to a 50 ms timer without requestAnimationFrame', () => {
+    vi.useFakeTimers()
+    const { hook, send } = setup()
+    vi.stubGlobal('requestAnimationFrame', undefined)
+    act(() => send({ type: 'message', message: message(1), robot: null }))
+    expect(hook.result.current.messages).toHaveLength(0)
+    act(() => {
+      vi.advanceTimersByTime(50)
+    })
+    expect(hook.result.current.messages).toHaveLength(1)
+    vi.useRealTimers()
+    vi.unstubAllGlobals()
+  })
+
+  it('takes the robot state from the message payload when stateFromMessage is set', () => {
+    const { frames, hook, send } = setup()
+    const payload = { orderId: 'o1' }
+    const robot = { ...robotWith(undefined), state: undefined, stateFromMessage: true }
+    act(() => {
+      send({ type: 'message', message: { ...message(1), payload }, robot })
+      frames.flush()
+    })
+    expect(hook.result.current.robots['v2/ActuNode/r1'].state).toEqual(payload)
+    expect(hook.result.current.robots['v2/ActuNode/r1']).not.toHaveProperty('stateFromMessage')
+    vi.unstubAllGlobals()
+  })
+
+  it('keeps unchanged robots the same object when another robot changes', () => {
+    const a = { ...robotWith(null), key: 'a', robotId: 'a' }
+    const b = { ...robotWith(null), key: 'b', robotId: 'b' }
+    let feed = reducer(empty, { type: 'event', event: { type: 'message', robot: a, message: message(1) } })
+    feed = reducer(feed, { type: 'event', event: { type: 'message', robot: b, message: message(2) } })
+    const next = reducer(feed, { type: 'event', event: { type: 'message', robot: { ...b }, message: message(3) } })
+    expect(next.robots.a).toBe(feed.robots.a)
+  })
+
+  it('reconnects promptly after close code 1013, with the normal backoff otherwise', () => {
+    vi.useFakeTimers()
+    const { sockets } = setup()
+    act(() => sockets[0].onclose({ code: 1013 }))
+    act(() => {
+      vi.advanceTimersByTime(300)
+    })
+    expect(sockets).toHaveLength(2)
+    act(() => sockets[1].onclose({ code: 1006 }))
+    act(() => {
+      vi.advanceTimersByTime(300)
+    })
+    expect(sockets).toHaveLength(2)
+    act(() => {
+      vi.advanceTimersByTime(2000)
+    })
+    expect(sockets).toHaveLength(3)
+    vi.useRealTimers()
+    vi.unstubAllGlobals()
   })
 })
