@@ -746,3 +746,20 @@ verified commit.
 **Consequences.** The gate found two real bugs (retention settings not passed through Docker; stale
 `recording: true` on stop) and stale load figures; fixed and re-measured before tagging. GitHub's private
 vulnerability reporting (SECURITY.md) must be switched on in the repository settings by the owner.
+
+## D-44 · Phase 2 plan: scenario tests, sample scenarios, a real robot stack, first users
+13 Oct 2026 · Accepted (founder: "go ahead")
+
+**Context.** The eight-week plan is complete (v0.1.0). The plan names four six-month milestones without
+weekly detail: developer credibility, real integrations, automated tests, first external users. One question
+from the plan's demo scenario is still open: after a blocked path, does the system "cancel, reroute or
+escalate"?
+**Decision.** Weeks 9–16 (docs/PLAN.md, Phase 2): scenario format and `actunode test` runner (9), timing and
+message expectations plus five sample scenarios (10), testing an external master control as the system under
+test (11), scenarios in CI (12), a ROS 2 simulated robot behind the open-source VDA 5050 connector (13–14),
+documentation for credibility (15), readiness for external users and v0.2.0 (16). Scenario tests come first
+because they turn the lab into a test tool without needing hardware, and every later week builds on them.
+A decision point after Week 10 lets the first user conversations reorder weeks 11–16. Same working rule
+(D-30): completion and a quality gate, not dates.
+**Consequences.** PROGRESS tracks weeks 9–16 like weeks 1–8. Outreach (milestone 4) stays the founder's and
+feeds the decision point.

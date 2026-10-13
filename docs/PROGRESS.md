@@ -14,7 +14,7 @@ the status line, the schedule table, the session log, and the open issues.
 |---|---|
 | **Calendar** | Week 1 of 8 by date (Fri 9 Oct – Thu 15 Oct 2026); dates no longer gate the work (D-30) |
 | **Last updated** | Mon 12 Oct 2026 |
-| **Status** | **All 8 weeks complete; v0.1.0 released 13 Oct 2026** (D-43). No open issues. Founder: record the voice-over for the demo video, enable private vulnerability reporting on GitHub, send the outreach batch. |
+| **Status** | **Phase 1 (weeks 1–8) complete; v0.1.0 released 13 Oct 2026** (D-43). Phase 2 planned (weeks 9–16, D-44). Next: Week 9, scenario format and `actunode test` runner. No open issues. |
 | **Working rule** | A week is done when its work is fully done (D-30): features, then a quality gate (independent bug and security review, scans, a test for every fix, all suites and e2e green, docs). Then the next week starts, whatever the date. |
 
 ## Schedule
@@ -31,6 +31,14 @@ Week 1 started on Friday 9 October 2026 (Day 1). Each week runs Friday to Thursd
 | 6 | 13–19 Nov | Failure injection | Blocked path, low battery, disconnect, invalid payload | ✅ Blocked path Day 5; the other three completed 13 Oct (D-42) | ✅ Quality gate passed 13 Oct: all four observed end to end; spec error levels |
 | 7 | 20–26 Nov | Record/replay | Session file can reproduce incident | ✅ Built early (Days 6–7); completed 13 Oct (D-41) | ✅ Quality gate passed 13 Oct: retention, upload of a session someone sent you, hostile-file checks |
 | 8 | 27 Nov – 3 Dec | Demo + README + 3-minute video | GitHub repo + pitch demo | ✅ Completed 13 Oct (D-43): Apache-2.0, README, demo recorder; voice-over by the founder | ✅ Quality gate passed 13 Oct: docs accuracy review, fresh-clone quick start; v0.1.0 |
+| 9 | 4–10 Dec | Scenario format + `actunode test` runner | P-1042 passes as a scenario; JUnit output | ⬜ | ⬜ |
+| 10 | 11–17 Dec | Expectations + five sample scenarios | `scenarios/`; decision point | ⬜ | ⬜ |
+| 11 | 18–24 Dec | Testing an external master control | "cancel, reroute or escalate?" as a scenario | ⬜ | ⬜ |
+| 12 | 25–31 Dec | Scenarios in CI | Docker runner + GitHub Actions example | ⬜ | ⬜ |
+| 13 | 1–7 Jan | ROS 2 robot stack, part 1 | Nav2 robot behind the VDA 5050 connector, optional profile | ⬜ | ⬜ |
+| 14 | 8–14 Jan | ROS 2 robot stack, part 2 | Scenarios against it; conformance report; connect-your-robot guide | ⬜ | ⬜ |
+| 15 | 15–21 Jan | Developer credibility | Failure catalogue, scenario gallery, blog drafts | ⬜ | ⬜ |
+| 16 | 22–28 Jan | Ready for external users | Onboarding path, triage routine, v0.2.0 | ⬜ | ⬜ |
 
 Legend: ✅ done · 🟡 partly done / known gaps · ⬜ not started
 
@@ -358,6 +366,12 @@ Numbered so they can be referenced from commits. Remove an item only when it is 
 ## Session log
 
 Newest first. One entry per work session: what was done, what was learned, what is next.
+
+### Tue 13 Oct 2026 (night): release published; Phase 2 planned (D-44)
+
+- GitHub Release v0.1.0 published on the founder's behalf (gh CLI, device login authorized by the founder);
+  private vulnerability reporting enabled (SECURITY.md relies on it).
+- Phase 2 written into PLAN.md (weeks 9–16) from the plan's six-month milestones; decision point after Week 10.
 
 ### Tue 13 Oct 2026 (evening): Week 8 and v0.1.0 (D-43)
 

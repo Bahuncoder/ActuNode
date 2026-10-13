@@ -39,6 +39,29 @@ Week 1 starts Friday 9 October 2026; each week runs Friday to Thursday.
 3. **Automated tests**: scenarios become test suites; `robotlab test` validates an integration.
 4. **First external users**: system integrators, robotics clubs, warehouse engineers, small AMR vendors.
 
+## Phase 2: weeks 9–16 (written 13 Oct 2026, D-44)
+
+The eight-week plan ended with v0.1.0. Phase 2 turns the six-month milestones above into weeks, in this
+order: scenario tests first (milestone 3: the product step that needs no hardware), sample scenarios on top
+of them (milestone 1), then one real open-source robot stack (milestone 2); milestone 4 (first users) runs
+alongside through outreach. Dates continue the calendar for reference only: a week is done when its work
+and its quality gate are done (D-30). **Decision point after Week 10:** what the first user conversations
+say can reorder weeks 11–16.
+
+| Week | Dates (reference) | Objective | Output |
+|---|---|---|---|
+| 9 | 4–10 Dec | Scenario format and runner | A scenario file (YAML: steps such as send mission, inject failure, wait; expectations such as robot status, error, connection, validation rule) and an `actunode test` command that runs it against the stack, with readable and JUnit XML output and exit codes. The P-1042 incident passes as a scenario. |
+| 10 | 11–17 Dec | Expectations and sample scenarios | "Within N s" / "never" timing semantics, expectations on messages (topic + JSON pattern), every run recorded as a session; five sample scenarios (P-1042, low battery during a mission, disconnect during a mission, invalid traffic, cancel and resume) shipped in `scenarios/`. Decision point. |
+| 11 | 18–24 Dec | Testing a system under test | Scenarios that check what an external master control does when ActuNode's simulated robots misbehave (e.g. "after pathBlocked, the master sends cancelOrder or an order update within 10 s"): ActuNode simulates the robots, an external fleet manager sends the orders. Output: the plan's demo question "does the system cancel, reroute or escalate?" answered by a scenario. |
+| 12 | 25–31 Dec | Scenarios in CI | A Docker-based runner (`docker compose run … actunode test scenarios/`) and a GitHub Actions example; ActuNode's own CI runs the sample scenarios. |
+| 13 | 1–7 Jan | Real stack, part 1 | A ROS 2 simulated robot (Nav2, headless) behind the open-source VDA 5050 connector, as an optional Docker profile; ActuNode sends it a mission and validates its traffic. |
+| 14 | 8–14 Jan | Real stack, part 2 | The sample scenarios run against the ROS 2 robot; a conformance report of what passes and fails (and upstream reports where the connector deviates from the spec); a "connect your own robot" guide. |
+| 15 | 15–21 Jan | Developer credibility | Failure-case catalogue, scenario gallery, message-flow walkthroughs; drafts of two blog posts for the founder to publish. |
+| 16 | 22–28 Jan | Ready for external users | Onboarding path from the README to a first passing scenario, issue triage routine, v0.2.0 release. |
+
+Each week ends with its quality gate (independent review, tests for every fix, e2e in all CI configurations,
+docs), as in Weeks 1–8.
+
 ## Demo scenario (plan p. 5)
 
 WMS job: move pallet **P-1042** from **Receiving Door 2** to **Storage A17**.
