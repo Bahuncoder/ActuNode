@@ -2,309 +2,377 @@
   <img src="docs/brand/actunode_logo_mark_square.png" width="120" alt="ActuNode logo" />
 </p>
 
-<h1 align="center">ActuNode</h1>
-<p align="center"><strong>Infrastructure for autonomous machines.</strong><br/>
-Simulate, test, debug and replay AMR integrations.</p>
+<h1 align="center">ActuNode Lab</h1>
+
+<p align="center">An open-source lab for testing and debugging AMR fleet integrations over VDA 5050 / MQTT.</p>
 
 ---
 
-ActuNode Lab is a local integration lab for autonomous mobile robots (AMRs) that talk
-**VDA 5050 over MQTT**. Think *Postman + Wireshark + a test runner* for robot integrations:
-simulate robots, send missions, inspect messages, inject failures, and record/replay incidents
-without needing a physical fleet.
+Integration incidents between a fleet manager, a WMS and autonomous mobile robots are hard to reproduce:
+they happen on a live site, with real robots, and the evidence is gone once the robots move on. ActuNode
+Lab gives you a local copy of that world. It **simulates robots**, **inspects and validates every
+message** against the official VDA 5050 schemas, **injects failures** on command, and **records incidents
+so you can replay them** against the system under test, with no physical fleet.
 
-> Status: **early development, week 1 of 8.** Simulate robots, send missions, inject a failure,
-> validate every message, record and replay. Verified end to end with Docker on 10 Oct 2026.
->
-> **Where the project is:** [docs/PROGRESS.md](docs/PROGRESS.md).
+![ActuNode Lab: six simulated robots on the warehouse map, robot table and live message stream](docs/images/lab-overview.png)
 
-## Quick start (Docker)
+## Contents
+
+[Features](#features) · [Quick start](#quick-start) · [Five-minute tour](#five-minute-tour) · [Sharing the lab](#sharing-the-lab-on-a-network) · [Connecting a real robot](#connecting-a-real-robot) · [Configuration](#configuration) ·
+[API](#api) · [CLI](#cli-validate-a-session-file) · [Troubleshooting](#troubleshooting) · [Development](#development) · [Project status](#project-status) · [License](#license) · [Security](#security)
+
+## Features
+
+### Simulated AMRs
+
+- 1 to 50 simulated robots (`ACTUNODE_SIM_ROBOTS`, default 3), one MQTT client each, with their own last
+  will. They speak **VDA 5050 2.1.0 or 3.0.0** (`ACTUNODE_VDA_VERSION`), and the backend handles both at
+  once, per robot, chosen by the topic (`uagv/v2/...` or `uagv/v3/...`, [D-15](docs/DECISIONS.md)).
+- **Orders** per the spec: the first node must be where the robot stands, released base vs. horizon,
+  pick and drop actions, version-specific error types. **Order updates** stitch at the decision point
+  ([D-35](docs/DECISIONS.md)).
+- **Instant actions**: `cancelOrder`, `startPause` / `stopPause`, `stateRequest`, `factsheetRequest`
+  (3.0 also `clearInstantActions`). The UI and API send `cancelOrder`; the simulator handles all of them
+  from any sender.
+- State every second and on every VDA 5050 event; a retained **factsheet** on every connect
+  ([D-34](docs/DECISIONS.md)). Battery drains 0.2 % per metre; robots **charge** in the charging area
+  ([D-33](docs/DECISIONS.md)).
+
+### Live inspector and validation
+
+- Map, robot table and a raw message stream (filter, pause, click a row for the full JSON) over a
+  WebSocket.
+- Every message is checked on arrival against the **official VDA 5050 2.1.0 and 3.0.0 JSON schemas**
+  (vendored, see [NOTICE](NOTICE)) plus rules that need history: `headerId` per topic, order sequence
+  ids, topic/payload consistency, mission state machine and more. Issues are counted per rule in the
+  Validation panel and shown inline. Rules: [docs/VDA5050_NOTES.md](docs/VDA5050_NOTES.md#what-the-validator-checks).
+
+![Validation panel counting schema errors from an injected invalid payload](docs/images/validation.png)
+
+### Failure injection
+
+Four failures, from the Failure injection panel or `POST /api/failures`, on simulated robots
+([D-42](docs/DECISIONS.md)):
+
+| Failure | What the robot does | Parameters (default) | Clear |
+|---|---|---|---|
+| `BLOCKED_PATH` | Stops on its route, `BLOCKED`, reports `pathBlocked` (2.1 WARNING, 3.0 CRITICAL) | none | yes, the mission resumes |
+| `LOW_BATTERY` | Battery set to `level`; `batteryLow` below 20 % (2.1 WARNING, 3.0 URGENT) | `level` 1–99 (15) | yes, level restored |
+| `DISCONNECT` | `broken`: drops the connection so the broker publishes the last will `CONNECTIONBROKEN`; `offline`: clean `OFFLINE`. Reconnects after `duration_s` | `duration_s` 1–300 (10), `mode` (broken) | no, ends by itself |
+| `INVALID_PAYLOAD` | Publishes malformed messages on its state topic | `kind` `not-json` / `schema` / `wrong-serial` / `wrong-version` (schema), `count` 1–10 (1) | no |
+
+![Failure injection panel with the disconnect parameters](docs/images/failures.png)
+
+### Near-collision detection
+
+ActuNode **detects near-collisions and never avoids them**: traffic management is the job of the fleet
+manager under test ([D-22](docs/DECISIONS.md)). When two live robots on the same map come closer than
+`ACTUNODE_PROXIMITY_M` (1.0 m), a `proximity` warning goes into the stream, the Validation panel and
+recordings, and a line is drawn between them on the map. Simulated robots drive straight lines, so at
+25–50 robots these warnings are frequent; that is expected.
+
+### Record, replay, validate offline
+
+- **Record** every MQTT message the backend sees (orders, states, connections, failure injections) to
+  a JSONL session file in `./sessions`. A recording stops itself at 200 MB (`ACTUNODE_MAX_SESSION_MB`).
+- **Replay** republishes a session with its original timing (1× or faster), so the UI or any system
+  listening on the broker sees the incident again. Robot-side traffic only by default; refused while
+  robots with the same ids are live ([D-7](docs/DECISIONS.md), [D-36](docs/DECISIONS.md)).
+- **Validate offline**: run a saved session through the same validator as the live feed, from the UI,
+  the API or a CLI that exits non-zero for CI ([D-40](docs/DECISIONS.md)).
+- **Upload** a session file someone sent you; it is checked as untrusted input, then validated and
+  replayed like your own. **Retention** by age (30 days) and total size (2000 MB) ([D-41](docs/DECISIONS.md)).
+- Format and rules: [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md#session-file-format-v1).
+
+![Sessions panel with a recorded incident and its offline validation result](docs/images/sessions.png)
+
+### Security
+
+- Ports are published on `127.0.0.1` only, unless you choose to share ([D-18](docs/DECISIONS.md)).
+- The broker has no anonymous access. Generated passwords; **per-robot ACL**: each robot login
+  (`<manufacturer>.<serial>`) may publish only its own topics and read only its own commands; only the
+  backend may send orders ([D-23](docs/DECISIONS.md), [D-28](docs/DECISIONS.md)).
+- Sharing on a network requires a **web login** (the backend refuses to start shared without one) and
+  uses **TLS** for HTTPS and MQTT; plain ports never leave the computer ([D-25](docs/DECISIONS.md),
+  [D-26](docs/DECISIONS.md)).
+- The API answers only allowed `Host` names and refuses cross-site state-changing requests and
+  WebSockets (**same-origin checks**, [D-24](docs/DECISIONS.md), [D-32](docs/DECISIONS.md)).
+- Robot data and session files are treated as hostile input: size, depth and id limits everywhere
+  ([D-31](docs/DECISIONS.md), [D-36](docs/DECISIONS.md)).
+
+### Tested
+
+| Suite | Count | Where |
+|---|---|---|
+| Backend (pytest) | 438 | CI |
+| Simulator (pytest, incl. conformance against the official 2.1.0 and 3.0.0 schemas) | 391 | CI |
+| Frontend (Vitest: unit, component, shared backend contract fixtures) | 96 | CI |
+| End to end against the real Docker stack, incl. Chromium via Playwright | 37 | CI, three configurations: VDA 2.1, VDA 3.0, VDA 2.1 with login |
+| Load test, 10 / 25 / 50 robots with missions, 18 thresholds | 18/18 passed at each size | Weekly in CI ([load.yml](.github/workflows/load.yml)) |
+
+Plus ruff, oxlint, `tsc`, and weekly security scans (pip-audit, npm audit, Trivy). At 50 robots
+([tests/load/results/latest.md](tests/load/results/latest.md)): state cadence p99 1.03 s, robot → browser
+latency p99 75 ms, backend CPU 10 % of one core, backend memory 47 MiB, UI 59 fps, nothing dropped.
+Method and thresholds: [tests/load/README.md](tests/load/README.md).
+
+## Quick start
+
+Needs Docker with Compose. Your user needs access to Docker (`sudo usermod -aG docker $USER`, then log in
+again).
 
 ```bash
+git clone https://github.com/Bahuncoder/ActuNode.git && cd ActuNode
 docker compose up --build
 ```
 
-| Service | URL |
+| What | Where |
 |---|---|
-| Lab UI | http://localhost:8080 (or https://localhost:8443) |
-| API docs | http://localhost:8080/api/docs |
-| MQTT broker | `localhost:1883` (WebSocket `9001`) |
+| Lab UI | http://localhost:8080 (or https://localhost:8443 with the local CA) |
+| API docs (OpenAPI) | http://localhost:8080/api/docs |
+| Backend directly | http://localhost:8000 |
+| MQTT broker | `localhost:1883` (WebSocket `9001`), login required |
 
-Your user needs access to Docker (`sudo usermod -aG docker $USER`, then log in again).
-Recordings are written to `./sessions` as your user; if `id -u` / `id -g` are not `1000`, start with
-`ACTUNODE_UID=$(id -u) ACTUNODE_GID=$(id -g) docker compose up --build`.
+The header shows **API**, **MQTT** and **Live** in green when everything is up, and three robots sit in
+the charging area. More robots: `ACTUNODE_SIM_ROBOTS=6 docker compose up --build`. VDA 5050 3.0 robots:
+`ACTUNODE_VDA_VERSION=3`.
 
-Stop with `docker compose down`. Replay needs the simulator stopped: `docker compose stop simulator`.
-
-**Security:** the lab is reachable only from this computer (ports are published on `127.0.0.1`). The MQTT
-broker requires a login: passwords are generated on first start and kept in a Docker volume (D-23).
+- Recordings are written to `./sessions` as your user. If `id -u` / `id -g` are not `1000`, start with
+  `ACTUNODE_UID=$(id -u) ACTUNODE_GID=$(id -g) docker compose up --build`.
+- Stop with `docker compose down`. Replay needs the simulator stopped: `docker compose stop simulator`.
+- Watch raw traffic with the read-only `tools` login:
 
 ```bash
-docker compose run --rm mqtt-init show tools          # read-only login for MQTT tools (user: tools)
-docker compose run --rm mqtt-init add-robot Acme amr_7   # login for a real robot (user = Acme.amr_7)
-docker compose up -d --force-recreate mqtt-init mosquitto   # apply a new robot login
+docker compose run --rm mqtt-init show tools     # prints the password
+mosquitto_sub -h localhost -u tools -P '<password>' -t 'uagv/#' -v
 ```
 
-Each robot may publish only its own topics; only the backend may send orders. Other web pages in your
-browser cannot use the API (Host and Origin checks, D-24).
+## Five-minute tour
 
-### Sharing the lab on a network
+The scenario: a WMS job moves pallet **P-1042** from **Receiving door 2** to **Storage A17**, the aisle gets
+blocked, and you capture the incident.
 
-Sharing needs a login (D-25); the backend refuses to start shared without one:
+1. In **Sessions**, name the session `p1042-blocked-aisle` and click **Start recording**.
+2. In **Mission sender** (prefilled: `robot_01`, `RECEIVING_DOOR_2` → `STORAGE_A17`, `P-1042`), click
+   **Send mission**. The robot goes `ACCEPTED` → `MOVING`.
+
+   ![robot_01 MOVING on mission P-1042, its route drawn on the map](docs/images/mission.png)
+
+3. In **Failure injection**, choose **Blocked path** and click **Inject**. The robot stops, turns `BLOCKED`
+   and reports `Path blocked on edge …`. Click **Clear**; the mission completes.
+
+   ![robot_01 stopped with a pathBlocked error after a blocked path was injected](docs/images/blocked-path.png)
+
+4. Inject **Invalid payload** (kind `schema`) on another robot and watch the **Validation** panel count it.
+5. Inject **Disconnect** (mode `broken`) on a third robot: the broker publishes `CONNECTIONBROKEN`, then the
+   robot comes back `ONLINE`.
+6. **Stop recording**, then click **Validate** on the session row.
+7. `docker compose stop simulator`, choose a speed, click **▶ Replay**: the incident happens again.
+
+The same steps as a scripted 3-minute demo, and how the video is produced automatically:
+[docs/DEMO.md](docs/DEMO.md).
+
+The same mission and failure from the command line:
+
+```bash
+curl -X POST localhost:8080/api/missions -H 'content-type: application/json' \
+  -d '{"robot_id":"robot_01","source":"RECEIVING_DOOR_2","destination":"STORAGE_A17","load_id":"P-1042"}'
+curl -X POST localhost:8080/api/failures -H 'content-type: application/json' \
+  -d '{"robot_id":"robot_01","failure":"BLOCKED_PATH"}'
+```
+
+With `ACTUNODE_REQUIRE_LOGIN=1`, log in first and send the cookie with every request:
+`curl -c jar -X POST localhost:8080/api/login -H 'content-type: application/json' -d '{"token":"<api token>"}'`,
+then add `-b jar` to the calls above.
+
+## Sharing the lab on a network
+
+By default nothing is reachable from the network. Sharing needs a login ([D-25](docs/DECISIONS.md)); the
+backend refuses to start shared without one:
 
 ```bash
 ACTUNODE_BIND_ADDRESS=0.0.0.0 ACTUNODE_REQUIRE_LOGIN=1 \
 ACTUNODE_ALLOWED_HOSTS=localhost,127.0.0.1,::1,<this machine's name or IP> \
 docker compose up --build
-docker compose run --rm mqtt-init show api-token      # the token people enter in the browser
+docker compose run --rm mqtt-init show api-token               # the token people enter in the browser
 docker compose run --rm cert-init show ca > actunode-ca.crt   # the certificate authority to trust
 ```
 
 Others open `https://<this machine>:8443` (import `actunode-ca.crt` in the browser to avoid the
-certificate warning). Real robots connect with TLS to `<this machine>:8883`, trusting the same CA, with a
-login from `mqtt-init add-robot`. Plain HTTP and MQTT ports never leave this computer (D-26).
+certificate warning) and log in with the token. Only HTTPS (8443) and MQTT over TLS (8883) follow
+`ACTUNODE_BIND_ADDRESS`; plain HTTP and MQTT ports always stay on `127.0.0.1` ([D-26](docs/DECISIONS.md)).
+The certificate covers the names in `ACTUNODE_ALLOWED_HOSTS`.
 
-## Local development (without Docker)
+## Connecting a real robot
 
-You still need an MQTT broker on `localhost:1883`. Simplest: a local broker without logins
-(`sudo apt install mosquitto`); backend and simulator connect anonymously when no
-`ACTUNODE_MQTT_USERNAME` / `ACTUNODE_MQTT_PASSWORD_FILE` is set. To use the Compose broker instead, copy
-the backend password out of the volume and point `ACTUNODE_MQTT_PASSWORD_FILE` at it.
+A real robot (or your own robot driver) connects to the same broker with its own login:
 
 ```bash
-# Backend
-cd backend
-python3 -m venv .venv
-.venv/bin/pip install -r requirements-dev.txt
-.venv/bin/uvicorn app.main:app --reload --port 8000
-
-# Frontend (second terminal; proxies /api to :8000). Needs Node.js 24 (frontend/.nvmrc).
-cd frontend
-nvm use            # or install Node 24 another way
-npm install
-npm run dev        # http://localhost:5173
-
-# Simulator (third terminal, from repo root)
-python3 -m venv simulator/.venv
-simulator/.venv/bin/pip install -r simulator/requirements-dev.txt
-simulator/.venv/bin/python -m simulator --robots 3   # up to 50; 10 fill the charging area
-# add --vda-version 3 for robots that speak VDA 5050 3.0.0 (ACTUNODE_VDA_VERSION=3 in Docker)
-
-# Frontend unit and component tests
-(cd frontend && npm test)
-
-# Lint and format Python (ruff is in requirements-dev.txt)
-backend/.venv/bin/ruff check . && backend/.venv/bin/ruff format --check .
-
-# Tests
-cd backend && .venv/bin/pytest
-simulator/.venv/bin/pytest simulator   # from repo root
-
-# End-to-end tests: start an isolated copy of the Docker stack (ports 18080/11883),
-# drive it through the API and MQTT, then remove it (~2 minutes)
-# (and the real-browser tests, Chromium via Playwright)
-python3 -m venv tests/e2e/.venv && tests/e2e/.venv/bin/pip install -r tests/e2e/requirements.txt
-tests/e2e/.venv/bin/python -m playwright install chromium   # once; add --with-deps on a fresh machine
-tests/e2e/.venv/bin/pytest tests/e2e
+docker compose run --rm mqtt-init add-robot Acme amr_7          # prints the password; user = Acme.amr_7
+docker compose up -d --force-recreate mqtt-init mosquitto       # apply the new login
 ```
 
-## Architecture
+- On this computer: `localhost:1883`. From the network: MQTT over TLS on `<this machine>:8883`, trusting
+  `actunode-ca.crt` (see [Sharing](#sharing-the-lab-on-a-network)).
+- Topics: `uagv/v2/Acme/amr_7/...` (or `v3`). The login may publish only that robot's robot-to-master
+  topics and read only its own commands (`order`, `instantActions`, ...) ([D-28](docs/DECISIONS.md)).
+- Its traffic is inspected, validated and recorded like a simulated robot's. To send it a mission, name
+  the target: `"manufacturer": "Acme", "vda_version": "2"` in `POST /api/missions`, or the **Target**
+  select in the UI. Orders are never routed from observed traffic ([D-21](docs/DECISIONS.md)).
+- Failure injection works only on ActuNode's simulated robots.
 
-```
-React UI  ──/api──▶  FastAPI backend  ──▶  MQTT broker (Mosquitto)  ◀──▶  Robot simulators
-map + message stream   missions, replay        VDA 5050 topics              Python state machines
-```
+## Configuration
 
-| Path | What |
-|---|---|
-| `backend/` | FastAPI service: missions, validation, record/replay |
-| `frontend/` | React + TypeScript lab UI |
-| `simulator/` | Python AMR simulator |
-| `mosquitto/` | Local broker config |
-| `docs/` | Plan tracker and brand assets |
+All variables, with defaults: [docs/ARCHITECTURE.md, Configuration](docs/ARCHITECTURE.md#configuration).
+The ones you are most likely to set:
 
-## VDA 5050 2.1 and 3.0
-
-ActuNode understands both versions at once, per robot, from the topic (`uagv/v2/...` or `uagv/v3/...`):
-messages are validated against the official schema of their version, and orders are sent in the
-version each robot speaks. To run 3.0 robots: `ACTUNODE_VDA_VERSION=3 docker compose up --build`
-(or `--vda-version 3` for the simulator). See [docs/research/VDA5050_3_0.md](docs/research/VDA5050_3_0.md).
-
-## MQTT topics
-
-Robots follow the VDA 5050 topic layout
-`interfaceName/majorVersion/manufacturer/serialNumber/topic`:
-
-| Topic | Publisher | Content |
+| Variable | Default | What |
 |---|---|---|
-| `uagv/v2/ActuNode/robot_01/state` | simulator, every 1 s | pose, battery, mission status, errors |
-| `uagv/v2/ActuNode/robot_01/connection` | simulator (retained, last will) | `ONLINE` / `OFFLINE` / `CONNECTIONBROKEN` |
-| `uagv/v2/ActuNode/robot_01/order` | backend (`POST /api/missions`) | VDA 5050 order: nodes, edges, pick/drop actions |
-| `actunode/v1/sim/robot_01/inject` | backend (`POST /api/failures`) | ActuNode failure-injection command (not VDA 5050) |
+| `ACTUNODE_SIM_ROBOTS` | `3` | Number of simulated robots (1–50) |
+| `ACTUNODE_VDA_VERSION` | `2` | Simulated robots speak VDA 5050 2.1.0 (`2`) or 3.0.0 (`3`) |
+| `ACTUNODE_BIND_ADDRESS` | `127.0.0.1` | Interface for HTTPS 8443 and MQTT/TLS 8883 (sharing) |
+| `ACTUNODE_REQUIRE_LOGIN` | `0` | Web login; required when shared |
+| `ACTUNODE_ALLOWED_HOSTS` | `localhost,127.0.0.1,::1` | Host names the API answers to; also the TLS certificate's names |
+| `ACTUNODE_PROXIMITY_M` | `1.0` | Near-collision distance in metres |
+| `ACTUNODE_MAX_SESSION_MB` | `200` | A recording stops itself at this size |
+| `ACTUNODE_SESSIONS_KEEP_DAYS` | `30` | Delete sessions older than this (`0` keeps forever) |
+| `ACTUNODE_SESSIONS_MAX_TOTAL_MB` | `2000` | Delete the oldest sessions above this total (`0` unlimited) |
+| `ACTUNODE_UID`, `ACTUNODE_GID` | `1000` | Host user that owns `./sessions` |
+| `ACTUNODE_*_HOST_PORT` | 8080, 8443, 8000, 1883, 9001, 8883 | Host ports, to run next to something else |
 
-Each robot runs a mission state machine `IDLE → ACCEPTED → MOVING → COMPLETED` (plus `BLOCKED`
-under failure injection), drives at 1 m/s
-and drains 0.2 % battery per meter. Orders sent while a robot is busy are rejected with an
-`orderError` in its state.
+## API
 
-### Send a mission
+Interactive OpenAPI docs: **http://localhost:8080/api/docs**. Full table:
+[docs/ARCHITECTURE.md, HTTP API](docs/ARCHITECTURE.md#http-api).
 
-```bash
-curl -X POST localhost:8000/api/missions -H 'content-type: application/json' \
-  -d '{"robot_id":"robot_01","source":"RECEIVING_DOOR_2","destination":"STORAGE_A17","load_id":"P-1042"}'
-```
-
-Or use the mission form in the UI. Named locations: `GET /api/locations`.
-
-### Live view
-
-The backend subscribes to `uagv/#` and `actunode/#` and keeps the latest state per robot plus
-the last 500 messages. The UI gets them over a WebSocket and shows robots on the warehouse map,
-a robot table, and a raw message stream (filter, pause, click a row for the full JSON).
-
-| Endpoint | What |
+| Area | Endpoints |
 |---|---|
-| `GET /api/robots` | Latest connection + state per robot |
-| `GET /api/messages` | Recent MQTT messages |
-| `WS /api/ws` | Snapshot on connect, then every message live |
+| Robots and live feed | `GET /api/robots`, `GET /api/messages`, `GET /api/proximity`, `WS /api/ws` |
+| Missions | `POST /api/missions`, `POST /api/missions/{robot}/cancel`, `POST /api/missions/{robot}/extend` |
+| Failures | `GET` / `POST /api/failures` |
+| Validation | `GET /api/validation`, `POST /api/validation/reset` |
+| Recording | `GET /api/recording`, `POST /api/recording/start`, `POST /api/recording/stop` |
+| Sessions | `GET /api/sessions`, `GET /api/sessions/storage`, `POST /api/sessions/upload`, `POST /api/sessions/{id}/validate`, `GET /api/sessions/{id}/download`, `DELETE /api/sessions/{id}` |
+| Replay | `POST /api/sessions/{id}/replay` (`speed`, `include_commands`), `GET /api/replay`, `POST /api/replay/stop` |
+| Login | `GET /api/session`, `POST /api/login`, `POST /api/logout` |
 
-### Failure injection
+MQTT topics, WebSocket events and the session file format are in
+[docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).
 
-`BLOCKED_PATH` stops a robot that is on a route: it goes `MOVING → BLOCKED`, stands still and
-reports a VDA 5050 `pathBlocked` error referencing the edge (or next node) it was on. Clearing
-the failure resumes the mission. Every injection is logged by the backend and shown in the UI.
+## CLI: validate a session file
 
-Four failures, each with optional `params` (defaults in brackets):
-
-| `failure` | `params` | `clear` |
-|---|---|---|
-| `BLOCKED_PATH` | none | yes |
-| `LOW_BATTERY` | `level` 1-99 [15] | yes |
-| `DISCONNECT` | `duration_s` 1-300 [10], `mode` `broken`\|`offline` [broken] | no, ends by itself |
-| `INVALID_PAYLOAD` | `kind` `not-json`\|`schema`\|`wrong-serial`\|`wrong-version` [schema], `count` 1-10 [1] | no |
+Checks a session file with the same validator as the live feed, without the stack, for example in your
+own CI. From `backend/` (after the development setup below):
 
 ```bash
-curl -X POST localhost:8000/api/failures -H 'content-type: application/json' -d '{"robot_id":"robot_01"}'
-curl -X POST localhost:8000/api/failures -H 'content-type: application/json' -d '{"robot_id":"robot_01","action":"clear"}'
-curl localhost:8000/api/failures   # failure log
+.venv/bin/python -m app.validate_session path/to/session.jsonl
 ```
 
-### Validation
-
-Every message is checked as it arrives: JSON Schemas for `state`, `order`, `connection` and
-ActuNode's inject command ([backend/app/schemas](backend/app/schemas)), plus rules that need
-history: `headerId` increasing per topic, order node/edge sequence, mission state machine,
-`driving` consistency, topic/payload consistency. Issues are attached to each message (and saved
-in recordings), counted per rule in the Validation panel, and shown inline in the message stream.
-
-```bash
-curl localhost:8000/api/validation          # counts per rule + latest example
-curl -X POST localhost:8000/api/validation/reset
-```
-
-See [docs/VDA5050_NOTES.md](docs/VDA5050_NOTES.md) for the rules and the protocol notes behind them.
-
-### Near-collisions
-
-ActuNode does not steer robots apart (that is the fleet manager's job); it **reports** when two live
-robots come closer than 1.0 m (`ACTUNODE_PROXIMITY_M`): a `proximity` warning in the stream, the
-Validation panel and recordings, a red line between the robots on the map, and `GET /api/proximity`.
-
-### Recording sessions
-
-Recording captures every MQTT message the backend sees (orders, states, connections, failure
-injections) to `sessions/<timestamp>_<name>.jsonl`, one JSON object per line:
-
-```jsonl
-{"type":"session","formatVersion":1,"sessionId":"20261009-215557_P-1042-blocked-aisle","name":"P-1042-blocked-aisle","startedAt":"..."}
-{"type":"snapshot","robots":[...]}
-{"type":"message","t":14.04,"receivedAt":"...","topic":"actunode/v1/sim/robot_01/inject","retained":false,"payload":{...}}
-{"type":"end","endedAt":"...","messageCount":186}
-```
-
-`t` is seconds since the recording started. A message that was not valid JSON is kept verbatim in
-`payloadRaw`. If the backend dies mid-recording the `end` line is missing and the session is listed
-as incomplete.
-
-```bash
-curl -X POST localhost:8000/api/recording/start -H 'content-type: application/json' -d '{"name":"p1042"}'
-curl -X POST localhost:8000/api/recording/stop
-curl localhost:8000/api/sessions
-curl -OJ localhost:8000/api/sessions/<sessionId>/download
-
-# Timeline of one robot from a session file
-jq -c 'select(.type=="message" and (.topic|endswith("robot_01/state"))) | [.t, .payload.actunode.missionStatus]' sessions/*.jsonl
-```
-
-A recording stops itself at 200 MB (about 5–6 hours with 10 robots; change with
-`ACTUNODE_MAX_SESSION_MB`) or if the disk fills up; the end line records why. Delete old sessions with
-`curl -X DELETE localhost:8000/api/sessions/<sessionId>` or the Delete button.
-
-Or use the Sessions panel in the UI.
-
-**Validate a session.** `curl -X POST localhost:8000/api/sessions/<sessionId>/validate` (or the Validate button)
-checks every message with the same validator as the live feed and counts problems per rule, with line numbers
-for the first 100. Without the stack, from `backend/`: `python -m app.validate_session file.jsonl` prints the
-summary and exits 1 if any error was found (0 none, 2 not a session file), so it can run in CI.
-
-**Upload a session** someone sent you: `curl -X POST 'localhost:8000/api/sessions/upload?name=incident' --data-binary @file.jsonl`. If the sessions folder is at its total limit the upload is refused (507); an upload never deletes other sessions, so delete some first.
-The file is checked line by line (422 names the first bad line; 413 above `ACTUNODE_MAX_SESSION_MB`) and
-stored under a new id; then it can be validated and replayed like a recording.
-
-**Retention.** Sessions older than `ACTUNODE_SESSIONS_KEEP_DAYS` (default 30) are deleted, then the oldest until
-the folder is under `ACTUNODE_SESSIONS_MAX_TOTAL_MB` (default 2000); `0` turns a rule off. It runs at startup
-and after each recording; the session being recorded or replayed is never deleted. `GET /api/sessions/storage`
-shows the usage.
-
-### Replaying a session
-
-Replay republishes a session's messages to MQTT with the original timing (optionally faster), so
-the UI, or any system under test listening on the broker, sees the incident happen again.
-
-- Each robot's state at the start of the recording is published first, so robots start where they were.
-- **Robot-side traffic only by default** (state, connection). Orders, instant actions and failure
-  injections are skipped unless `include_commands` is set, because any robot listening would execute them.
-- Replay is **refused while robots with the same ids are publishing live state**: stop the
-  simulator first (`docker compose stop simulator`) so live and replayed messages never mix.
-- Replayed messages are never retained, so a replay cannot overwrite the broker's stored state.
-
-```bash
-curl -X POST localhost:8000/api/sessions/<sessionId>/replay -H 'content-type: application/json' \
-  -d '{"speed": 5, "include_commands": false}'
-curl localhost:8000/api/replay          # progress
-curl -X POST localhost:8000/api/replay/stop
-```
-Offline playground without MQTT: `python3 main.py`.
-
-Watch them live: `mosquitto_sub -h localhost -t 'uagv/#' -v`
-
-## Product modules
-
-- **ActuNode Sim**: robot/fleet simulator
-- **ActuNode Test**: integration scenarios and CI checks
-- **ActuNode Replay**: record and replay robot communication sessions
+It prints a summary per rule and exits `0` (no errors), `1` (at least one error-severity issue) or
+`2` (not a valid session file). The same check runs from the UI (**Validate**) and
+`POST /api/sessions/{id}/validate`.
 
 ## Troubleshooting
 
-**`localhost:8000` or `localhost:1883` hangs while the UI on `localhost:8080` works.** A host firewall
-that denies outgoing connections (for example ufw with `DEFAULT_OUTPUT_POLICY="DROP"`) blocks this
-computer's own connections to Docker container ports; check with `journalctl -k | grep "UFW BLOCK"`.
-The UI, API docs (`localhost:8080/api/docs`) and robots are unaffected. To allow it, narrowly:
+| Symptom | Cause and fix |
+|---|---|
+| `localhost:8000` or `localhost:1883` hangs while the UI on `localhost:8080` works | A host firewall that denies outgoing connections (for example ufw with `DEFAULT_OUTPUT_POLICY="DROP"`) blocks this computer's own connections to Docker container ports. Check with `journalctl -k \| grep "UFW BLOCK"`. The UI, API docs (`localhost:8080/api/docs`) and robots are unaffected. Fix below. |
+| Replay is refused | Robots with the same ids are publishing live state. `docker compose stop simulator` first. |
+| Permission errors in `./sessions` | Your user id is not 1000: start with `ACTUNODE_UID=$(id -u) ACTUNODE_GID=$(id -g)`. |
+| Backend exits at startup when sharing | `ACTUNODE_BIND_ADDRESS` is not loopback and `ACTUNODE_REQUIRE_LOGIN` is not `1`. |
+| `mosquitto_sub` is refused | The broker needs a login: use `-u tools -P <password>` from `mqtt-init show tools`. |
+| Browser warns about the certificate on 8443 | Import `actunode-ca.crt` (`docker compose run --rm cert-init show ca`). |
+
+To allow the firewalled connections, narrowly:
 
 ```bash
 sudo ufw allow out proto tcp to 172.16.0.0/12 port 1883,8000,8883,9001 comment 'ActuNode containers'
 ```
 
+## Development
+
+How to contribute: [CONTRIBUTING.md](CONTRIBUTING.md). Running the parts without Docker needs Python 3.12,
+Node.js 24 (`frontend/.nvmrc`) and an MQTT broker on `localhost:1883`. Simplest: a local broker without
+logins (`sudo apt install mosquitto`); backend and simulator connect anonymously when no
+`ACTUNODE_MQTT_USERNAME` / `ACTUNODE_MQTT_PASSWORD_FILE` is set.
+
+```bash
+# Backend
+cd backend && python3 -m venv .venv && .venv/bin/pip install -r requirements-dev.txt
+.venv/bin/uvicorn app.main:app --reload --port 8000
+
+# Frontend (second terminal; proxies /api to :8000)
+cd frontend && nvm use && npm install && npm run dev      # http://localhost:5173
+
+# Simulator (third terminal, from the repo root)
+python3 -m venv simulator/.venv && simulator/.venv/bin/pip install -r simulator/requirements-dev.txt
+simulator/.venv/bin/python -m simulator --robots 3        # up to 50; --vda-version 3 for 3.0
+```
+
+Tests and checks:
+
+```bash
+backend/.venv/bin/ruff check . && backend/.venv/bin/ruff format --check .
+(cd backend && .venv/bin/pytest)
+simulator/.venv/bin/pytest simulator
+(cd frontend && npm run lint && npm test && npm run build)
+
+# End to end: starts an isolated copy of the Docker stack (ports 18080/11883), then removes it (~2 min)
+python3 -m venv tests/e2e/.venv && tests/e2e/.venv/bin/pip install -r tests/e2e/requirements.txt
+tests/e2e/.venv/bin/python -m playwright install chromium   # once; add --with-deps on a fresh machine
+tests/e2e/.venv/bin/pytest tests/e2e
+
+# Load test (isolated stack, 10/25/50 robots, ~4.5 min) and the demo recorder
+tests/e2e/.venv/bin/python tests/load/run_load.py
+tests/e2e/.venv/bin/python tests/demo/record_demo.py
+```
+
+Offline playground with no MQTT at all (one mission through the robot state machine): `python3 main.py`.
+
+### Repository layout
+
+| Path | What |
+|---|---|
+| `backend/` | FastAPI service: missions, failures, validation, recording, replay, login |
+| `frontend/` | React + TypeScript lab UI (nginx in Docker) |
+| `simulator/` | Python AMR simulator, VDA 5050 2.1 and 3.0 |
+| `mosquitto/`, `tls/` | Broker config, login and ACL generation, local CA |
+| `contracts/` | Shared fixtures that tie backend and frontend (and simulator) message shapes |
+| `tests/e2e`, `tests/load`, `tests/demo` | End-to-end tests, load test, demo recorder |
+| `docs/` | Architecture, decisions, protocol notes, progress |
+
+## Project status
+
+ActuNode Lab is built to an 8-week plan ([docs/PLAN.md](docs/PLAN.md)). Weeks 1–7 are complete, each
+closed by a quality gate (independent review, scans, a regression test for every fix, all suites green):
+simulator, missions and state transitions, multi-robot map, inspector and validation, failure injection,
+record and replay. Week 8 (this README, the demo video, publishing) completes the plan. Details and
+measurements: [docs/PROGRESS.md](docs/PROGRESS.md); changes: [CHANGELOG.md](CHANGELOG.md).
+
+**Out of scope** (by design or until users ask):
+
+- `blockingType` has no effect (simulated actions are instant); no retriable actions.
+- Zones, corridors and map management; the 3.0 `zoneSet` and `responses` topics are not used.
+- Traffic management, path planning and collision avoidance: ActuNode detects, it does not steer (D-22).
+- Safety stops (`fieldViolation`) and the `visualization` topic are not simulated.
+
 ## Documentation
 
 | Document | What it covers |
 |---|---|
-| [docs/PROGRESS.md](docs/PROGRESS.md) | Where the project is: schedule, verification status, open issues, session log |
-| [docs/PLAN.md](docs/PLAN.md) | The build plan and calendar |
-| [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) | Components, topics, API, data formats |
-| [docs/DECISIONS.md](docs/DECISIONS.md) | Why things are built the way they are |
+| [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) | Components, topics, API, WebSocket events, session format, configuration, tests |
+| [docs/DECISIONS.md](docs/DECISIONS.md) | Why things are built the way they are (D-1 to D-42) |
 | [docs/VDA5050_NOTES.md](docs/VDA5050_NOTES.md) | Protocol notes and validator rules |
-| [docs/research/](docs/research) | Research notes (e.g. VDA 5050 3.0 vs 2.1) |
-| [docs/discovery/](docs/discovery) | Customer discovery: outreach messages and interview guide |
-| [docs/DEMO.md](docs/DEMO.md) | 3-minute demo script |
-| [CHANGELOG.md](CHANGELOG.md) | Changes per commit |
+| [docs/research/VDA5050_3_0.md](docs/research/VDA5050_3_0.md) | VDA 5050 3.0 compared with 2.1 |
+| [docs/DEMO.md](docs/DEMO.md) | 3-minute demo script and the automated recorder |
+| [docs/PROGRESS.md](docs/PROGRESS.md) | Schedule, verification status, session log |
+| [CHANGELOG.md](CHANGELOG.md) | Changes |
+
+## License
+
+Apache License 2.0, see [LICENSE](LICENSE). The vendored official VDA 5050 JSON schemas
+(`backend/app/schemas/vda5050-*`) are MIT-licensed by the Verband der Automobilindustrie; see
+[NOTICE](NOTICE) and the `LICENSE.txt` in each schema folder.
+
+## Security
+
+Please report vulnerabilities privately as described in [SECURITY.md](SECURITY.md), not in public issues.

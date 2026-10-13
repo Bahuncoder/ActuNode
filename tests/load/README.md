@@ -4,7 +4,7 @@ Week 4 asks for 5 to 10 robots on a warehouse map. This test checks how much roo
 it runs the real Docker stack with 10, 25 and 50 simulated robots (50 is the simulator's maximum,
 `simulator/__main__.py` `MAX_ROBOTS`), keeps half of them on missions, and measures every layer from
 the robot's MQTT message to the frame the browser draws. It is a script, not part of `pytest`: one
-run takes about 4.5 minutes and its numbers depend on the machine.
+run takes about 4–5 minutes and its numbers depend on the machine.
 
 ## Running it
 

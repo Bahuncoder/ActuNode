@@ -26,7 +26,7 @@ uagv/v2/ActuNode/robot_01/state
 | Topic | Direction | Purpose | In ActuNode |
 |---|---|---|---|
 | `order` | master → robot | Route (nodes + edges) and actions to perform | ✅ backend sends, simulator executes |
-| `instantActions` | master → robot | Actions to run now (cancelOrder, pause, …) | ⬜ planned (cancel a blocked mission) |
+| `instantActions` | master → robot | Actions to run now (cancelOrder, pause, …) | ✅ implemented (D-35: cancelOrder, startPause/stopPause, stateRequest, factsheetRequest; 3.0 clearInstantActions) |
 | `state` | robot → master | Position, order progress, battery, errors, actions | ✅ every 1 s and on every state event |
 | `visualization` | robot → master | High-rate position for displays | ⬜ |
 | `connection` | robot → master | ONLINE / OFFLINE / CONNECTIONBROKEN, retained, last will | ✅ |
@@ -94,12 +94,12 @@ last will if the robot vanishes.
   `IDLE → ACCEPTED → MOVING → COMPLETED`, plus `BLOCKED` under failure injection and `FAILED`
   when the battery runs empty.
 - `actunode/v1/sim/<robot>/inject`: failure-injection commands, kept off VDA 5050 topics.
-- Error types: `pathBlocked` (BLOCKED_PATH failure, WARNING), `batteryEmpty` (FATAL), `orderError`
+- Error types: `pathBlocked` (BLOCKED_PATH failure, WARNING in 2.1, CRITICAL in 3.0, D-42), `batteryEmpty` (FATAL), `batteryLow` (WARNING in 2.1, URGENT in 3.0), `orderError`
   (order rejected, WARNING).
 
 ## What the validator checks
 
-Schemas: the **official VDA 5050 2.1.0 schemas** (vendored unchanged, see `backend/app/schemas/README.md`)
+Schemas: the **official VDA 5050 2.1.0 and 3.0.0 schemas**, chosen by the topic's major version (D-15, D-20); vendored unchanged, see `backend/app/schemas/README.md`)
 plus ActuNode's own schemas for its extension and inject command. Rules: `backend/app/validator.py`.
 
 | Rule | Severity | Check |
@@ -121,4 +121,4 @@ plus ActuNode's own schemas for its extension and inject command. Rules: `backen
 
 - ~~What changed in 3.0~~ → [research/VDA5050_3_0.md](research/VDA5050_3_0.md). 2.x and 3.0 are supported side by side since 10 Oct (D-15, issue 8).
 - ~~Validate against the official JSON schemas~~ done for 2.1.0 and 3.0.0 (D-20).
-- `instantActions` cancelOrder as the response to a blocked path (plan: "cancel, reroute or escalate").
+- ~~`instantActions` cancelOrder as the response to a blocked path~~ answered: implemented (D-35).

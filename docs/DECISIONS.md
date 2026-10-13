@@ -483,6 +483,8 @@ does (pick and drop node actions, no instant actions yet, 1 m/s); numbers the sc
 simulator does not model (size, acceleration, load mass) are nominal and marked so in the code. Two
 upstream 3.0.0 factsheet schema quirks are worked around and recorded in `backend/app/schemas/README.md`.
 The backend's `driving-consistency` rule now flags only `driving: true` outside a route: a robot on a
+*Amended by D-35:* the factsheet lists the supported instant actions.
+
 route may truthfully stand still (found when the e2e validation check flagged the corrected robot).
 **Consequences.** Remaining order-handling deviations found by the same review are Week 3 work (horizon
 nodes, edge actions, unknown actions, version-specific error types, start node out of range, loads,

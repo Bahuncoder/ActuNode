@@ -111,7 +111,7 @@ IDLE ──order──▶ ACCEPTED ──next tick──▶ MOVING ──last no
 - Motion: 1 m/s straight lines between nodes; battery −0.2 % per metre; pick/drop actions finish
   instantly on arrival.
 - At 0 % battery the robot stops where it ran out and the mission is FAILED (`batteryEmpty`, FATAL);
-  orders are rejected until it can drive again (D-17). Charging is not simulated yet.
+  orders are rejected until it can drive again (D-17). Robots charge at 1 %/s while they have no active order and stand in the charging zone (D-33); robots in the PARKING zone do not charge (D-37).
 - Threading: paho network threads only put messages on a queue; the robot object is touched only by
   the main loop.
 
@@ -267,4 +267,5 @@ can go first).
 | Simulator | `simulator/.venv/bin/pytest simulator` | ✅ |
 | Frontend | `cd frontend && nvm use && npm run lint && npm test && npm run build` (Node 24, D-19) | ✅ |
 | End to end | `pytest tests/e2e` (needs Docker; starts its own isolated stack, D-16); includes real-browser tests in Chromium via Playwright (`playwright install chromium` once, D-29) | ✅ |
-| Load | `tests/e2e/.venv/bin/python tests/load/run_load.py` (needs Docker; isolated stack; 10/25/50 robots with missions; ~4 min; thresholds and how to read results in [tests/load/README.md](../tests/load/README.md); latest summary in `tests/load/results/latest.md`) | By hand, not in CI |
+| Load | `tests/e2e/.venv/bin/python tests/load/run_load.py` (needs Docker; isolated stack; 10/25/50 robots with missions; ~4 min; thresholds and how to read results in [tests/load/README.md](../tests/load/README.md); latest summary in `tests/load/results/latest.md`) | Weekly and on demand in CI (`.github/workflows/load.yml`), also by hand |
+| Security scans | `.github/workflows/security.yml` | Weekly security scans in CI |
