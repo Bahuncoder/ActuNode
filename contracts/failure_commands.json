@@ -1,0 +1,69 @@
+[
+  {
+    "action": "inject",
+    "failure": "LOW_BATTERY",
+    "injectionId": "inj-00000000",
+    "params": {
+      "level": 12
+    },
+    "robotId": "fail_20",
+    "timestamp": "2026-01-01T00:00:00.000Z"
+  },
+  {
+    "action": "inject",
+    "failure": "DISCONNECT",
+    "injectionId": "inj-00000000",
+    "params": {
+      "duration_s": 3,
+      "mode": "broken"
+    },
+    "robotId": "fail_20",
+    "timestamp": "2026-01-01T00:00:00.000Z"
+  },
+  {
+    "action": "inject",
+    "failure": "INVALID_PAYLOAD",
+    "injectionId": "inj-00000000",
+    "params": {
+      "count": 2,
+      "kind": "schema"
+    },
+    "robotId": "fail_20",
+    "timestamp": "2026-01-01T00:00:00.000Z"
+  },
+  {
+    "action": "inject",
+    "failure": "BLOCKED_PATH",
+    "injectionId": "inj-00000000",
+    "params": {},
+    "robotId": "fail_20",
+    "timestamp": "2026-01-01T00:00:00.000Z"
+  },
+  {
+    "action": "clear",
+    "failure": "LOW_BATTERY",
+    "injectionId": "inj-00000000",
+    "params": {},
+    "robotId": "fail_20",
+    "timestamp": "2026-01-01T00:00:00.000Z"
+  },
+  {
+    "action": "clear",
+    "failure": "BLOCKED_PATH",
+    "injectionId": "inj-00000000",
+    "params": {},
+    "robotId": "fail_20",
+    "timestamp": "2026-01-01T00:00:00.000Z"
+  },
+  {
+    "action": "inject",
+    "failure": "DISCONNECT",
+    "injectionId": "inj-00000000",
+    "params": {
+      "duration_s": 4,
+      "mode": "offline"
+    },
+    "robotId": "fail_20",
+    "timestamp": "2026-01-01T00:00:00.000Z"
+  }
+]

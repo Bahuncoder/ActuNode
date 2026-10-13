@@ -6,7 +6,7 @@ from typing import Literal
 from uuid import uuid4
 
 from fastapi import APIRouter, HTTPException
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field, ValidationError, model_validator
 
 from app import vda5050
 from app.live import hub
@@ -20,10 +20,69 @@ router = APIRouter(prefix="/api")
 ON_ROUTE = ("ACCEPTED", "MOVING")
 
 
+class _Params(BaseModel):
+    # strict: level true / "15" / 15.0 are not integers
+    model_config = ConfigDict(extra="forbid", strict=True)
+
+
+class NoParams(_Params):
+    pass
+
+
+class LowBatteryParams(_Params):
+    level: int = Field(15, ge=1, le=99)
+
+
+class DisconnectParams(_Params):
+    duration_s: int = Field(10, ge=1, le=300)
+    mode: Literal["broken", "offline"] = "broken"
+
+
+class InvalidPayloadParams(_Params):
+    kind: Literal["not-json", "schema", "wrong-serial", "wrong-version"] = "schema"
+    count: int = Field(1, ge=1, le=10)
+
+
+PARAMS = {
+    "BLOCKED_PATH": NoParams,
+    "LOW_BATTERY": LowBatteryParams,
+    "DISCONNECT": DisconnectParams,
+    "INVALID_PAYLOAD": InvalidPayloadParams,
+}
+# Failures that end by themselves cannot be cleared: why.
+NO_CLEAR = {
+    "DISCONNECT": "DISCONNECT ends by itself after duration_s",
+    "INVALID_PAYLOAD": "INVALID_PAYLOAD is a one-off burst and ends by itself",
+}
+
+
 class FailureRequest(BaseModel):
     robot_id: str = Field(pattern=r"^[A-Za-z0-9_-]{1,64}$", examples=["robot_01"])
-    failure: Literal["BLOCKED_PATH"] = "BLOCKED_PATH"
+    failure: Literal["BLOCKED_PATH", "LOW_BATTERY", "DISCONNECT", "INVALID_PAYLOAD"] = "BLOCKED_PATH"
     action: Literal["inject", "clear"] = "inject"
+    params: dict = Field(default_factory=dict)
+
+    @model_validator(mode="after")
+    def _check_params(self):
+        if self.action == "clear" and self.failure in NO_CLEAR:
+            raise ValueError(f"{self.failure} cannot be cleared: {NO_CLEAR[self.failure]}")
+        if self.action == "clear":
+            # A clear undoes an injection; parameters would be silently ignored, so refuse them.
+            if self.params:
+                raise ValueError("clear takes no params")
+            return self
+        try:
+            self.params = PARAMS[self.failure](**self.params).model_dump()
+        except ValidationError as error:
+            # Re-raise so the 422 locates the field under params: ["body", "params", "<field>"].
+            raise ValidationError.from_exception_data(
+                "FailureRequest",
+                [
+                    {"type": e["type"], "loc": ("params", *e["loc"]), "input": e["input"], "ctx": e.get("ctx", {})}
+                    for e in error.errors()
+                ],
+            ) from None
+        return self
 
 
 def control_topic(serial_number: str, name: str) -> str:
@@ -54,9 +113,15 @@ def inject_failure(request: FailureRequest) -> dict:
     state = robot["state"] if isinstance(robot["state"], dict) else {}
     extra = state.get("actunode") if isinstance(state.get("actunode"), dict) else {}
     status = extra.get("missionStatus", "UNKNOWN")
-    if request.action == "inject" and status not in ON_ROUTE:
+    injected = extra.get("injectedFailures")
+    if request.failure == "LOW_BATTERY" and request.action == "clear" and isinstance(injected, list):
+        # Older simulators do not report the list; those clear as before.
+        if "LOW_BATTERY" not in injected:
+            raise HTTPException(409, f"{request.robot_id} has no injected LOW_BATTERY to clear")
+    blocked = request.failure == "BLOCKED_PATH"
+    if blocked and request.action == "inject" and status not in ON_ROUTE:
         raise HTTPException(409, f"{request.robot_id} is {status}; {request.failure} needs a robot on a route")
-    if request.action == "clear" and status != "BLOCKED":
+    if blocked and request.action == "clear" and status != "BLOCKED":
         raise HTTPException(409, f"{request.robot_id} is {status}, not BLOCKED")
 
     command = {
@@ -65,6 +130,7 @@ def inject_failure(request: FailureRequest) -> dict:
         "robotId": request.robot_id,
         "failure": request.failure,
         "action": request.action,
+        "params": request.params,
     }
     topic = control_topic(request.robot_id, "inject")
     mqtt_bridge.publish(topic, json.dumps(command), qos=1)

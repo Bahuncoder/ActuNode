@@ -2,13 +2,69 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "urn:actunode:schema:actunode:inject",
   "title": "ActuNode failure-injection command",
+  "$comment": "Draft 2020-12 treats 5.0 as an integer, so this schema accepts it; the backend API (strict) does not.",
   "type": "object",
-  "required": ["injectionId", "timestamp", "robotId", "failure", "action"],
+  "required": ["injectionId", "timestamp", "robotId", "failure", "action", "params"],
   "properties": {
     "injectionId": { "type": "string", "minLength": 1 },
     "timestamp": { "type": "string", "minLength": 1 },
     "robotId": { "type": "string", "minLength": 1 },
-    "failure": { "enum": ["BLOCKED_PATH"] },
-    "action": { "enum": ["inject", "clear"] }
-  }
+    "failure": { "enum": ["BLOCKED_PATH", "LOW_BATTERY", "DISCONNECT", "INVALID_PAYLOAD"] },
+    "action": { "enum": ["inject", "clear"] },
+    "params": { "type": "object" }
+  },
+  "allOf": [
+    {
+      "if": { "properties": { "action": { "const": "clear" } } },
+      "then": { "properties": { "params": { "maxProperties": 0 } } }
+    },
+    {
+      "if": { "properties": { "failure": { "const": "BLOCKED_PATH" } } },
+      "then": { "properties": { "params": { "type": "object", "additionalProperties": false } } }
+    },
+    {
+      "if": { "properties": { "failure": { "const": "LOW_BATTERY" } } },
+      "then": {
+        "properties": {
+          "params": {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": { "level": { "type": "integer", "minimum": 1, "maximum": 99 } }
+          }
+        }
+      }
+    },
+    {
+      "if": { "properties": { "failure": { "const": "DISCONNECT" } } },
+      "then": {
+        "properties": {
+          "action": { "const": "inject" },
+          "params": {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+              "duration_s": { "type": "integer", "minimum": 1, "maximum": 300 },
+              "mode": { "enum": ["broken", "offline"] }
+            }
+          }
+        }
+      }
+    },
+    {
+      "if": { "properties": { "failure": { "const": "INVALID_PAYLOAD" } } },
+      "then": {
+        "properties": {
+          "action": { "const": "inject" },
+          "params": {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+              "kind": { "enum": ["not-json", "schema", "wrong-serial", "wrong-version"] },
+              "count": { "type": "integer", "minimum": 1, "maximum": 10 }
+            }
+          }
+        }
+      }
+    }
+  ]
 }

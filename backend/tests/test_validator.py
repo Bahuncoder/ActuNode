@@ -81,6 +81,14 @@ def test_bad_enum_is_a_schema_error_and_impossible_battery_a_plausibility_warnin
     }
 
 
+def test_injected_failures_in_state_must_be_known_failure_names():
+    topic, payload = fixture("state_moving")
+    payload["actunode"]["injectedFailures"] = ["LOW_BATTERY"]
+    assert Validator().check(topic, payload, valid_json=True) == []
+    payload["actunode"]["injectedFailures"] = ["METEOR"]
+    assert [i["path"] for i in Validator().check(topic, payload, valid_json=True)] == ["/actunode/injectedFailures/0"]
+
+
 def test_actunode_extension_is_checked_against_its_own_schema():
     topic, payload = fixture("state_moving")
     payload["actunode"]["missionStatus"] = "DANCING"
@@ -129,6 +137,20 @@ def test_header_id_must_increase_per_topic_but_retained_is_exempt():
     assert validator.check(topic, {**payload, "headerId": 6}, valid_json=True) == []
     assert rules(validator.check(topic, {**payload, "headerId": 6}, valid_json=True)) == ["header-id"]
     assert validator.check(topic, {**payload, "headerId": 1}, valid_json=True, retained=True) == []
+
+
+@pytest.mark.parametrize("name, broken", [("connection", "CONNECTIONBROKEN"), ("v3_connection", "CONNECTION_BROKEN")])
+def test_last_will_header_id_is_outdated_by_design_and_ignored(name, broken):
+    validator = Validator()
+    topic, payload = fixture(name)
+    online = payload["connectionState"]
+
+    validator.check(topic, {**payload, "headerId": 2, "connectionState": online}, valid_json=True)
+    will = validator.check(topic, {**payload, "headerId": 1, "connectionState": broken}, valid_json=True)
+    after = validator.check(topic, {**payload, "headerId": 4, "connectionState": online}, valid_json=True)
+
+    assert "header-id" not in rules(will)
+    assert "header-id" not in rules(after)
 
 
 def test_order_edges_must_connect_neighbouring_nodes():
@@ -431,3 +453,28 @@ def test_order_update_transitions_are_allowed(path):
     for header_id, status in enumerate(path, 1):
         issues = validator.check(topic, state(base, status, header_id), valid_json=True)
         assert "mission-transition" not in rules(issues), status
+
+
+@pytest.mark.parametrize(
+    "change",
+    [
+        {"failure": "METEOR"},
+        {"failure": "LOW_BATTERY", "params": {"level": 100}},
+        {"failure": "LOW_BATTERY", "params": {"level": 5, "x": 1}},
+        {"failure": "DISCONNECT", "params": {"duration_s": 0}},
+        {"failure": "DISCONNECT", "params": {"mode": "sleep"}},
+        {"failure": "INVALID_PAYLOAD", "params": {"kind": "bogus"}},
+        {"failure": "INVALID_PAYLOAD", "params": {"count": 11}},
+        {"failure": "BLOCKED_PATH", "params": {"level": 5}},
+        {"params": None},
+        {"failure": "LOW_BATTERY", "action": "clear", "params": {"level": 5}},
+    ],
+)
+def test_malformed_inject_commands_are_rejected(change):
+    topic, payload = fixture("inject")
+    payload.update(change)
+
+    found = Validator().check(topic, payload, valid_json=True)
+
+    assert found
+    assert set(rules(found)) == {"schema"}

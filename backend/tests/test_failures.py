@@ -8,11 +8,14 @@ from app.main import app
 from app.mqtt_state import mqtt_bridge
 
 
-def report(robot_id, status, connection="ONLINE"):
+def report(robot_id, status, connection="ONLINE", injected=None):
     hub.handle_mqtt(f"uagv/v2/ActuNode/{robot_id}/connection", json.dumps({"connectionState": connection}).encode())
+    extension = {"missionStatus": status}
+    if injected is not None:
+        extension["injectedFailures"] = injected
     hub.handle_mqtt(
         f"uagv/v2/ActuNode/{robot_id}/state",
-        json.dumps({"serialNumber": robot_id, "actunode": {"missionStatus": status}}).encode(),
+        json.dumps({"serialNumber": robot_id, "actunode": extension}).encode(),
     )
 
 
@@ -129,3 +132,155 @@ def test_malformed_state_is_refused_not_a_server_error(client, published, state)
 
     assert response.status_code == 409
     assert published == []
+
+
+@pytest.mark.parametrize(
+    "failure, params, expected",
+    [
+        ("LOW_BATTERY", None, {"level": 15}),
+        ("LOW_BATTERY", {"level": 7}, {"level": 7}),
+        ("DISCONNECT", None, {"duration_s": 10, "mode": "broken"}),
+        ("DISCONNECT", {"duration_s": 300, "mode": "offline"}, {"duration_s": 300, "mode": "offline"}),
+        ("INVALID_PAYLOAD", None, {"kind": "schema", "count": 1}),
+        ("INVALID_PAYLOAD", {"kind": "not-json", "count": 10}, {"kind": "not-json", "count": 10}),
+    ],
+)
+def test_new_failures_apply_defaults_work_on_any_status_and_log_params(client, published, failure, params, expected):
+    report("fail_10", "IDLE")
+    body = {"robot_id": "fail_10", "failure": failure} | ({"params": params} if params is not None else {})
+
+    response = client.post("/api/failures", json=body)
+
+    assert response.status_code == 202
+    assert published[0][1]["params"] == expected
+    assert response.json()["params"] == expected
+    assert client.get("/api/failures").json()[-1]["params"] == expected
+
+
+def test_blocked_path_command_carries_empty_params(client, published):
+    report("fail_11", "MOVING")
+    client.post("/api/failures", json={"robot_id": "fail_11"})
+    assert published[0][1]["params"] == {}
+
+
+@pytest.mark.parametrize(
+    "failure, params",
+    [
+        ("BLOCKED_PATH", {"level": 5}),
+        ("LOW_BATTERY", {"level": 0}),
+        ("LOW_BATTERY", {"level": 100}),
+        ("LOW_BATTERY", {"level": 5, "extra": 1}),
+        ("LOW_BATTERY", {"duration_s": 5}),
+        ("DISCONNECT", {"duration_s": 0}),
+        ("DISCONNECT", {"duration_s": 301}),
+        ("DISCONNECT", {"mode": "sleep"}),
+        ("INVALID_PAYLOAD", {"kind": "bogus"}),
+        ("INVALID_PAYLOAD", {"count": 11}),
+        ("INVALID_PAYLOAD", {"count": 0}),
+        ("LOW_BATTERY", {"level": True}),
+        ("LOW_BATTERY", {"level": "15"}),
+        ("LOW_BATTERY", {"level": 15.0}),
+        ("DISCONNECT", {"duration_s": 5.0}),
+        ("DISCONNECT", {"duration_s": "5"}),
+        ("INVALID_PAYLOAD", {"count": 2.0}),
+        ("INVALID_PAYLOAD", {"count": True}),
+    ],
+)
+def test_bad_params_are_422(client, published, failure, params):
+    report("fail_12", "MOVING")
+    response = client.post("/api/failures", json={"robot_id": "fail_12", "failure": failure, "params": params})
+    assert response.status_code == 422
+    assert published == []
+
+
+def test_param_errors_report_the_field_under_body_params(client, published):
+    report("fail_17", "MOVING")
+    response = client.post(
+        "/api/failures", json={"robot_id": "fail_17", "failure": "LOW_BATTERY", "params": {"level": 0}}
+    )
+    assert response.status_code == 422
+    assert [error["loc"] for error in response.json()["detail"]] == [["body", "params", "level"]]
+
+
+@pytest.mark.parametrize(
+    "injected, expected",
+    [([], 409), (["BLOCKED_PATH"], 409), (["LOW_BATTERY"], 202), (None, 202)],
+)
+def test_low_battery_clear_needs_an_injected_low_battery_when_the_robot_reports_them(
+    client, published, injected, expected
+):
+    report("fail_18", "MOVING", injected=injected)
+    response = client.post("/api/failures", json={"robot_id": "fail_18", "failure": "LOW_BATTERY", "action": "clear"})
+    assert response.status_code == expected
+    if expected == 409:
+        assert response.json()["detail"] == "fail_18 has no injected LOW_BATTERY to clear"
+        assert published == []
+
+
+@pytest.mark.parametrize("failure", ["DISCONNECT", "INVALID_PAYLOAD"])
+def test_clear_is_refused_for_failures_that_end_by_themselves(client, published, failure):
+    report("fail_13", "MOVING")
+    response = client.post("/api/failures", json={"robot_id": "fail_13", "failure": failure, "action": "clear"})
+    assert response.status_code == 422
+    assert "clear" in json.dumps(response.json())
+    assert published == []
+
+
+def test_low_battery_clear_is_sent_on_any_status(client, published):
+    report("fail_14", "MOVING")
+    response = client.post("/api/failures", json={"robot_id": "fail_14", "failure": "LOW_BATTERY", "action": "clear"})
+    assert response.status_code == 202
+    assert published[0][1]["action"] == "clear"
+    assert published[0][1]["params"] == {}  # a clear carries no parameters (not the injection defaults)
+    assert response.json()["params"] == {}
+
+
+def test_clear_with_parameters_is_refused(client, published):
+    report("fail_16", "BLOCKED")
+    response = client.post(
+        "/api/failures",
+        json={"robot_id": "fail_16", "failure": "LOW_BATTERY", "action": "clear", "params": {"level": 30}},
+    )
+    assert response.status_code == 422
+    assert published == []
+
+
+def test_new_failures_still_need_an_online_actunode_robot(client, published):
+    report("fail_15", "MOVING", connection="CONNECTIONBROKEN")
+    response = client.post("/api/failures", json={"robot_id": "fail_15", "failure": "LOW_BATTERY"})
+    assert response.status_code == 409
+    assert published == []
+
+
+def test_commands_match_the_shared_contract_fixture_and_the_schema(client, published):
+    """contracts/failure_commands.json is read by the simulator tests too. Regenerate with
+    ACTUNODE_UPDATE_CONTRACTS=1 after a deliberate change."""
+    import os
+    from pathlib import Path
+
+    from app.validator import Validator
+
+    report("fail_20", "MOVING")
+    requests = [
+        {"failure": "LOW_BATTERY", "params": {"level": 12}},
+        {"failure": "DISCONNECT", "params": {"duration_s": 3, "mode": "broken"}},
+        {"failure": "INVALID_PAYLOAD", "params": {"kind": "schema", "count": 2}},
+        {"failure": "BLOCKED_PATH"},
+        {"failure": "LOW_BATTERY", "action": "clear"},
+        {"failure": "BLOCKED_PATH", "action": "clear"},
+        {"failure": "DISCONNECT", "params": {"duration_s": 4, "mode": "offline"}},
+    ]
+    for request in requests:
+        if request == {"failure": "BLOCKED_PATH", "action": "clear"}:
+            report("fail_20", "BLOCKED")
+        assert client.post("/api/failures", json={"robot_id": "fail_20", **request}).status_code == 202
+    commands = []
+    for topic, command in published:
+        command["injectionId"], command["timestamp"] = "inj-00000000", "2026-01-01T00:00:00.000Z"
+        assert Validator().check(topic, command, valid_json=True) == []
+        commands.append(command)
+
+    fixture = Path(__file__).resolve().parents[2] / "contracts" / "failure_commands.json"
+    if os.environ.get("ACTUNODE_UPDATE_CONTRACTS"):
+        fixture.write_text(json.dumps(commands, indent=2, sort_keys=True) + "\n")
+    assert json.loads(fixture.read_text()) == commands

@@ -5,6 +5,7 @@
     "timestamp": "2026-10-09T21:56:11.884Z",
     "robotId": "robot_01",
     "failure": "BLOCKED_PATH",
-    "action": "inject"
+    "action": "inject",
+    "params": {}
   }
 }

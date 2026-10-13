@@ -181,7 +181,9 @@ class Validator:
             issues.append(issue("error", "timestamp", f"{timestamp!r} is not ISO 8601 with a time zone", "/timestamp"))
 
         header_id = payload.get("headerId")
-        if isinstance(header_id, int) and not retained:
+        # The broker-published last will carries an outdated headerId by design (VDA 5050 2.1 6.14).
+        will = payload.get("connectionState") in ("CONNECTIONBROKEN", "CONNECTION_BROKEN")
+        if isinstance(header_id, int) and not retained and not will:
             previous = self._last_header_id.get(topic)
             if previous is not None and header_id <= previous:
                 issues.append(
