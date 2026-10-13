@@ -4,6 +4,15 @@ What changed, per commit, newest first. Status and plans are in [docs/PROGRESS.m
 
 ## Unreleased
 
+### Week 6: failure injection (D-42)
+- Four failures from the UI or `POST /api/failures` with parameters: BLOCKED_PATH, LOW_BATTERY (level),
+  DISCONNECT (duration, abrupt or clean), INVALID_PAYLOAD (kind, count). Robots report `batteryLow` below
+  20 % and which failures are injected.
+- VDA 5050 3.0 error levels per the spec: `batteryLow` URGENT, `pathBlocked` CRITICAL (2.1: WARNING).
+- The broker's last will no longer produces a false header-id warning.
+- E2E: each failure observed on the real stack (state, last will, validator rules).
+- UI: robot updates no longer slow down with many robots (1,500 updates 4.5 s → 0.3 s).
+
 ### Weeks 5 and 7: offline validation, retention, upload (D-40, D-41)
 - Validate a saved session with the live validator: `POST /api/sessions/{id}/validate`, a Validate button,
   and `python -m app.validate_session file.jsonl` (exit 1 on errors, 2 on a bad file) for CI.

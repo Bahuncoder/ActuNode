@@ -71,10 +71,10 @@ and produce a `warning` in the mission response when they do not match.
 |---|---|---|---|---|---|
 | `uagv/v2/ActuNode/<robot>/order` | backend | that robot | 0 | no | VDA 5050 order |
 | `uagv/v2/ActuNode/<robot>/instantActions` | backend | that robot | 0 | no | VDA 5050 instant actions (`cancelOrder`) |
-| `uagv/v2/ActuNode/<robot>/state` | robot | backend | 0 | no | VDA 5050 state + `actunode.missionStatus`; every 1 s and on every status change |
+| `uagv/v2/ActuNode/<robot>/state` | robot | backend | 0 | no | VDA 5050 state + `actunode.missionStatus` and `actunode.injectedFailures` (failures currently injected; absent on older robots); every 1 s and on every status change |
 | `uagv/v2/ActuNode/<robot>/connection` | robot (and broker, as last will) | backend | 1 | yes | `ONLINE` / `OFFLINE` / `CONNECTIONBROKEN` |
 | `uagv/v2/ActuNode/<robot>/factsheet` | robot, on every connect | backend (validated) | 0 | yes | What the simulated robot is and can do (D-34) |
-| `actunode/v1/sim/<robot>/inject` | backend | that robot | 1 | no | Failure-injection command (ActuNode, not VDA 5050) |
+| `actunode/v1/sim/<robot>/inject` | backend | that robot | 1 | no | Failure-injection command `{injectionId, timestamp, robotId, failure, action, params}` (ActuNode, not VDA 5050; failures `BLOCKED_PATH`, `LOW_BATTERY`, `DISCONNECT`, `INVALID_PAYLOAD`) |
 
 QoS follows VDA 5050 section 6.2: QoS 0 for `order`, `instantActions`, `state`, `factsheet`,
 `visualization`; QoS 1 for `connection`. The backend subscribes with QoS 1 (a ceiling, needed to receive
@@ -121,7 +121,7 @@ IDLE ──order──▶ ACCEPTED ──next tick──▶ MOVING ──last no
 |---|---|
 | [main.py](../backend/app/main.py) | App, lifespan (start/stop MQTT; close recording; stop replay), health, robots, messages, validation, WebSocket |
 | [mqtt.py](../backend/app/mqtt.py), [mqtt_state.py](../backend/app/mqtt_state.py) | `MqttBridge`: one shared paho client, auto-reconnect, subscriptions, message callback |
-| [live.py](../backend/app/live.py) | `LiveHub`: latest state per robot, last 500 messages, failure log, validation counters; hands events from the MQTT thread to WebSocket clients on the asyncio loop |
+| [live.py](../backend/app/live.py) | `LiveHub`: latest state per robot, last 500 messages, failure log, validation counters; hands events from the MQTT thread to WebSocket clients on the asyncio loop. The hub stores what a robot last sent as its state even if it fails validation (the inspector shows real traffic), so after an `INVALID_PAYLOAD` `schema` message the robot's position and status may be unknown for about a second |
 | [validator.py](../backend/app/validator.py) + [schemas/](../backend/app/schemas) | JSON Schema checks + sequence rules; attaches `issues` to every message |
 | [proximity.py](../backend/app/proximity.py) | `ProximityMonitor`: near-collision detection between live robots (`proximity` warning) |
 | [vda5050.py](../backend/app/vda5050.py) | Topic names, headers, order building |
@@ -153,7 +153,7 @@ WebSocket client's queue → `send_json`.
 | GET | `/api/robots` | Latest connection + state per robot |
 | GET | `/api/proximity` | Pairs of live robots (by key, e.g. `v2/ActuNode/robot_01`) currently closer than `ACTUNODE_PROXIMITY_M` (D-22, D-27) |
 | GET | `/api/messages` | Recent MQTT messages with validation issues |
-| GET / POST | `/api/failures` | Failure log / inject or clear `BLOCKED_PATH` |
+| GET / POST | `/api/failures` | Failure log / inject a failure (`BLOCKED_PATH`, `LOW_BATTERY`, `DISCONNECT`, `INVALID_PAYLOAD`) with per-failure `params`; clear only `BLOCKED_PATH` and `LOW_BATTERY` (D-42) |
 | GET | `/api/validation` | Validation counters per rule |
 | POST | `/api/validation/reset` | Reset counters |
 | GET | `/api/recording` | Current recording |

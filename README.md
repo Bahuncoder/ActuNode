@@ -174,6 +174,15 @@ a robot table, and a raw message stream (filter, pause, click a row for the full
 reports a VDA 5050 `pathBlocked` error referencing the edge (or next node) it was on. Clearing
 the failure resumes the mission. Every injection is logged by the backend and shown in the UI.
 
+Four failures, each with optional `params` (defaults in brackets):
+
+| `failure` | `params` | `clear` |
+|---|---|---|
+| `BLOCKED_PATH` | none | yes |
+| `LOW_BATTERY` | `level` 1-99 [15] | yes |
+| `DISCONNECT` | `duration_s` 1-300 [10], `mode` `broken`\|`offline` [broken] | no, ends by itself |
+| `INVALID_PAYLOAD` | `kind` `not-json`\|`schema`\|`wrong-serial`\|`wrong-version` [schema], `count` 1-10 [1] | no |
+
 ```bash
 curl -X POST localhost:8000/api/failures -H 'content-type: application/json' -d '{"robot_id":"robot_01"}'
 curl -X POST localhost:8000/api/failures -H 'content-type: application/json' -d '{"robot_id":"robot_01","action":"clear"}'

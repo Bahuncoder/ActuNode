@@ -689,3 +689,42 @@ torn last line (crash mid-write) is accepted and dropped; an upload without an e
 One record reader (`session_records.py`) serves listing, replay, validation and upload checks.
 **Consequences.** Week 7's "session file can reproduce an incident" works for files from another site, and
 disk use is bounded by configuration.
+
+## D-42 · Week 6: failure injection — low battery, disconnect, invalid payload; spec error levels
+13 Oct 2026 · Accepted (design before code)
+
+**Context.** Week 6 is "failure injection: blocked path, low battery, disconnect, invalid payload". Only
+BLOCKED_PATH existed (Day 5). The Week 2 review left the 3.0 error level of `pathBlocked` open. 3.0 §6.6.5
+defines the levels: WARNING (no immediate attention), URGENT ("e.g., a low battery level… can continue its
+current order"), CRITICAL ("shall not continue driving since it can not continue its current order but is
+able to take new orders"), FATAL (needs a person). 2.1 has only WARNING and FATAL.
+**Decision.** `POST /api/failures {robot_id, failure, action, params}` for simulated ActuNode robots only
+(D-27); the command travels on the robot's own control topic as before (`actunode/v1/sim/<serial>/inject`,
+validated by `actunode-inject.schema.json`; a shared contract fixture ties backend and simulator).
+- `BLOCKED_PATH` (inject / clear, robot on a route): error `pathBlocked`, level 2.1 WARNING, **3.0
+  CRITICAL** (changed from WARNING).
+- `LOW_BATTERY` (inject with `level` 1–99, default 15; clear restores the level before injection): sets
+  the battery. Independently of injection, the robot reports `batteryLow` while below 20 % (2.1 WARNING,
+  **3.0 URGENT**), clears it once charged above, keeps driving; at 0 % the existing FATAL `batteryEmpty`.
+- `DISCONNECT` (inject only; `duration_s` 1–300, default 10; `mode` `broken` (default) or `offline`):
+  `broken` drops the connection without an MQTT DISCONNECT, so the broker publishes the last will
+  (CONNECTIONBROKEN / 3.0 CONNECTION_BROKEN); `offline` publishes OFFLINE and disconnects cleanly. The robot
+  keeps simulating and keeps its order while away (2.1 §6.14: it "fulfills the order up to the last
+  released node"), publishes nothing, and reconnects after `duration_s` (ONLINE, factsheet, current state).
+  No clear: a disconnected robot cannot receive one.
+- `INVALID_PAYLOAD` (inject only; `kind` one of `not-json`, `schema`, `wrong-serial`, `wrong-version`;
+  `count` 1–10, default 1): the robot publishes that many malformed messages on its own state topic, between
+  its normal ones, so the validator and the inspector show them.
+- The UI's failure panel offers all four with their parameters; every injection is logged and recorded.
+*Amended after the gate (13 Oct):* the broker's last will carries an outdated headerId by design (2.1
+§6.14), so the validator no longer flags or remembers it; the simulator's disconnect and reconnect run off
+the simulation thread (one robot's DISCONNECT froze every robot for up to 1 s) and the reconnect handshake
+is published from the simulation thread (thread safety), with the current state right after ONLINE; the
+robot reports `actunode.injectedFailures`, and LOW_BATTERY clear needs an active injection (409 otherwise)
+and carries no parameters; restoring the battery also clears `batteryEmpty`; at most 10 malformed messages
+pending per robot; strict parameter types; the shared fixture `contracts/failure_commands.json` is checked
+command by command against the simulator's exact results. A schema-invalid INVALID_PAYLOAD state replaces
+the hub's last state for about a second: the hub shows what a robot sent (documented, not changed).
+**Consequences.** The plan's four failures exist; each is verified end to end (what the backend, validator
+and UI observe). Safety stops (`fieldViolation`) and silent robots (state timeouts) are not in the plan's
+list and stay out of scope.

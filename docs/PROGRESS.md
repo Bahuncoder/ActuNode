@@ -14,7 +14,7 @@ the status line, the schedule table, the session log, and the open issues.
 |---|---|
 | **Calendar** | Week 1 of 8 by date (Fri 9 Oct – Thu 15 Oct 2026); dates no longer gate the work (D-30) |
 | **Last updated** | Mon 12 Oct 2026 |
-| **Status** | **Weeks 1–5 and 7 complete** (quality gates passed 11–13 Oct, D-30). No open issues. Next: Week 6 (three remaining failure types: low battery, disconnect, invalid payload), then Week 8 (demo video, README, publish). |
+| **Status** | **Weeks 1–7 complete** (quality gates passed 11–13 Oct, D-30). No open issues. Next: Week 8 (record the 3-minute demo video, polish the README, publish). |
 | **Working rule** | A week is done when its work is fully done (D-30): features, then a quality gate (independent bug and security review, scans, a test for every fix, all suites and e2e green, docs). Then the next week starts, whatever the date. |
 
 ## Schedule
@@ -28,6 +28,7 @@ Week 1 started on Friday 9 October 2026 (Day 1). Each week runs Friday to Thursd
 | 3 | 23–29 Oct | Mission sender + state transitions | Move job from start to destination | ✅ Built early (Day 3); completed 12 Oct (D-35) | ✅ Quality gate passed 12 Oct: VDA 5050 order handling, order updates, cancel/pause, review fixes |
 | 4 | 30 Oct – 5 Nov | 5–10 robots + simple warehouse map | Multi-robot screen with location/state | ✅ Built early (Day 4); completed 12 Oct (D-37, D-38) | ✅ Quality gate passed 12 Oct: load test 10/25/50 robots, one map, parking, live feed at scale |
 | 5 | 6–12 Nov | Message inspector + validation | Readable message stream + errors | ✅ Built early (Day 4); completed 13 Oct (D-40) | ✅ Quality gate passed 13 Oct: offline validation (API, UI, CLI) matching live validation |
+| 6 | 13–19 Nov | Failure injection | Blocked path, low battery, disconnect, invalid payload | ✅ Blocked path Day 5; the other three completed 13 Oct (D-42) | ✅ Quality gate passed 13 Oct: all four observed end to end; spec error levels |
 | 7 | 20–26 Nov | Record/replay | Session file can reproduce incident | ✅ Built early (Days 6–7); completed 13 Oct (D-41) | ✅ Quality gate passed 13 Oct: retention, upload of a session someone sent you, hostile-file checks |
 | 8 | 27 Nov – 3 Dec | Demo + README + 3-minute video | GitHub repo + pitch demo | 🟡 README + demo script written | ⬜ Video not recorded |
 
@@ -48,6 +49,27 @@ the 8-week plan; the 8-week plan is the full roadmap. All of Days 1–7 were bui
 | Day 5 | `BLOCKED_PATH` failure | Week 6 (1 of 4 failures) |
 | Days 6–7 | Record to JSONL, replay | Week 7 |
 | 10 Oct | 10 robots; validator, schemas, VDA 5050 notes | Weeks 4, 5, 1 (rest) |
+
+## Week 6: failure injection, quality gate (13 Oct, D-42)
+
+Built (design first, test-first): LOW_BATTERY, DISCONNECT (abrupt → broker last will, or clean OFFLINE),
+INVALID_PAYLOAD (four kinds) next to BLOCKED_PATH; 3.0 error levels from the spec's own definitions
+(`batteryLow` URGENT, `pathBlocked` CRITICAL); UI panel with parameters. E2E observes each failure on the
+real stack, including the broker publishing the last will.
+
+Gate review findings, all fixed with regression tests:
+
+| Severity | Finding | Fix |
+|---|---|---|
+| Important | Every abrupt disconnect produced a false header-id warning (the will's headerId is outdated by design) | Validator skips and does not remember it |
+| Important | One robot's DISCONNECT froze the whole simulator (every robot) for up to 1 s | Disconnect and reconnect on a helper thread |
+| Important | Clearing low battery left FATAL "Battery empty" next to a full battery | Restoring charge clears it |
+| Important | The shared fixture test could not catch parameter drift | Exact result per command; unknown params rejected |
+| Suggestions | Unbounded malformed-message queue; loose types; wrong 422 locations; schema allowed params on clear; no state right after reconnect; reconnect handshake built on paho's thread; silent second disconnect; LOW_BATTERY clear with nothing injected | All fixed; robots report `injectedFailures` |
+| Found on the way | The UI's robot update slowed down with many robots (a test needed 4.5 s) | Plain copy loop: 0.3 s |
+| Found on the way | Since 11 Oct this table had no Week 6 row and closed issue 6 still showed as open (my close-issue script removed the wrong `\| 6 \|` row) | Restored |
+
+Verified: backend 438, simulator 391, frontend 96; e2e 33/33 (2.1), 33/33 (3.0), 36/36 (2.1 with login).
 
 ## Weeks 5 and 7: features finished, quality gate (13 Oct, D-40, D-41)
 
@@ -262,7 +284,7 @@ Struck-through items are already done:
 | 3 | ~~`instantActions` cancelOrder (the "cancel" in *cancel, reroute or escalate*); order updates (`orderUpdateId`)~~ (done 12 Oct, D-35) |
 | 4 | ~~Load test 10/25/50 robots (CPU, message rate, UI frame rate)~~ (done 12 Oct, D-38); ~~decide whether to model traffic/near-collisions~~ (D-22: detect, never avoid) |
 | 5 | ~~Version-aware validation with the official 2.1.0 and 3.0.0 schemas, chosen by topic~~ (D-15, D-20); ~~offline validation of session files~~ (done 13 Oct, D-40) |
-| 6 | Remaining failures: low battery, disconnect, invalid payload, timeouts; simulator safety stops (`fieldViolation`) when a robot is in the path (D-22) |
+| 6 | ~~Remaining failures: low battery, disconnect, invalid payload~~ (done 13 Oct, D-42); timeouts and safety stops (`fieldViolation`) left out (not in the plan's list) |
 | 7 | ~~Session size limits~~; ~~retention; upload a session someone sent you~~ (done 13 Oct, D-41); ~~streaming replay~~ |
 | 8 | Record the demo video ([DEMO.md](DEMO.md)); polish README; publish |
 
@@ -289,13 +311,13 @@ exercised by hand with a real browser and MQTT traffic.
 
 | Area | How it was verified | Gaps |
 |---|---|---|
-| Backend API | 389 unit/API tests (pytest), run in CI, including a shutdown test under a real uvicorn server | |
-| Simulator | 337 tests (pytest, incl. conformance against the official 2.1.0 and 3.0.0 schemas), run in CI | |
+| Backend API | 438 unit/API tests (pytest), run in CI, including a shutdown test under a real uvicorn server | |
+| Simulator | 391 tests (pytest, incl. conformance against the official 2.1.0 and 3.0.0 schemas), run in CI | |
 | Python style | `ruff check` + `ruff format --check` in CI (backend, simulator) | |
-| Frontend | Type check, lint, 82 unit/component tests (incl. the shared backend contract fixtures) (`npm test`, incl. malformed robot data, both VDA versions, login, nothing opened before the session check) and production build, in CI; real-browser tests in the e2e suite (below) | |
+| Frontend | Type check, lint, 96 unit/component tests (incl. the shared backend contract fixtures) (`npm test`, incl. malformed robot data, both VDA versions, login, nothing opened before the session check) and production build, in CI; real-browser tests in the e2e suite (below) | |
 | MQTT flow | Automated against Mosquitto in Docker (`tests/e2e`) | |
 | Shutdown | Automated in `tests/e2e` (broker first, then backend; recording gets its end line) and `backend/tests/test_shutdown.py` | |
-| Docker stack, end to end | **Automated** (`tests/e2e`, 30 tests incl. 3 in Chromium via Playwright, 5 for Week 3 orders and 4 for session validation and upload, in CI for VDA 2.1, 3.0 and 2.1 with login): health, state every second, mission state machine, BLOCKED_PATH, near-collision warning, validation clean, record/replay, last will on kill, broker restart recovery, shutdown with open recording; in the browser: live robots, map and stream over a real WebSocket, a mission sent from the form completes, login screen refuses a wrong token, no console errors | Browser tests use the local plain-HTTP UI, not HTTPS (D-29) |
+| Docker stack, end to end | **Automated** (`tests/e2e`, 37 tests incl. 3 in Chromium via Playwright, 5 for Week 3 orders, 4 for session validation and upload and 7 for failure injection, in CI for VDA 2.1, 3.0 and 2.1 with login): health, state every second, mission state machine, BLOCKED_PATH, near-collision warning, validation clean, record/replay, last will on kill, broker restart recovery, shutdown with open recording; in the browser: live robots, map and stream over a real WebSocket, a mission sent from the form completes, login screen refuses a wrong token, no console errors | Browser tests use the local plain-HTTP UI, not HTTPS (D-29) |
 | P-1042 scenario (mission → block → clear → complete) | E2E, several times | |
 | Record → replay | E2E; replay timing matched the recording within ~25 ms at 5×. Size limit stops a recording by itself (unit test); replay streams the file (unit test: 25 MB file, peak memory under 5 MB). Retention and upload (D-41): unit tests incl. round trips of recordings made from real traffic; e2e: download → upload → validate, replay of an uploaded file refused while robots are live (D-36), bad uploads refused, 1.7 MB upload through nginx | |
 | Validator | Official VDA 5050 2.1.0 schemas (D-20); real and generated messages in every mission state pass them; planted bad messages flagged; e2e: all live traffic clean. 3.0.0 schemas on `v3` topics (D-15), tested with valid 3.0 messages and 2.1 messages on a `v3` topic. Offline validation (D-40): unit tests show message-by-message parity with the live hub; e2e: a recorded session validates with no errors | Near-collision warnings and pre-recording header history are not part of offline validation (by design) |
@@ -312,11 +334,21 @@ Numbered so they can be referenced from commits. Remove an item only when it is 
 | # | Issue | Impact | Plan |
 |---|---|---|---|
 | — | No open issues (21–24 closed 12 Oct, D-39) | | |
-| 6 | No real-browser tests (component and logic tests exist since D-19, but run in jsdom, not a browser) | Browser-only issues (layout, WebSocket in a real browser) are caught by hand | Add Playwright tests against the e2e stack |
 
 ## Session log
 
 Newest first. One entry per work session: what was done, what was learned, what is next.
+
+### Tue 13 Oct 2026 (later): Week 6 finished (D-42)
+
+- The spec settled the open error-level question: 3.0 names low battery as its URGENT example and defines
+  CRITICAL as "cannot continue its order but can take new ones" (a blocked path).
+- E2E confirmed on the real broker that an abrupt disconnect publishes the last will; review fixes made
+  the disconnect stop freezing every simulated robot.
+- A builder dropped out on a network error mid-task; resumed with its context, its half-written tests
+  were the red phase.
+- My own doc bug from 11 Oct (Week 6 row deleted instead of issue 6) found and fixed.
+- Weeks 1–7 complete. Next: Week 8 (demo video, README, publish).
 
 ### Tue 13 Oct 2026: Weeks 5 and 7 finished (D-40, D-41)
 
