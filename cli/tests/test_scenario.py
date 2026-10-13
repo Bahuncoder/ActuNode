@@ -114,6 +114,19 @@ def test_a_duplicated_key_is_an_error_not_silently_the_last_one():
     assert "duplicate key 'status'" in errors("name: x\nsteps:\n  - expect: {robot: r, status: IDLE, status: MOVING}")
 
 
+def test_failure_params_keep_their_yaml_type_for_the_stack_to_check():
+    inject = parse("name: x\nsteps:\n  - inject: {robot: r, failure: LOW_BATTERY, params: {level: 12}}", P).steps[0]
+    assert inject.params == {"level": 12} and type(inject.params["level"]) is int
+    assert "params.level" in errors(
+        "name: x\nsteps:\n  - inject: {robot: r, failure: LOW_BATTERY, params: {level: true}}"
+    )
+
+
+def test_aliases_are_refused_so_a_small_file_cannot_expand():
+    bomb = "a: &a [x, x, x, x, x, x, x, x, x]\nb: &b [*a, *a, *a, *a, *a, *a, *a, *a, *a]\nname: x\nsteps: [{wait: 1}]"
+    assert "aliases (*name) are not supported" in errors(bomb)
+
+
 def test_yaml_cannot_build_python_objects():
     assert "not valid YAML" in errors("name: !!python/object/apply:os.system ['true']\nsteps: [{wait: 1}]")
 

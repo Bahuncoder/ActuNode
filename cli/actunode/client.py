@@ -84,6 +84,8 @@ class Stack:
             response = self._http.request(method, path, json=body)
         except httpx.HTTPError as error:
             raise StackError(f"{method} {self.url}/api{path}: {type(error).__name__}: {error}") from None
+        if response.is_redirect:
+            raise StackError(f"{self.url} redirects to {response.headers.get('location')}: use that address as --url")
         if response.status_code == 401:
             raise StackError("the stack requires login: pass --token-file or set ACTUNODE_TOKEN")
         if response.status_code == 503:

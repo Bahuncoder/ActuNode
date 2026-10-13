@@ -17,7 +17,16 @@ from pathlib import Path
 from typing import Annotated, Any, Literal
 
 import yaml
-from pydantic import BaseModel, ConfigDict, Field, ValidationError, field_validator, model_validator
+from pydantic import (
+    BaseModel,
+    ConfigDict,
+    Field,
+    StrictInt,
+    StrictStr,
+    ValidationError,
+    field_validator,
+    model_validator,
+)
 
 MAX_FILE_BYTES = 1_000_000
 MAX_STEPS = 1000
@@ -62,7 +71,8 @@ class SendMission(_Strict):
 class Inject(_Strict):
     robot: RobotId
     failure: Failure
-    params: dict[str, int | str] = Field(default_factory=dict)  # checked by the stack (POST /api/failures)
+    # Checked by the stack (POST /api/failures). Strict: YAML `true` must reach it as true and be refused, not as 1.
+    params: dict[str, StrictInt | StrictStr] = Field(default_factory=dict)
 
     def describe(self) -> str:
         params = ", ".join(f"{key}={value}" for key, value in self.params.items())
@@ -212,7 +222,16 @@ class _Header(_Strict):
 
 
 class _UniqueKeyLoader(yaml.SafeLoader):
-    """Safe YAML (plain data only) that refuses a key given twice; PyYAML would silently keep the last one."""
+    """Safe YAML (plain data only) that refuses a key given twice (PyYAML would silently keep the last one)
+    and aliases (nested aliases make a small file expand into a huge structure)."""
+
+    def compose_node(self, parent, index):
+        if self.check_event(yaml.AliasEvent):
+            event = self.peek_event()
+            raise yaml.composer.ComposerError(
+                None, None, "anchors and aliases (*name) are not supported in scenarios", event.start_mark
+            )
+        return super().compose_node(parent, index)
 
     def construct_mapping(self, node, deep=False):
         seen = set()

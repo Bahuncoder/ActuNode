@@ -14,7 +14,7 @@ the status line, the schedule table, the session log, and the open issues.
 |---|---|
 | **Calendar** | Week 1 of 8 by date (Fri 9 Oct – Thu 15 Oct 2026); dates no longer gate the work (D-30) |
 | **Last updated** | Tue 13 Oct 2026 |
-| **Status** | **Phase 1 (weeks 1–8) complete; v0.1.0 released 13 Oct 2026** (D-43). Phase 2 (weeks 9–16, D-44) under way: **Week 9 features done** (D-45: scenario format, `actunode test`, P-1042 passes as a scenario); Week 9 quality gate next. No open issues. |
+| **Status** | **Phase 1 (weeks 1–8) complete; v0.1.0 released 13 Oct 2026** (D-43). Phase 2 (weeks 9–16, D-44) under way: **Week 9 done** (D-45: scenario format, `actunode test`, P-1042 passes as a scenario; quality gate passed). Next: Week 10, timing semantics and five sample scenarios. No open issues. |
 | **Working rule** | A week is done when its work is fully done (D-30): features, then a quality gate (independent bug and security review, scans, a test for every fix, all suites and e2e green, docs). Then the next week starts, whatever the date. |
 
 ## Schedule
@@ -31,7 +31,7 @@ Week 1 started on Friday 9 October 2026 (Day 1). Each week runs Friday to Thursd
 | 6 | 13–19 Nov | Failure injection | Blocked path, low battery, disconnect, invalid payload | ✅ Blocked path Day 5; the other three completed 13 Oct (D-42) | ✅ Quality gate passed 13 Oct: all four observed end to end; spec error levels |
 | 7 | 20–26 Nov | Record/replay | Session file can reproduce incident | ✅ Built early (Days 6–7); completed 13 Oct (D-41) | ✅ Quality gate passed 13 Oct: retention, upload of a session someone sent you, hostile-file checks |
 | 8 | 27 Nov – 3 Dec | Demo + README + 3-minute video | GitHub repo + pitch demo | ✅ Completed 13 Oct (D-43): Apache-2.0, README, demo recorder; voice-over by the founder | ✅ Quality gate passed 13 Oct: docs accuracy review, fresh-clone quick start; v0.1.0 |
-| 9 | 4–10 Dec | Scenario format + `actunode test` runner | P-1042 passes as a scenario; JUnit output | ✅ Built 13 Oct (D-45) | ⬜ Gate next |
+| 9 | 4–10 Dec | Scenario format + `actunode test` runner | P-1042 passes as a scenario; JUnit output | ✅ Built 13 Oct (D-45) | ✅ Quality gate passed 13 Oct: review of the scenario input, HTTP and cleanup paths |
 | 10 | 11–17 Dec | Expectations + five sample scenarios | `scenarios/`; decision point | ⬜ | ⬜ |
 | 11 | 18–24 Dec | Testing an external master control | "cancel, reroute or escalate?" as a scenario | ⬜ | ⬜ |
 | 12 | 25–31 Dec | Scenarios in CI | Docker runner + GitHub Actions example | ⬜ | ⬜ |
@@ -74,7 +74,18 @@ is the pitch demo's incident; it passes on the real stack in about 29 s.
 | The local dev stack (images from 11 Oct) answered 404 to cancel: stale images, not a runner bug | `docker compose up -d --build` refreshes it; the e2e stack is built fresh each run |
 | One e2e run in login mode errored in stack setup straight after another run's teardown; three reruns passed | Watch in the gate |
 
-Verified: runner unit tests 79; e2e `test_09_scenarios.py` 2/2 in all three configurations (VDA 2.1, 3.0,
+Gate (a review of the runner's trust boundaries: scenario files, the lab's answers, cleanup), each finding
+fixed with a test that fails on the old code:
+
+| Severity | Finding | Fix |
+|---|---|---|
+| Medium (security) | YAML aliases let a small scenario file expand into a huge structure (validation would hang a CI job) | Anchors and aliases refused |
+| Medium | Failure `params` were coerced: YAML `true` reached the backend as `1`, passing its strict check (D-42) | Kept as written (strict int/str); the backend decides |
+| Low | A lab answering with a redirect (http → https) was reported as "not JSON" | Says where it redirects and to use that address |
+| Low | An empty order id printed as `runs order  (expected …)` | Prints `none` |
+| Open (Week 10) | A scenario that ends with a robot DISCONNECTed leaves it offline up to `duration_s`; the next scenario's 15 s online wait can fail | Week 10's disconnect scenario ends by expecting ONLINE; revisit cleanup then |
+
+Verified: runner unit tests 82; e2e `test_09_scenarios.py` 2/2 in all three configurations (VDA 2.1, 3.0,
 2.1 with login); full e2e 35 passed + 4 login-only skipped (VDA 2.1); `pip install ./cli` gives a working
 `actunode`; ruff clean; pip-audit of the runner's dependencies clean.
 
@@ -390,8 +401,8 @@ Newest first. One entry per work session: what was done, what was learned, what 
 ### Tue 13 Oct 2026 (late night): Week 9 built (D-45)
 - `actunode test` and the scenario format (`cli/`); P-1042 as `scenarios/p1042_blocked_path.yaml`, passing on
   the real stack in all three CI configurations; CI job for the runner; pip-audit covers it.
-- Next: the Week 9 quality gate (independent review of `cli/`, security review of the scenario input and
-  the token/TLS handling), then Week 10.
+- Quality gate: four findings fixed with tests (YAML aliases, coerced failure params, redirects, empty
+  order id); scenario e2e re-run on VDA 2.1 and 3.0 after the fixes. Week 9 done. Next: Week 10.
 
 ### Tue 13 Oct 2026 (night): release published; Phase 2 planned (D-44)
 

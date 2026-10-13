@@ -779,7 +779,8 @@ at the latest `within` N s (default 10); Week 10 adds "never" / "for N s" withou
 Orders are named with `as:` so `expect … order:` cannot be fooled by an earlier COMPLETED order (the
 e2e tests' own lesson). Validation expectations count only issues since the scenario started (by
 difference, so the lab's counters are never reset under other users). Strictness by default: unknown and
-duplicate keys are errors with their location, safe YAML only, files up to 1 MB. The first failing step
+duplicate keys are errors with their location, safe YAML only without anchors or aliases, files up to
+1 MB, failure parameters passed as written for the backend's strict check. The first failing step
 ends a scenario; afterwards the runner clears the failures it injected and cancels its own orders that are
 still running (also on Ctrl-C), so scenarios do not leak into each other or into people using the lab.
 Exit codes separate failure (1) from invalid input (2) and an unusable environment (3). The token comes

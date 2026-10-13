@@ -71,14 +71,14 @@ steps:                                         # required, at least one
 
 Every key is checked. An unknown key, a key given twice or a misspelt value is an error that names its
 place (`steps[3].expect.staus: unknown field`), so a typo never silently weakens a test. Every error in a
-file is reported at once.
+file is reported at once. YAML anchors and aliases (`&name`, `*name`) are not supported.
 
 ### Steps
 
 | Step | Fields | Does |
 |---|---|---|
 | `send_mission` | `robot`, `destination`; optional `source`, `load`, `as` | Sends a mission (`POST /api/missions`). With `source` the robot picks up there and drops at `destination`. `as` names the order for later `expect … order:` checks. |
-| `inject` | `robot`, `failure`; optional `params` | Injects `BLOCKED_PATH`, `LOW_BATTERY` (`level`), `DISCONNECT` (`duration_s`, `mode`) or `INVALID_PAYLOAD` (`kind`, `count`), as in the main README (Failure injection). |
+| `inject` | `robot`, `failure`; optional `params` (numbers and text, passed as written) | Injects `BLOCKED_PATH`, `LOW_BATTERY` (`level`), `DISCONNECT` (`duration_s`, `mode`) or `INVALID_PAYLOAD` (`kind`, `count`), as in the main README (Failure injection). |
 | `clear` | `robot`, `failure` | Clears `BLOCKED_PATH` or `LOW_BATTERY` (the other two end by themselves). |
 | `cancel_mission` | `robot` | Sends the VDA 5050 `cancelOrder` instant action. |
 | `wait` | seconds | `- wait: 2`. Up to 3600. |

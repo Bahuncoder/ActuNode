@@ -78,7 +78,7 @@ def test_all_conditions_of_one_expect_must_hold_at_the_same_moment(clock):
             "  - expect: {robot: robot_01, status: MOVING, order: m, within: 1}"
         ),
     )
-    assert result.outcome == FAILED and "runs order  (expected m = order-1)" in result.message
+    assert result.outcome == FAILED and "runs order none (expected m = order-1)" in result.message
 
 
 def test_the_first_failing_step_ends_the_scenario_and_the_rest_are_skipped(clock):

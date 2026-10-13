@@ -73,6 +73,14 @@ def test_broker_down_and_not_an_actunode_stack():
         make(api({("GET", "/api/session"): (200, [1, 2])})).connect()
 
 
+def test_a_redirect_names_the_address_to_use():
+    def redirect(request):
+        return httpx.Response(301, headers={"location": "https://lab:8443/api/session"})
+
+    with pytest.raises(StackError, match="redirects to https://lab:8443/api/session: use that address"):
+        make(redirect).connect()
+
+
 def test_unreachable_is_a_stack_error():
     def refuse(request):
         raise httpx.ConnectError("refused", request=request)

@@ -12,6 +12,7 @@ What changed, per commit, newest first. Status and plans are in [docs/PROGRESS.m
   running orders afterwards.
 - `scenarios/p1042_blocked_path.yaml`: the pitch demo's blocked-path incident as a passing test.
 - CI runs the runner's unit tests; e2e runs P-1042 and a failing scenario on the real stack.
+- Gate: YAML aliases refused, failure params passed as written, redirects explained (D-45).
 
 ## 0.1.0 — 2026-10-13
 

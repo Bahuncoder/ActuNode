@@ -209,7 +209,9 @@ class Runner:
         if expect.status and seen.status not in expect.status:
             wrong.append(f"status is {seen.status} (expected {' or '.join(expect.status)})")
         if expect.order and seen.order_id != self.orders[expect.order]:
-            wrong.append(f"runs order {seen.order_id} (expected {expect.order} = {self.orders[expect.order]})")
+            wrong.append(
+                f"runs order {seen.order_id or 'none'} (expected {expect.order} = {self.orders[expect.order]})"
+            )
         if expect.error:
             level = seen.errors.get(expect.error.type)
             if level is None:
