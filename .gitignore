@@ -24,3 +24,6 @@ tests/e2e/last-run.log
 # Load test output (tests/load/README.md): raw JSON and stack logs stay local; latest.md is the committed summary.
 tests/load/results/*
 !tests/load/results/latest.md
+
+# Demo recording output (tests/demo/README.md): the video stays local; the README screenshots go to docs/images/.
+tests/demo/output/
