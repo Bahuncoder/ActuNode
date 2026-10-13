@@ -1,6 +1,6 @@
 import { memo, useCallback, useState } from 'react'
 import { cancelMission } from './api'
-import { batteryCharge, CANCELLABLE_STATUSES, isOnline, missionStatus, robotErrors, robotPose, text, type Robot } from './live'
+import { batteryCharge, CANCELLABLE_STATUSES, failureLabel, isOnline, missionStatus, type Robot, robotErrors, robotPose, text } from './live'
 
 function loadText(robot: Robot): string {
   const loads = robot.state?.loads
@@ -113,6 +113,9 @@ const RobotRow = memo(function RobotRow({
           <td className="mono">{text(robot.state?.version)}</td>
           <td>
             <span className={`badge status-${status.toLowerCase()}`}>{status}</span>
+            {(robot.state?.actunode?.injectedFailures?.length ?? 0) > 0 && (
+              <div className="muted">{`injected: ${(robot.state?.actunode?.injectedFailures ?? []).map(failureLabel).join(', ')}`}</div>
+            )}
             {robot.state?.paused === true && <span className="badge status-paused">PAUSED</span>}
             {robot.state?._truncated && (
               <span className="muted" title={trimmedTitle(robot.state._truncated)}>

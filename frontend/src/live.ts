@@ -40,7 +40,7 @@ export type RobotState = {
   nodeStates: NodeState[]
   errors: RobotError[]
   loads?: { loadId: string }[]
-  actunode?: { missionStatus: string }
+  actunode?: { missionStatus: string; injectedFailures?: string[] }
 }
 
 export type Robot = {
@@ -106,6 +106,7 @@ export type FailureEntry = {
   failure: string
   action: 'inject' | 'clear'
   robotStatus: string
+  params?: Record<string, unknown>
 }
 
 export type RecordingStatus = {
@@ -231,12 +232,18 @@ function applyEvent(feed: Feed, event: LiveEvent): Feed {
   if (event.robot) {
     const { stateFromMessage, ...sent } = event.robot
     const robot: Robot = stateFromMessage ? { ...sent, state: event.message.payload as RobotState } : sent
-    // Delete first so an updated robot moves to the end; the oldest entry is the first key.
+    // Rebuild without the robot so an updated robot moves to the end (the oldest entry is the first key),
+    // skipping the oldest one when a new robot would exceed the cap. A plain copy loop: object rest with a
+    // computed key and `delete` push V8 objects into slow dictionary mode (1,500 updates took 4.5 s).
     // Other robots keep their object identity, so memoized rows skip them.
-    const { [robot.key]: _old, ...rest } = feed.robots
-    robots = { ...rest, [robot.key]: robot }
-    const keys = Object.keys(robots)
-    if (keys.length > MAX_ROBOTS) delete robots[keys[0]]
+    const keys = Object.keys(feed.robots)
+    const isNew = !(robot.key in feed.robots)
+    const skipOldest = isNew && keys.length >= MAX_ROBOTS
+    robots = {}
+    for (let i = skipOldest ? 1 : 0; i < keys.length; i++) {
+      if (keys[i] !== robot.key) robots[keys[i]] = feed.robots[keys[i]]
+    }
+    robots[robot.key] = robot
   }
   return {
     ...feed,
@@ -387,7 +394,10 @@ export function routePoints(robot: Robot): { x: number; y: number }[] {
 export function robotErrors(robot: Robot): string[] {
   const errors = robot.state?.errors
   if (!Array.isArray(errors)) return []
-  return errors.map((error) => String(error?.errorDescription ?? error?.errorType ?? 'error'))
+  return errors.map((error) => {
+    const message = String(error?.errorDescription ?? error?.errorType ?? 'error')
+    return typeof error?.errorLevel === 'string' && error.errorLevel ? `${message} (${error.errorLevel})` : message
+  })
 }
 
 export function text(value: unknown): string {
@@ -404,4 +414,16 @@ export const CANCELLABLE_STATUSES = ['ACCEPTED', 'MOVING', 'WAITING', 'BLOCKED',
 
 export function isOnline(robot: Robot): boolean {
   return robot.connection === 'ONLINE'
+}
+
+// Human names for failure codes (D-42), shared by the failure panel and the robot table.
+export const FAILURE_LABELS: Record<string, string> = {
+  BLOCKED_PATH: 'Blocked path',
+  LOW_BATTERY: 'Low battery',
+  DISCONNECT: 'Disconnect',
+  INVALID_PAYLOAD: 'Invalid payload',
+}
+
+export function failureLabel(code: unknown): string {
+  return typeof code === 'string' ? (FAILURE_LABELS[code] ?? code) : text(code)
 }

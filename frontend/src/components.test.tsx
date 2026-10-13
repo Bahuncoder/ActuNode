@@ -1,4 +1,4 @@
-import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
+import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import type { Robot } from './live'
 import MessageStream from './MessageStream'
@@ -164,7 +164,7 @@ describe('robots sharing a serial', () => {
     const { default: FailurePanel } = await import('./FailurePanel')
     render(<FailurePanel robots={[vendorA, vendorB]} failures={[]} />)
 
-    expect(screen.getAllByRole('option')).toHaveLength(1)
+    expect(within(screen.getByLabelText('Robot')).getAllByRole('option')).toHaveLength(1)
   })
 })
 

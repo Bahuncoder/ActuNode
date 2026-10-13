@@ -1,8 +1,20 @@
 import { useState } from 'react'
 import { injectFailure } from './api'
-import { missionStatus, type FailureEntry, type Robot } from './live'
+import { FAILURE_LABELS, missionStatus, type FailureEntry, type Robot } from './live'
 
 type Result = { ok: boolean; text: string }
+
+const TYPES = [
+  { value: 'BLOCKED_PATH', label: FAILURE_LABELS.BLOCKED_PATH, clearable: true },
+  { value: 'LOW_BATTERY', label: FAILURE_LABELS.LOW_BATTERY, clearable: true },
+  { value: 'DISCONNECT', label: FAILURE_LABELS.DISCONNECT, clearable: false },
+  { value: 'INVALID_PAYLOAD', label: FAILURE_LABELS.INVALID_PAYLOAD, clearable: false },
+]
+const KINDS = ['not-json', 'schema', 'wrong-serial', 'wrong-version']
+
+function paramsText(params?: Record<string, unknown>): string {
+  return Object.entries(params ?? {}).map(([key, value]) => `${key}=${String(value)}`).join(' ')
+}
 
 function time(iso: string): string {
   return new Date(iso).toLocaleTimeString([], { hour12: false })
@@ -10,6 +22,12 @@ function time(iso: string): string {
 
 export default function FailurePanel({ robots, failures }: { robots: Robot[]; failures: FailureEntry[] }) {
   const [chosen, setChosen] = useState('')
+  const [failure, setFailure] = useState('BLOCKED_PATH')
+  const [level, setLevel] = useState('15')
+  const [duration, setDuration] = useState('10')
+  const [mode, setMode] = useState('broken')
+  const [kind, setKind] = useState('schema')
+  const [count, setCount] = useState('1')
   const [busy, setBusy] = useState(false)
   const [result, setResult] = useState<Result | null>(null)
 
@@ -26,11 +44,33 @@ export default function FailurePanel({ robots, failures }: { robots: Robot[]; fa
   const robot = bySerial.get(robotId)
   const status = robot ? missionStatus(robot) : '—'
 
+  const type = TYPES.find((t) => t.value === failure) ?? TYPES[0]
+  const needsRoute = failure === 'BLOCKED_PATH'
+  // Absent on older simulators: then Clear stays enabled.
+  const injected = robot?.state?.actunode?.injectedFailures
+  const range: [string, number, number] | undefined = { LOW_BATTERY: [level, 1, 99] as [string, number, number],
+    DISCONNECT: [duration, 1, 300] as [string, number, number],
+    INVALID_PAYLOAD: [count, 1, 10] as [string, number, number],
+  }[
+    failure as 'LOW_BATTERY' | 'DISCONNECT' | 'INVALID_PAYLOAD'
+  ]
+  const invalid = range !== undefined && !(range[0].trim() !== '' && Number(range[0]) >= range[1] && Number(range[0]) <= range[2])
+  const clearBlocked = needsRoute
+    ? status !== 'BLOCKED'
+    : failure === 'LOW_BATTERY' && injected !== undefined && !injected.includes('LOW_BATTERY')
+
+  function currentParams(): Record<string, unknown> {
+    if (failure === 'LOW_BATTERY') return { level: Number(level) }
+    if (failure === 'DISCONNECT') return { duration_s: Number(duration), mode }
+    if (failure === 'INVALID_PAYLOAD') return { kind, count: Number(count) }
+    return {}
+  }
+
   async function run(action: 'inject' | 'clear') {
     setBusy(true)
     try {
-      await injectFailure(robotId, action)
-      setResult({ ok: true, text: action === 'inject' ? `BLOCKED_PATH injected on ${robotId}` : `Path cleared on ${robotId}` })
+      await injectFailure(robotId, failure, action, action === 'inject' ? currentParams() : {})
+      setResult({ ok: true, text: `${type.label} ${action === 'inject' ? 'injected on' : 'cleared on'} ${robotId}` })
     } catch (error) {
       setResult({ ok: false, text: (error as Error).message })
     } finally {
@@ -41,7 +81,7 @@ export default function FailurePanel({ robots, failures }: { robots: Robot[]; fa
   return (
     <section className="panel">
       <h2>Failure injection</h2>
-      <p>Block the path of a robot on a route. It stops, reports <code>pathBlocked</code>, and waits until cleared.</p>
+      <p>Inject a failure into a simulated robot. A blocked path needs a robot on a route; it stops and waits until cleared.</p>
 
       <div className="mission-form">
         <label>
@@ -54,23 +94,75 @@ export default function FailurePanel({ robots, failures }: { robots: Robot[]; fa
             ))}
           </select>
         </label>
+        <label>
+          Failure type
+          <select value={failure} onChange={(e) => setFailure(e.target.value)}>
+            {TYPES.map((t) => (
+              <option key={t.value} value={t.value}>{t.label}</option>
+            ))}
+          </select>
+        </label>
+        {failure === 'LOW_BATTERY' && (
+          <label>
+            Battery level
+            <input type="number" min={1} max={99} value={level} onChange={(e) => setLevel(e.target.value)} />
+          </label>
+        )}
+        {failure === 'DISCONNECT' && (
+          <>
+            <label>
+              Duration (s)
+              <input type="number" min={1} max={300} value={duration} onChange={(e) => setDuration(e.target.value)} />
+            </label>
+            <label>
+              Mode
+              <select value={mode} onChange={(e) => setMode(e.target.value)}>
+                <option value="broken">broken</option>
+                <option value="offline">offline</option>
+              </select>
+            </label>
+          </>
+        )}
+        {failure === 'INVALID_PAYLOAD' && (
+          <>
+            <label>
+              Kind
+              <select value={kind} onChange={(e) => setKind(e.target.value)}>
+                {KINDS.map((k) => (
+                  <option key={k} value={k}>{k}</option>
+                ))}
+              </select>
+            </label>
+            <label>
+              Count
+              <input type="number" min={1} max={10} value={count} onChange={(e) => setCount(e.target.value)} />
+            </label>
+          </>
+        )}
         <button
           type="button"
           className="danger-button"
-          disabled={busy || !robotId || !['ACCEPTED', 'MOVING'].includes(status)}
+          disabled={busy || !robotId || invalid || (needsRoute && !['ACCEPTED', 'MOVING'].includes(status))}
           onClick={() => run('inject')}
         >
-          Inject BLOCKED_PATH
+          Inject
         </button>
-        <button
-          type="button"
-          className="secondary-button"
-          disabled={busy || status !== 'BLOCKED'}
-          onClick={() => run('clear')}
-        >
-          Clear
-        </button>
+        {type.clearable && (
+          <button
+            type="button"
+            className="secondary-button"
+            disabled={busy || !robotId || clearBlocked}
+            onClick={() => run('clear')}
+          >
+            Clear
+          </button>
+        )}
       </div>
+
+      {invalid && <p className="muted">Enter a number between {range[1]} and {range[2]}</p>}
+      {injected && injected.length > 0 && (
+        <p className="muted">Injected: {injected.map((name) => TYPES.find((t) => t.value === name)?.label ?? name).join(', ')}</p>
+      )}
 
       {result && <p className={`result mono ${result.ok ? 'ok' : 'error'}`}>{result.text}</p>}
 
@@ -83,6 +175,7 @@ export default function FailurePanel({ robots, failures }: { robots: Robot[]; fa
             <span className={entry.action}>
               {entry.failure} {entry.action === 'inject' ? 'injected' : 'cleared'}
             </span>
+            {entry.params && Object.keys(entry.params).length > 0 && <span className="muted">{paramsText(entry.params)}</span>}
             <span className="muted">was {entry.robotStatus}</span>
           </li>
         ))}
