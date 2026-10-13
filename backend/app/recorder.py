@@ -119,7 +119,7 @@ class SessionRecorder:
             pass
         self._file = None
         self._current = None
-        return status
+        return {**status, "recording": False}
 
     def record(self, message: dict) -> None:
         """Hub listener: append one MQTT message (called from the MQTT thread)."""

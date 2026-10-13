@@ -94,8 +94,11 @@ services:
       ACTUNODE_API_TOKEN_FILE: /run/secrets/actunode/api-token
       ACTUNODE_MAX_SESSION_MB: ${ACTUNODE_MAX_SESSION_MB:-200}
       ACTUNODE_PROXIMITY_M: ${ACTUNODE_PROXIMITY_M:-1.0}
+      ACTUNODE_SESSIONS_KEEP_DAYS: ${ACTUNODE_SESSIONS_KEEP_DAYS:-30}
+      ACTUNODE_SESSIONS_MAX_TOTAL_MB: ${ACTUNODE_SESSIONS_MAX_TOTAL_MB:-2000}
       # Host names the API answers to (D-24); add this machine's name/address when sharing the lab.
       ACTUNODE_ALLOWED_HOSTS: ${ACTUNODE_ALLOWED_HOSTS:-localhost,127.0.0.1,::1}
+      ACTUNODE_TRUSTED_PROXIES: ${ACTUNODE_TRUSTED_PROXIES:-frontend}
     ports:
       - "127.0.0.1:${ACTUNODE_API_HOST_PORT:-8000}:8000"  # direct API: this computer only (use the UI port to share)
     volumes:

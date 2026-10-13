@@ -94,6 +94,9 @@ def test_record_via_api_then_list_and_download(client):
 
     stopped = client.post("/api/recording/stop")
     assert stopped.status_code == 200
+    assert stopped.json()["sessionId"] == session_id
+    assert stopped.json()["recording"] is False
+    assert client.get("/api/recording").json()["recording"] is None
     assert client.post("/api/recording/stop").status_code == 409
 
     [listed] = client.get("/api/sessions").json()
