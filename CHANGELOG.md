@@ -4,6 +4,22 @@ What changed, per commit, newest first. Status and plans are in [docs/PROGRESS.m
 
 ## Unreleased
 
+Nothing yet.
+
+## 0.1.0 — 2026-10-13
+
+First public release: all eight weeks of the plan (D-1 to D-43). Apache-2.0.
+
+### Week 8: publishing (D-43)
+- Apache-2.0 LICENSE, NOTICE (vendored VDA 5050 schemas, MIT), SECURITY.md, CONTRIBUTING.md, issue and
+  pull request templates.
+- README rewritten (verified claims, quick start, tour with curl commands, CLI, troubleshooting);
+  docs/DEMO.md 3-minute script; `tests/demo/record_demo.py` records the demo video and README screenshots
+  from the real product.
+- Retention and trusted-proxy settings now reach the backend under Docker (they were silently ignored).
+- `POST /api/recording/stop` reports the stopped state (it returned `recording: true`).
+- Load test re-run on the release code: 18/18 thresholds at 10, 25 and 50 robots.
+
 ### Week 6: failure injection (D-42)
 - Four failures from the UI or `POST /api/failures` with parameters: BLOCKED_PATH, LOW_BATTERY (level),
   DISCONNECT (duration, abrupt or clean), INVALID_PAYLOAD (kind, count). Robots report `batteryLow` below

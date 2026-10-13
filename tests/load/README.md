@@ -64,7 +64,8 @@ latencies need no clock correction.
 
 - `docker stats --no-stream` takes about 2 s of daemon time per call (recorded as
   `docker_stats_call_s_mean`); it is used for memory and peaks only. The CPU means come from cgroup
-  counters, which cost nothing.
+  counters, which cost nothing. CPU max comes from `docker stats` samples and mean from cgroup counters
+  over the window, so at low load max can read below mean.
 - During the window the backend serves two extra WebSocket clients (the script's and the browser) and
   a snapshot probe every 10 s, as a user with the lab open would.
 - Headless Chromium has no GPU: painting is done in software, so main-thread busy % is pessimistic
@@ -79,7 +80,7 @@ latencies need no clock correction.
 | headerId gaps | 0 | A gap means the broker or our subscriber lost a message. |
 | Robot -> WebSocket latency p99 | ≤ 250 ms | Below what a person watching the map notices as lag; well below the 1 s state interval. |
 | WebSocket state events / MQTT state messages | ≥ 0.98 | Every state message reaches the UI (both clients subscribe in the same window, so small edge effects remain). |
-| Events dropped by the backend | 0 | `backend/app/live.py` drops events for a client whose queue (1000) is full and logs "Live client is too slow". |
+| Events dropped by the backend | 0 | `backend/app/live.py` closes a client whose queue (1000) is full, logging "Live client is too slow"; the client reconnects and resyncs from a snapshot (D-38). |
 | Time to first snapshot p99 | ≤ 1 s | A page load must show the fleet within a second. |
 | `GET /api/robots`, `GET /api/messages` p99 | ≤ 200 ms | Interactive API; scripts and the e2e tests poll these. |
 | Backend CPU mean / max | ≤ 50 % / ≤ 80 % of one core | The backend is one Python process (one core because of the GIL). Half a core at the simulator maximum leaves room for replay, recording and validation of hostile traffic. |

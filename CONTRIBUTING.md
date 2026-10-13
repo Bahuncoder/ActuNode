@@ -5,7 +5,7 @@ license, Apache License 2.0 (inbound = outbound). See [LICENSE](LICENSE).
 
 ## Development setup
 
-Details: [README.md](README.md) ("Local development") and [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md)
+Details: [README.md](README.md#development) ("Development") and [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md)
 ("Tests and CI"). You need an MQTT broker on `localhost:1883` (for example `sudo apt install mosquitto`).
 
 ```bash
@@ -25,12 +25,12 @@ Write the test first, watch it fail, then make it pass. Every bug fix gets a tes
 
 | Suite | Command |
 |---|---|
-| Python lint/format (repo root) | `ruff check . && ruff format --check .` |
+| Python lint/format (repo root) | `backend/.venv/bin/ruff check . && backend/.venv/bin/ruff format --check .` |
 | Backend | `cd backend && .venv/bin/pytest` |
 | Simulator | `simulator/.venv/bin/pytest simulator` |
 | Frontend | `cd frontend && npm run lint && npm test && npm run build` |
-| End to end (needs Docker) | `pytest tests/e2e` (Playwright: `playwright install chromium` once) |
-| Load (needs Docker, ~4 min, by hand) | `tests/e2e/.venv/bin/python tests/load/run_load.py` |
+| End to end (needs Docker) | `tests/e2e/.venv/bin/pytest tests/e2e` (Playwright: `tests/e2e/.venv/bin/python -m playwright install chromium` once) |
+| Load (needs Docker, about 4–5 minutes, by hand) | `tests/e2e/.venv/bin/python tests/load/run_load.py` |
 
 All suites must pass before you open a pull request.
 

@@ -730,3 +730,19 @@ the hub's last state for about a second: the hub shows what a robot sent (docume
 **Consequences.** The plan's four failures exist; each is verified end to end (what the backend, validator
 and UI observe). Safety stops (`fieldViolation`) and silent robots (state timeouts) are not in the plan's
 list and stay out of scope.
+
+## D-43 · Week 8: publish under Apache-2.0; demo recorded from the real product; v0.1.0
+13 Oct 2026 · Accepted (founder chose the license and the release)
+
+**Context.** Week 8 is "demo + README + 3-minute video → GitHub repo + pitch demo". The repository had no
+license, so nobody could legally use it.
+**Decision.** Apache License 2.0 (permissive, with an explicit patent grant; compatible with the vendored
+MIT-licensed VDA 5050 schemas, credited in NOTICE). A demo video is not filmed by hand: `tests/demo/record_
+demo.py` drives the real UI through the pitch story on an isolated stack and records video and README
+screenshots, so the demo cannot drift from the product; the founder adds the voice-over. The README states
+only verified facts. Before release, a gate: an independent accuracy review of every public document
+against the code, and a newcomer following the README from a fresh clone. Release v0.1.0 is tagged on the
+verified commit.
+**Consequences.** The gate found two real bugs (retention settings not passed through Docker; stale
+`recording: true` on stop) and stale load figures; fixed and re-measured before tagging. GitHub's private
+vulnerability reporting (SECURITY.md) must be switched on in the repository settings by the owner.

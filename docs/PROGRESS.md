@@ -14,7 +14,7 @@ the status line, the schedule table, the session log, and the open issues.
 |---|---|
 | **Calendar** | Week 1 of 8 by date (Fri 9 Oct – Thu 15 Oct 2026); dates no longer gate the work (D-30) |
 | **Last updated** | Mon 12 Oct 2026 |
-| **Status** | **Weeks 1–7 complete** (quality gates passed 11–13 Oct, D-30). No open issues. Next: Week 8 (record the 3-minute demo video, polish the README, publish). |
+| **Status** | **All 8 weeks complete; v0.1.0 released 13 Oct 2026** (D-43). No open issues. Founder: record the voice-over for the demo video, enable private vulnerability reporting on GitHub, send the outreach batch. |
 | **Working rule** | A week is done when its work is fully done (D-30): features, then a quality gate (independent bug and security review, scans, a test for every fix, all suites and e2e green, docs). Then the next week starts, whatever the date. |
 
 ## Schedule
@@ -30,7 +30,7 @@ Week 1 started on Friday 9 October 2026 (Day 1). Each week runs Friday to Thursd
 | 5 | 6–12 Nov | Message inspector + validation | Readable message stream + errors | ✅ Built early (Day 4); completed 13 Oct (D-40) | ✅ Quality gate passed 13 Oct: offline validation (API, UI, CLI) matching live validation |
 | 6 | 13–19 Nov | Failure injection | Blocked path, low battery, disconnect, invalid payload | ✅ Blocked path Day 5; the other three completed 13 Oct (D-42) | ✅ Quality gate passed 13 Oct: all four observed end to end; spec error levels |
 | 7 | 20–26 Nov | Record/replay | Session file can reproduce incident | ✅ Built early (Days 6–7); completed 13 Oct (D-41) | ✅ Quality gate passed 13 Oct: retention, upload of a session someone sent you, hostile-file checks |
-| 8 | 27 Nov – 3 Dec | Demo + README + 3-minute video | GitHub repo + pitch demo | 🟡 README + demo script written | ⬜ Video not recorded |
+| 8 | 27 Nov – 3 Dec | Demo + README + 3-minute video | GitHub repo + pitch demo | ✅ Completed 13 Oct (D-43): Apache-2.0, README, demo recorder; voice-over by the founder | ✅ Quality gate passed 13 Oct: docs accuracy review, fresh-clone quick start; v0.1.0 |
 
 Legend: ✅ done · 🟡 partly done / known gaps · ⬜ not started
 
@@ -49,6 +49,26 @@ the 8-week plan; the 8-week plan is the full roadmap. All of Days 1–7 were bui
 | Day 5 | `BLOCKED_PATH` failure | Week 6 (1 of 4 failures) |
 | Days 6–7 | Record to JSONL, replay | Week 7 |
 | 10 Oct | 10 robots; validator, schemas, VDA 5050 notes | Weeks 4, 5, 1 (rest) |
+
+## Week 8: publishing, quality gate (13 Oct, D-43)
+
+Built: Apache-2.0 LICENSE (verbatim), NOTICE, SECURITY.md, CONTRIBUTING.md, issue/PR templates; README and
+DEMO.md rewritten with every claim checked against the code; `tests/demo/record_demo.py` records the
+3-minute demo (about 2.8 min, nine scenes with captions) and the six README screenshots from the real
+product on an isolated stack.
+
+Gate: an independent accuracy review of the public docs (every link, number, default, command and
+decision reference checked; LICENSE byte-identical to apache.org; no secrets or private material in git)
+and a fresh clone followed by the README as written (working lab in about 20 s on a warm Docker cache;
+every command worked).
+
+| Found | Fix |
+|---|---|
+| Retention (and trusted-proxy) settings documented but never passed to the backend under Docker | Added to docker-compose.yml |
+| `POST /api/recording/stop` answered `recording: true` | Fixed; test fails on the old code |
+| README load figures predated Weeks 4–7 | Load test re-run on the release code: 18/18 at 10/25/50 robots |
+| Missing tour commands (clear, record, parameters), CLI setup, mosquitto_sub prerequisites, 3.0 last-will name, replay speeds, a broken CONTRIBUTING anchor, stale test-README wording | Docs fixed |
+| Doc drift in ARCHITECTURE, VDA5050_NOTES, D-34, NOTICE (found while rewriting) | Fixed |
 
 ## Week 6: failure injection, quality gate (13 Oct, D-42)
 
@@ -273,7 +293,7 @@ Plan objective is done. Remaining work for this week is verification and documen
 - [x] Python linter and formatter (ruff, 120 columns) in CI (issue 16, D-14)
 - [x] Customer discovery kit: [outreach messages](discovery/OUTREACH.md), [interview guide](discovery/INTERVIEW_GUIDE.md), private tracker
 - [ ] Customer discovery: first outreach messages sent (plan: 30 conversations in 60 days)
-  - [x] First batch of 10 personalised drafts ready (private: `docs/company/outreach_batch_1.md`, tracker rows `to contact`); sending is the founder's
+  - [x] First batch of 10 personalised drafts ready (private: the private company folder (not in git), tracker rows `to contact`); sending is the founder's
 
 Proposed focus for the coming weeks (each week's plan objective + hardening of what was built early).
 Struck-through items are already done:
@@ -286,7 +306,7 @@ Struck-through items are already done:
 | 5 | ~~Version-aware validation with the official 2.1.0 and 3.0.0 schemas, chosen by topic~~ (D-15, D-20); ~~offline validation of session files~~ (done 13 Oct, D-40) |
 | 6 | ~~Remaining failures: low battery, disconnect, invalid payload~~ (done 13 Oct, D-42); timeouts and safety stops (`fieldViolation`) left out (not in the plan's list) |
 | 7 | ~~Session size limits~~; ~~retention; upload a session someone sent you~~ (done 13 Oct, D-41); ~~streaming replay~~ |
-| 8 | Record the demo video ([DEMO.md](DEMO.md)); polish README; publish |
+| 8 | ~~Record the demo video ([DEMO.md](DEMO.md)); polish README; publish~~ (done 13 Oct, D-43; voice-over by the founder) |
 
 ## Customer discovery
 
@@ -338,6 +358,13 @@ Numbered so they can be referenced from commits. Remove an item only when it is 
 ## Session log
 
 Newest first. One entry per work session: what was done, what was learned, what is next.
+
+### Tue 13 Oct 2026 (evening): Week 8 and v0.1.0 (D-43)
+
+- Founder chose Apache-2.0 and approved tagging v0.1.0 after verification.
+- The demo video is recorded by a script from the real UI; the founder adds the voice-over.
+- Two bugs found by checking the docs against reality (Docker env pass-through; stale stop response).
+- All 8 weeks complete.
 
 ### Tue 13 Oct 2026 (later): Week 6 finished (D-42)
 

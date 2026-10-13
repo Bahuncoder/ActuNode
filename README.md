@@ -58,7 +58,7 @@ Four failures, from the Failure injection panel or `POST /api/failures`, on simu
 |---|---|---|---|
 | `BLOCKED_PATH` | Stops on its route, `BLOCKED`, reports `pathBlocked` (2.1 WARNING, 3.0 CRITICAL) | none | yes, the mission resumes |
 | `LOW_BATTERY` | Battery set to `level`; `batteryLow` below 20 % (2.1 WARNING, 3.0 URGENT) | `level` 1–99 (15) | yes, level restored |
-| `DISCONNECT` | `broken`: drops the connection so the broker publishes the last will `CONNECTIONBROKEN`; `offline`: clean `OFFLINE`. Reconnects after `duration_s` | `duration_s` 1–300 (10), `mode` (broken) | no, ends by itself |
+| `DISCONNECT` | `broken`: drops the connection so the broker publishes the last will `CONNECTIONBROKEN` (3.0: `CONNECTION_BROKEN`); `offline`: clean `OFFLINE`. Reconnects after `duration_s` | `duration_s` 1–300 (10), `mode` (broken) | no, ends by itself |
 | `INVALID_PAYLOAD` | Publishes malformed messages on its state topic | `kind` `not-json` / `schema` / `wrong-serial` / `wrong-version` (schema), `count` 1–10 (1) | no |
 
 ![Failure injection panel with the disconnect parameters](docs/images/failures.png)
@@ -75,7 +75,7 @@ recordings, and a line is drawn between them on the map. Simulated robots drive 
 
 - **Record** every MQTT message the backend sees (orders, states, connections, failure injections) to
   a JSONL session file in `./sessions`. A recording stops itself at 200 MB (`ACTUNODE_MAX_SESSION_MB`).
-- **Replay** republishes a session with its original timing (1× or faster), so the UI or any system
+- **Replay** republishes a session with its original timing (1×–10× in the UI, 0.1×–20× via the API), so the UI or any system
   listening on the broker sees the incident again. Robot-side traffic only by default; refused while
   robots with the same ids are live ([D-7](docs/DECISIONS.md), [D-36](docs/DECISIONS.md)).
 - **Validate offline**: run a saved session through the same validator as the live feed, from the UI,
@@ -110,9 +110,10 @@ recordings, and a line is drawn between them on the map. Simulated robots drive 
 | End to end against the real Docker stack, incl. Chromium via Playwright | 37 | CI, three configurations: VDA 2.1, VDA 3.0, VDA 2.1 with login |
 | Load test, 10 / 25 / 50 robots with missions, 18 thresholds | 18/18 passed at each size | Weekly in CI ([load.yml](.github/workflows/load.yml)) |
 
-Plus ruff, oxlint, `tsc`, and weekly security scans (pip-audit, npm audit, Trivy). At 50 robots
-([tests/load/results/latest.md](tests/load/results/latest.md)): state cadence p99 1.03 s, robot → browser
-latency p99 75 ms, backend CPU 10 % of one core, backend memory 47 MiB, UI 59 fps, nothing dropped.
+Plus ruff, oxlint, `tsc`, and weekly security scans (pip-audit, npm audit, Trivy). Load figures were
+measured on a workstation by `tests/load/run_load.py` (results in
+[tests/load/results/latest.md](tests/load/results/latest.md)); CI re-runs it weekly. At 50 robots (13 Oct 2026, v0.1.0 code): state cadence p99 1.03 s, robot → browser
+latency p99 76 ms, backend CPU 10.5 % of one core, backend memory 47 MiB, UI 60 fps, nothing dropped.
 Method and thresholds: [tests/load/README.md](tests/load/README.md).
 
 ## Quick start
@@ -146,6 +147,9 @@ docker compose run --rm mqtt-init show tools     # prints the password
 mosquitto_sub -h localhost -u tools -P '<password>' -t 'uagv/#' -v
 ```
 
+This needs the Mosquitto clients on the host (`sudo apt install mosquitto-clients`), or run it inside the
+container: `docker compose exec mosquitto mosquitto_sub -h localhost -u tools -P '<password>' -t 'uagv/#' -v`.
+
 ## Five-minute tour
 
 The scenario: a WMS job moves pallet **P-1042** from **Receiving door 2** to **Storage A17**, the aisle gets
@@ -178,7 +182,18 @@ curl -X POST localhost:8080/api/missions -H 'content-type: application/json' \
   -d '{"robot_id":"robot_01","source":"RECEIVING_DOOR_2","destination":"STORAGE_A17","load_id":"P-1042"}'
 curl -X POST localhost:8080/api/failures -H 'content-type: application/json' \
   -d '{"robot_id":"robot_01","failure":"BLOCKED_PATH"}'
+curl -X POST localhost:8080/api/failures -H 'content-type: application/json' \
+  -d '{"robot_id":"robot_01","failure":"BLOCKED_PATH","action":"clear"}'
+curl -X POST localhost:8080/api/failures -H 'content-type: application/json' \
+  -d '{"robot_id":"robot_02","failure":"INVALID_PAYLOAD","params":{"kind":"schema","count":3}}'
+curl -X POST localhost:8080/api/failures -H 'content-type: application/json' \
+  -d '{"robot_id":"robot_03","failure":"DISCONNECT","params":{"duration_s":5,"mode":"broken"}}'
+curl -X POST localhost:8080/api/recording/start -H 'content-type: application/json' \
+  -d '{"name":"p1042-blocked-aisle"}'
+curl -X POST localhost:8080/api/recording/stop
 ```
+
+`GET /api/sessions` returns a JSON array of objects whose id field is `sessionId`.
 
 With `ACTUNODE_REQUIRE_LOGIN=1`, log in first and send the cookie with every request:
 `curl -c jar -X POST localhost:8080/api/login -H 'content-type: application/json' -d '{"token":"<api token>"}'`,
@@ -246,7 +261,7 @@ Interactive OpenAPI docs: **http://localhost:8080/api/docs**. Full table:
 
 | Area | Endpoints |
 |---|---|
-| Robots and live feed | `GET /api/robots`, `GET /api/messages`, `GET /api/proximity`, `WS /api/ws` |
+| Robots and live feed | `GET /api/health`, `GET /api/map`, `GET /api/locations`, `GET /api/robots`, `GET /api/messages`, `GET /api/proximity`, `WS /api/ws` |
 | Missions | `POST /api/missions`, `POST /api/missions/{robot}/cancel`, `POST /api/missions/{robot}/extend` |
 | Failures | `GET` / `POST /api/failures` |
 | Validation | `GET /api/validation`, `POST /api/validation/reset` |
@@ -261,14 +276,16 @@ MQTT topics, WebSocket events and the session file format are in
 ## CLI: validate a session file
 
 Checks a session file with the same validator as the live feed, without the stack, for example in your
-own CI. From `backend/` (after the development setup below):
+own CI. Only Python 3.12 is needed (no broker, no Node). Set up once, then run from `backend/`:
 
 ```bash
+cd backend && python3 -m venv .venv && .venv/bin/pip install -r requirements-dev.txt
 .venv/bin/python -m app.validate_session path/to/session.jsonl
 ```
 
 It prints a summary per rule and exits `0` (no errors), `1` (at least one error-severity issue) or
-`2` (not a valid session file). The same check runs from the UI (**Validate**) and
+`2` (not a valid session file). Recorded session files are in `./sessions/` (from `backend/`:
+`../sessions/<sessionId>.jsonl`). The same check runs from the UI (**Validate**) and
 `POST /api/sessions/{id}/validate`.
 
 ## Troubleshooting
@@ -321,7 +338,7 @@ python3 -m venv tests/e2e/.venv && tests/e2e/.venv/bin/pip install -r tests/e2e/
 tests/e2e/.venv/bin/python -m playwright install chromium   # once; add --with-deps on a fresh machine
 tests/e2e/.venv/bin/pytest tests/e2e
 
-# Load test (isolated stack, 10/25/50 robots, ~4.5 min) and the demo recorder
+# Load test (isolated stack, 10/25/50 robots, about 4–5 minutes) and the demo recorder
 tests/e2e/.venv/bin/python tests/load/run_load.py
 tests/e2e/.venv/bin/python tests/demo/record_demo.py
 ```
