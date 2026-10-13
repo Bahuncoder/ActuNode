@@ -251,10 +251,10 @@ def test_battery_empty_order_is_kept_until_cancelled(major):
     while robot.mission_status != FAILED:
         robot.update(0.1)
     robot.update(1.0)  # in the charging area: charges and clears batteryEmpty
-    assert robot.errors == [] and robot.mission_status == FAILED and robot.node_states
+    assert types(robot) == ["batteryLow"] and robot.mission_status == FAILED and robot.node_states  # 1 % charged
 
     assert not robot.accept_order(make_order(order_id="order-10", points=((robot.x, robot.y), (11, 2))))
-    assert types(robot) == ["OTHER_ORDER_ACTIVE" if major == "v3" else "orderError"]
+    assert types(robot)[-1] == ("OTHER_ORDER_ACTIVE" if major == "v3" else "orderError")
 
     act(robot, "cancelOrder")
     assert robot.mission_status == CANCELLED

@@ -73,6 +73,7 @@ def step(connections, tick: int, ticks_per_publish: int) -> None:
         before = connection.robot.event_signature()
         connection.robot.update(TICK_S)
         connection.apply_pending_messages()
+        connection.update_link()  # a DISCONNECT injection starts here; so does the reconnect
         robot = connection.robot
         # The requests instant actions made (stateRequest, factsheetRequest) are answered here, in one place.
         if robot.factsheet_requested:
@@ -81,6 +82,7 @@ def step(connections, tick: int, ticks_per_publish: int) -> None:
         if periodic or robot.state_requested or robot.event_signature() != before:
             robot.state_requested = False
             connection.publish_state()
+        connection.publish_malformed()  # INVALID_PAYLOAD: one per tick, after the normal state
 
 
 def main() -> None:

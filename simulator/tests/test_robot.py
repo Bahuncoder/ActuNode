@@ -453,7 +453,7 @@ def test_charging_clears_battery_empty_error_but_keeps_the_order():
     robot.update(1.0)
 
     assert robot.battery > 0
-    assert robot.errors == []
+    assert [e["errorType"] for e in robot.errors] == ["batteryLow"]  # batteryEmpty is gone; 1 % is still low
     # 3.0 section 6.6.5.1: the order is never cleared on an error; only cancelOrder frees the robot.
     assert robot.mission_status == "FAILED" and robot.node_states
     assert not robot.accept_order(make_order(order_id="order-10", points=((11, 2),)))

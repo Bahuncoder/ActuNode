@@ -53,7 +53,7 @@ def state_message(robot) -> dict:
         "operatingMode": "AUTOMATIC",
         "velocity": {"vx": round(robot.velocity, 3), "vy": 0.0, "omega": 0.0},
         "errors": [dict(error) for error in robot.errors],
-        "actunode": {"missionStatus": robot.mission_status},
+        "actunode": {"missionStatus": robot.mission_status, "injectedFailures": robot.injected_failures},
         v.position_key: position,
         v.battery_key: {v.battery_charge_key: round(robot.battery, 1), "charging": robot.charging},
         "safetyState": dict(v.safety_state),
@@ -137,3 +137,26 @@ def connection_message(robot, connection_state: str) -> dict:
     if connection_state == "CONNECTIONBROKEN":
         connection_state = robot.v.connection_broken
     return {**header(robot, "connection"), "connectionState": connection_state}
+
+
+MALFORMED_KINDS = ("not-json", "schema", "wrong-serial", "wrong-version")
+
+
+def malformed_payload(robot, kind: str) -> bytes:
+    """A broken `state` for the INVALID_PAYLOAD injection, each kind caught by one backend validator rule
+    (invalid-json, schema, topic-mismatch, version-mismatch). The JSON ones take the next state headerId, so the
+    state stream's headerIds still only increase; the normal states just skip those numbers."""
+    if kind == "not-json":
+        return b"{not json"
+    message = state_message(robot)
+    if kind == "schema":
+        # Required fields missing and a wrong type; the header stays valid so the schema rule is the only one hit.
+        message = {key: message[key] for key in ("headerId", "timestamp", "version", "manufacturer", "serialNumber")}
+        message["driving"] = "yes"
+    elif kind == "wrong-serial":
+        message["serialNumber"] = f"{robot.robot_id}_other"
+    elif kind == "wrong-version":
+        message["version"] = "1.1.0"
+    else:
+        raise ValueError(f"unknown malformed kind {kind!r}")
+    return json.dumps(message).encode()

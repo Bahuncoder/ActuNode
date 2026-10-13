@@ -44,6 +44,9 @@ def test_will_is_refreshed_after_connect_with_next_header_id():
     published, wills = [], []
 
     class FakeClient:
+        def is_connected(self):
+            return True
+
         def subscribe(self, topics):
             pass
 
@@ -55,6 +58,7 @@ def test_will_is_refreshed_after_connect_with_next_header_id():
 
     connection._client = FakeClient()
     connection._on_connect(connection._client, None, None, type("RC", (), {"is_failure": False})(), None)
+    step([connection], 1, 1000)  # ONLINE and the will refresh happen on the simulation thread
 
     assert published[0]["connectionState"] == "ONLINE"
     assert wills[-1]["connectionState"] == "CONNECTIONBROKEN"
@@ -90,6 +94,9 @@ def test_factsheet_is_published_retained_qos0_after_online():
     published = []
 
     class FakeClient:
+        def is_connected(self):
+            return True
+
         def subscribe(self, topics):
             pass
 
@@ -101,6 +108,7 @@ def test_factsheet_is_published_retained_qos0_after_online():
 
     connection._client = FakeClient()
     connection._on_connect(connection._client, None, None, type("RC", (), {"is_failure": False})(), None)
+    step([connection], 1, 1000)
 
     assert published[0][1]["connectionState"] == "ONLINE"
     topic_name, message, kwargs = published[1]

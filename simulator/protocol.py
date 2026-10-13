@@ -93,6 +93,9 @@ class VersionProfile:
     result_key: str  # the actionState field describing the outcome
     instant_actions: tuple[str, ...]
     connection_broken: str
+    # Error levels (D-42): 2.1 has WARNING and FATAL only; 3.0 adds URGENT (low battery) and CRITICAL (cannot continue).
+    path_blocked_level: str
+    battery_low_level: str
     deviation_is_ellipse: bool  # allowedDeviationXY: 3.0 {a, b, theta}, 2.1 a radius in meters
     cancel_has_order_param: bool  # 3.0 cancelOrder may name the order to cancel
     # 3.0 reports SAME_ORDER_UPDATE_ID for a reused orderUpdateId with other content; 2.1 ignores any such message.
@@ -193,6 +196,8 @@ PROFILES = {
         result_key="resultDescription",
         instant_actions=INSTANT_ACTIONS,
         connection_broken="CONNECTIONBROKEN",
+        path_blocked_level="WARNING",
+        battery_low_level="WARNING",
         deviation_is_ellipse=False,
         cancel_has_order_param=False,
         strict_same_update_id=False,
@@ -219,6 +224,8 @@ PROFILES = {
         result_key="actionResult",
         instant_actions=INSTANT_ACTIONS_V3,
         connection_broken="CONNECTION_BROKEN",
+        path_blocked_level="CRITICAL",
+        battery_low_level="URGENT",
         deviation_is_ellipse=True,
         cancel_has_order_param=True,
         strict_same_update_id=True,

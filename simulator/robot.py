@@ -4,7 +4,7 @@ import logging
 import math
 
 from simulator.instant import ID_IN_USE, InstantActions
-from simulator.messages import connection_message, factsheet_message, header, state_message
+from simulator.messages import MALFORMED_KINDS, connection_message, factsheet_message, header, state_message
 from simulator.orders import OrderBook
 from simulator.protocol import (
     ACCEPTED,
@@ -78,6 +78,25 @@ PARKING_AREA = (0.0, 5.0, 8.5, 10.5)
 CHARGE_PER_S = 1.0
 
 BLOCKED_PATH = "BLOCKED_PATH"
+LOW_BATTERY = "LOW_BATTERY"
+DISCONNECT = "DISCONNECT"
+INVALID_PAYLOAD = "INVALID_PAYLOAD"
+# Below this (and above 0) the state carries a batteryLow error (D-42); the robot keeps driving.
+LOW_BATTERY_THRESHOLD = 20
+DEFAULT_LOW_BATTERY_LEVEL = 15
+# Bounds of the inject params, same as backend/app/failures.py and actunode-inject.schema.json.
+DISCONNECT_MODES = ("broken", "offline")
+DEFAULT_DISCONNECT_S = 10
+MAX_DISCONNECT_S = 300
+MAX_MALFORMED = 10
+# The params each failure's inject takes; a clear takes none. Anything else is rejected, not silently defaulted.
+FAILURE_PARAMS = {
+    BLOCKED_PATH: (),
+    LOW_BATTERY: ("level",),
+    DISCONNECT: ("duration_s", "mode"),
+    INVALID_PAYLOAD: ("kind", "count"),
+}
+MAX_PENDING_MALFORMED = 10  # per robot; further requests are dropped (S-1)
 
 
 class Robot(OrderBook, InstantActions):
@@ -113,6 +132,13 @@ class Robot(OrderBook, InstantActions):
         self.factsheet_requested = False
         # Set by stateRequest; the main loop publishes the state and resets it.
         self.state_requested = False
+        # DISCONNECT and INVALID_PAYLOAD only record their request here; the publisher acts on it from step().
+        self.disconnect_requested: tuple[int, str] | None = None  # (duration_s, mode)
+        self.malformed_requests: list[str] = []  # kinds, one malformed state published per tick
+        # Set by the publisher while the link is down (or coming back): a DISCONNECT then makes no sense.
+        self.link_down = False
+        # Battery level before a LOW_BATTERY injection, restored by its clear.
+        self._battery_before_injection: float | None = None
         # Loads the robot carries, as reported in `loads`.
         self.loads: list[dict] = []
         # Per sequenceId: the actions attached to a node/edge, and where the robot last stood.
@@ -252,13 +278,104 @@ class Robot(OrderBook, InstantActions):
         except (json.JSONDecodeError, UnicodeDecodeError, TypeError, KeyError):
             return "ignored malformed command"
 
-        if failure != BLOCKED_PATH:
-            return f"ignored unknown failure {failure!r}"
-        if action == "inject":
-            return "path blocked" if self.block_path() else f"ignored BLOCKED_PATH while {self.mission_status}"
-        if action == "clear":
+        params = command.get("params")
+        params = params if isinstance(params, dict) else {}  # older backends send none
+        if action not in ("inject", "clear"):
+            return f"ignored unknown action {action!r}"
+        if failure in FAILURE_PARAMS:
+            allowed = FAILURE_PARAMS[failure] if action == "inject" else ()
+            unknown = next((key for key in params if key not in allowed), None)
+            if unknown is not None:
+                return f"ignored {failure}: unknown param {unknown}"
+        if failure == BLOCKED_PATH:
+            if action == "inject":
+                return "path blocked" if self.block_path() else f"ignored BLOCKED_PATH while {self.mission_status}"
             return "path cleared" if self.clear_blocked_path() else "ignored clear: not blocked"
-        return f"ignored unknown action {action!r}"
+        if failure == LOW_BATTERY:
+            return self._low_battery(action, params)
+        if failure in (DISCONNECT, INVALID_PAYLOAD) and action == "clear":
+            return f"ignored clear: {failure} cannot be cleared"
+        if failure == DISCONNECT:
+            return self._request_disconnect(params)
+        if failure == INVALID_PAYLOAD:
+            return self._request_malformed(params)
+        return f"ignored unknown failure {failure!r}"
+
+    @staticmethod
+    def _int_param(params: dict, key: str, default: int, low: int, high: int) -> int | None:
+        """The int param within [low, high], the default when absent, None when invalid (bool is not an int here)."""
+        value = params.get(key, default)
+        if isinstance(value, bool) or not isinstance(value, int) or not low <= value <= high:
+            return None
+        return value
+
+    def _low_battery(self, action: str, params: dict) -> str:
+        if action == "clear":
+            if self._battery_before_injection is None:
+                return "ignored clear: not injected"
+            self.battery, self._battery_before_injection = self._battery_before_injection, None
+            self._drop_empty_if_charged()
+            self._sync_battery_low()
+            return f"battery restored to {self.battery:g}%"
+        level = self._int_param(params, "level", DEFAULT_LOW_BATTERY_LEVEL, 1, 99)
+        if level is None:
+            return "ignored LOW_BATTERY: level must be an integer from 1 to 99"
+        if self._battery_before_injection is None:  # injecting twice keeps the first original level
+            self._battery_before_injection = self.battery
+        self.battery = float(level)
+        self._drop_empty_if_charged()
+        self._sync_battery_low()
+        return f"battery set to {level}%"
+
+    def _drop_empty_if_charged(self) -> None:
+        """No FATAL batteryEmpty next to a battery above 0 (as in _charge). The mission stays FAILED:
+        an order update resumes it, a cancelOrder frees the robot (D-33)."""
+        if self.battery > 0:
+            self._drop_errors("batteryEmpty")
+
+    def _request_disconnect(self, params: dict) -> str:
+        duration = self._int_param(params, "duration_s", DEFAULT_DISCONNECT_S, 1, MAX_DISCONNECT_S)
+        mode = params.get("mode", "broken")
+        if self.link_down or self.disconnect_requested is not None:
+            return "ignored DISCONNECT: already disconnected"
+        if duration is None or mode not in DISCONNECT_MODES:
+            return f"ignored DISCONNECT: duration_s 1-{MAX_DISCONNECT_S}, mode one of {list(DISCONNECT_MODES)}"
+        self.disconnect_requested = (duration, mode)
+        return f"disconnect for {duration} s ({mode})"
+
+    def _request_malformed(self, params: dict) -> str:
+        kind = params.get("kind")
+        count = self._int_param(params, "count", 1, 1, MAX_MALFORMED)
+        if kind not in MALFORMED_KINDS or count is None:
+            return f"ignored INVALID_PAYLOAD: kind one of {list(MALFORMED_KINDS)}, count 1-{MAX_MALFORMED}"
+        queued = min(count, MAX_PENDING_MALFORMED - len(self.malformed_requests))
+        self.malformed_requests += [kind] * queued
+        dropped = f" ({count - queued} dropped: at most {MAX_PENDING_MALFORMED} pending)" if queued < count else ""
+        return f"{queued} malformed message(s) queued: {kind}{dropped}"
+
+    def _sync_battery_low(self) -> None:
+        """batteryLow while 0 < battery < threshold; batteryEmpty (FATAL) takes over at 0."""
+        low = 0 < self.battery < LOW_BATTERY_THRESHOLD
+        description = f"Battery low: {self.battery:.0f}%"
+        existing = next((e for e in self.errors if e["errorType"] == "batteryLow"), None)
+        if low and existing:
+            existing["errorDescription"] = description  # the type is the event, so no extra state message
+        elif low:
+            self._add_error("batteryLow", description, [], level=self.v.battery_low_level)
+        elif existing:
+            self._drop_errors("batteryLow")
+
+    @property
+    def injected_failures(self) -> list[str]:
+        """The injected failures a clear command can end, for the state's `actunode` extension."""
+        return [
+            name
+            for name, active in (
+                (BLOCKED_PATH, self.mission_status == BLOCKED),
+                (LOW_BATTERY, self._battery_before_injection is not None),
+            )
+            if active
+        ]
 
     def block_path(self) -> bool:
         """Something blocks the route: stop in place and report pathBlocked."""
@@ -273,7 +390,9 @@ class Robot(OrderBook, InstantActions):
             description = f"Path blocked on the way to {self.node_states[0]['nodeId']}"
 
         self._drop_errors("pathBlocked")
-        self._add_error("pathBlocked", description, [reference, ref("orderId", self.order_id)])
+        self._add_error(
+            "pathBlocked", description, [reference, ref("orderId", self.order_id)], level=self.v.path_blocked_level
+        )
         self.mission_status = BLOCKED
         self.velocity = 0.0
         return True
@@ -289,6 +408,10 @@ class Robot(OrderBook, InstantActions):
 
     def update(self, dt: float) -> None:
         """Advance the simulation by `dt` seconds."""
+        self._advance(dt)
+        self._sync_battery_low()
+
+    def _advance(self, dt: float) -> None:
         self._moved = 0.0
         self.velocity = 0.0
         if self.paused and self.busy:
@@ -454,4 +577,5 @@ class Robot(OrderBook, InstantActions):
             tuple(load["loadId"] for load in self.loads),
             tuple((action["actionId"], action["actionStatus"]) for action in self.instant_action_states),
             self.paused,
+            tuple(self.injected_failures),
         )

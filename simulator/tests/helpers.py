@@ -145,6 +145,12 @@ class FakeConnection:
     def apply_pending_messages(self):
         return False
 
+    def update_link(self):
+        pass
+
+    def publish_malformed(self):
+        pass
+
     def publish_state(self):
         self.published += 1
 

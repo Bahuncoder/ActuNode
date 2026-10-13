@@ -138,8 +138,9 @@ def test_update_with_empty_battery_is_rejected(major):
     robot.battery = 0.0
 
     assert robot.accept_order(update_from(order, 1, 3)) is False
-    assert types(robot) == ["orderUpdateError" if major == "v2" else "MOBILE_ROBOT_NOT_AVAILABLE"]
-    assert robot.errors[0]["errorLevel"] == "WARNING" and robot.mission_status == FAILED
+    # (batteryLow from the drive down is still there: the test sets the battery to 0 without a tick)
+    assert types(robot)[-1] == ("orderUpdateError" if major == "v2" else "MOBILE_ROBOT_NOT_AVAILABLE")
+    assert robot.errors[-1]["errorLevel"] == "WARNING" and robot.mission_status == FAILED
     assert robot.order_update_id == 0
 
 
