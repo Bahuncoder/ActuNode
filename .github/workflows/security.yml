@@ -8,6 +8,7 @@ on:
     paths:
       - "backend/requirements*.txt"
       - "simulator/requirements*.txt"
+      - "cli/requirements*.txt"
       - "tests/e2e/requirements.txt"
       - "frontend/package*.json"
       - "**/Dockerfile"
@@ -17,6 +18,7 @@ on:
     paths:
       - "backend/requirements*.txt"
       - "simulator/requirements*.txt"
+      - "cli/requirements*.txt"
       - "tests/e2e/requirements.txt"
       - "frontend/package*.json"
       - "**/Dockerfile"
@@ -37,6 +39,7 @@ jobs:
       - run: pip install pip-audit==2.10.1
       - run: pip-audit -r backend/requirements.txt
       - run: pip-audit -r simulator/requirements.txt
+      - run: pip-audit -r cli/requirements.txt
       - run: pip-audit -r tests/e2e/requirements.txt
 
   npm-deps:

@@ -27,3 +27,9 @@ tests/load/results/*
 
 # Demo recording output (tests/demo/README.md): the video stays local; the README screenshots go to docs/images/.
 tests/demo/output/
+
+# Scenario runner packaging (cli/)
+*.egg-info/
+build/
+# JUnit reports written by actunode test
+junit*.xml

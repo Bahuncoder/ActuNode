@@ -13,8 +13,8 @@ the status line, the schedule table, the session log, and the open issues.
 | | |
 |---|---|
 | **Calendar** | Week 1 of 8 by date (Fri 9 Oct – Thu 15 Oct 2026); dates no longer gate the work (D-30) |
-| **Last updated** | Mon 12 Oct 2026 |
-| **Status** | **Phase 1 (weeks 1–8) complete; v0.1.0 released 13 Oct 2026** (D-43). Phase 2 planned (weeks 9–16, D-44). Next: Week 9, scenario format and `actunode test` runner. No open issues. |
+| **Last updated** | Tue 13 Oct 2026 |
+| **Status** | **Phase 1 (weeks 1–8) complete; v0.1.0 released 13 Oct 2026** (D-43). Phase 2 (weeks 9–16, D-44) under way: **Week 9 features done** (D-45: scenario format, `actunode test`, P-1042 passes as a scenario); Week 9 quality gate next. No open issues. |
 | **Working rule** | A week is done when its work is fully done (D-30): features, then a quality gate (independent bug and security review, scans, a test for every fix, all suites and e2e green, docs). Then the next week starts, whatever the date. |
 
 ## Schedule
@@ -31,7 +31,7 @@ Week 1 started on Friday 9 October 2026 (Day 1). Each week runs Friday to Thursd
 | 6 | 13–19 Nov | Failure injection | Blocked path, low battery, disconnect, invalid payload | ✅ Blocked path Day 5; the other three completed 13 Oct (D-42) | ✅ Quality gate passed 13 Oct: all four observed end to end; spec error levels |
 | 7 | 20–26 Nov | Record/replay | Session file can reproduce incident | ✅ Built early (Days 6–7); completed 13 Oct (D-41) | ✅ Quality gate passed 13 Oct: retention, upload of a session someone sent you, hostile-file checks |
 | 8 | 27 Nov – 3 Dec | Demo + README + 3-minute video | GitHub repo + pitch demo | ✅ Completed 13 Oct (D-43): Apache-2.0, README, demo recorder; voice-over by the founder | ✅ Quality gate passed 13 Oct: docs accuracy review, fresh-clone quick start; v0.1.0 |
-| 9 | 4–10 Dec | Scenario format + `actunode test` runner | P-1042 passes as a scenario; JUnit output | ⬜ | ⬜ |
+| 9 | 4–10 Dec | Scenario format + `actunode test` runner | P-1042 passes as a scenario; JUnit output | ✅ Built 13 Oct (D-45) | ⬜ Gate next |
 | 10 | 11–17 Dec | Expectations + five sample scenarios | `scenarios/`; decision point | ⬜ | ⬜ |
 | 11 | 18–24 Dec | Testing an external master control | "cancel, reroute or escalate?" as a scenario | ⬜ | ⬜ |
 | 12 | 25–31 Dec | Scenarios in CI | Docker runner + GitHub Actions example | ⬜ | ⬜ |
@@ -57,6 +57,26 @@ the 8-week plan; the 8-week plan is the full roadmap. All of Days 1–7 were bui
 | Day 5 | `BLOCKED_PATH` failure | Week 6 (1 of 4 failures) |
 | Days 6–7 | Record to JSONL, replay | Week 7 |
 | 10 Oct | 10 robots; validator, schemas, VDA 5050 notes | Weeks 4, 5, 1 (rest) |
+
+## Week 9: scenario tests (13 Oct, D-45)
+
+Built (design first, tests with the code): `cli/`, the `actunode` package with `actunode test`. A YAML
+scenario (steps `send_mission`, `inject`, `clear`, `cancel_mission`, `wait`, `expect`; expectations on
+status, order, error and level, connection, validation rules, `within` N s) runs against a lab through its
+HTTP API. Output: a readable log, `--junit` XML, exit codes 0 pass / 1 fail / 2 invalid / 3 could not run.
+Cleanup clears injected failures and cancels the scenario's running orders. `scenarios/p1042_blocked_path.yaml`
+is the pitch demo's incident; it passes on the real stack in about 29 s.
+
+| Found while building | Fix |
+|---|---|
+| The runner matched robots by `vdaMajor` `"2"`; the API says `"v2"`, so with `--vda-version` no robot was ever online. The unit-test fake had the same wrong shape (the D-38 pattern) | Fixed; the fake follows the API; a contract test reads the backend's shared fixture |
+| A step that is not a mapping was reported as `steps[0]` (pydantic's 0-based index) while every other error counts from 1 | All step errors numbered from 1; all errors in a file reported at once |
+| The local dev stack (images from 11 Oct) answered 404 to cancel: stale images, not a runner bug | `docker compose up -d --build` refreshes it; the e2e stack is built fresh each run |
+| One e2e run in login mode errored in stack setup straight after another run's teardown; three reruns passed | Watch in the gate |
+
+Verified: runner unit tests 79; e2e `test_09_scenarios.py` 2/2 in all three configurations (VDA 2.1, 3.0,
+2.1 with login); full e2e 35 passed + 4 login-only skipped (VDA 2.1); `pip install ./cli` gives a working
+`actunode`; ruff clean; pip-audit of the runner's dependencies clean.
 
 ## Week 8: publishing, quality gate (13 Oct, D-43)
 
@@ -366,6 +386,12 @@ Numbered so they can be referenced from commits. Remove an item only when it is 
 ## Session log
 
 Newest first. One entry per work session: what was done, what was learned, what is next.
+
+### Tue 13 Oct 2026 (late night): Week 9 built (D-45)
+- `actunode test` and the scenario format (`cli/`); P-1042 as `scenarios/p1042_blocked_path.yaml`, passing on
+  the real stack in all three CI configurations; CI job for the runner; pip-audit covers it.
+- Next: the Week 9 quality gate (independent review of `cli/`, security review of the scenario input and
+  the token/TLS handling), then Week 10.
 
 ### Tue 13 Oct 2026 (night): release published; Phase 2 planned (D-44)
 

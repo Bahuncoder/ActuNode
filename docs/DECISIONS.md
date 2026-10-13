@@ -763,3 +763,30 @@ A decision point after Week 10 lets the first user conversations reorder weeks 1
 (D-30): completion and a quality gate, not dates.
 **Consequences.** PROGRESS tracks weeks 9–16 like weeks 1–8. Outreach (milestone 4) stays the founder's and
 feeds the decision point.
+
+## D-45 · Scenario tests: a YAML format and `actunode test`, a black-box client of the HTTP API
+13 Oct 2026 · Accepted
+
+**Context.** Week 9 (Phase 2, D-44): a scenario file and a runner, so that an incident such as P-1042 becomes
+a repeatable test with pass/fail, JUnit XML and exit codes. The runner has to work against the Docker lab on
+the same machine, a shared lab behind login and TLS (D-25, D-26), and later CI (Week 12) and an external
+system under test (Week 11).
+**Decision.** A separate package, `cli/` (`actunode`, installable with `pip install ./cli`), that drives
+the lab only through its public HTTP API, as the UI does: no backend imports, so it tests what users get
+and runs from any machine. Format: YAML with a list of steps (`send_mission`, `inject`, `clear`,
+`cancel_mission`, `wait`, `expect`). An `expect` passes once all its conditions hold at the same moment,
+at the latest `within` N s (default 10); Week 10 adds "never" / "for N s" without renaming anything.
+Orders are named with `as:` so `expect … order:` cannot be fooled by an earlier COMPLETED order (the
+e2e tests' own lesson). Validation expectations count only issues since the scenario started (by
+difference, so the lab's counters are never reset under other users). Strictness by default: unknown and
+duplicate keys are errors with their location, safe YAML only, files up to 1 MB. The first failing step
+ends a scenario; afterwards the runner clears the failures it injected and cancels its own orders that are
+still running (also on Ctrl-C), so scenarios do not leak into each other or into people using the lab.
+Exit codes separate failure (1) from invalid input (2) and an unusable environment (3). The token comes
+from a file or the environment, never the command line; TLS is always verified (a CA file can be given).
+**Consequences.** P-1042 passes as `scenarios/p1042_blocked_path.yaml` on the real stack (e2e, VDA 5050
+2.1, 3.0 and login mode). `status` relies on ActuNode's `missionStatus`, which other robots do not report;
+the Week 13 ROS 2 robot will need a status derived from plain VDA 5050 state. The unit tests' fake lab
+must match the real answers: the first e2e run found `vdaMajor` is `"v2"`, not `"2"`, which the fake had
+wrong too; a contract test on the backend's shared fixtures now pins it (D-38).
+

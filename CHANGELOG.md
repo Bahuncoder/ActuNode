@@ -4,7 +4,14 @@ What changed, per commit, newest first. Status and plans are in [docs/PROGRESS.m
 
 ## Unreleased
 
-Nothing yet.
+### Week 9: scenario tests (D-45)
+- `actunode test` (`cli/`, `pip install ./cli`): runs YAML scenario files against a running lab. Steps:
+  send mission, inject and clear failures, cancel, wait, expect (robot status, order, error and level,
+  connection, validation rules) within N seconds. Readable log, `--junit` XML, exit codes 0/1/2/3,
+  `--dry-run`, login (`--token-file`) and TLS (`--ca-file`); cleans up injected failures and its own
+  running orders afterwards.
+- `scenarios/p1042_blocked_path.yaml`: the pitch demo's blocked-path incident as a passing test.
+- CI runs the runner's unit tests; e2e runs P-1042 and a failing scenario on the real stack.
 
 ## 0.1.0 — 2026-10-13
 

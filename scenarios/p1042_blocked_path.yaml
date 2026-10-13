@@ -1,0 +1,34 @@
+# The pitch demo's incident as a test (docs/PLAN.md, demo scenario): a WMS job moves pallet P-1042 from
+# Receiving Door 2 to Storage A17; on the way the aisle is blocked. The robot must stop and report it,
+# and finish the job once the aisle is clear.
+#
+#   actunode test scenarios/p1042_blocked_path.yaml
+name: P-1042 blocked on the way to storage
+description: >
+  Pallet P-1042 goes from Receiving Door 2 to Storage A17. A blocked path stops the robot, which reports
+  pathBlocked; once cleared, the robot completes the same order. No message on the way breaks the VDA 5050
+  rules the validator checks.
+
+steps:
+  # The robot must be free: a robot still running an earlier order would take the new one as a replacement.
+  - expect: {robot: robot_01, status: [IDLE, COMPLETED, CANCELLED, FAILED], within: 120}
+
+  - send_mission:
+      robot: robot_01
+      source: RECEIVING_DOOR_2
+      destination: STORAGE_A17
+      load: P-1042
+      as: p1042
+  - expect: {robot: robot_01, order: p1042, status: MOVING, within: 15}
+  - wait: 1
+
+  - inject: {robot: robot_01, failure: BLOCKED_PATH}
+  - expect: {robot: robot_01, order: p1042, status: BLOCKED, error: pathBlocked, within: 5}
+  # Blocked means stopped: still blocked a few seconds later, not driving through.
+  - wait: 3
+  - expect: {robot: robot_01, order: p1042, status: BLOCKED, within: 1}
+
+  - clear: {robot: robot_01, failure: BLOCKED_PATH}
+  - expect: {robot: robot_01, order: p1042, status: MOVING, no_error: pathBlocked, within: 5}
+  - expect: {robot: robot_01, order: p1042, status: COMPLETED, within: 120}
+  - expect: {validation: {no_errors: true}}

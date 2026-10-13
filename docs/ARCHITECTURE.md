@@ -258,6 +258,15 @@ can go first).
 | `ACTUNODE_SESSIONS_HOST_DIR` | Docker Compose (recordings on the host) | `./sessions` |
 | `ACTUNODE_E2E_HOST` | end-to-end tests | `localhost` |
 
+## Scenario runner (`cli/`, D-45)
+
+`actunode test` is a separate Python package and a black-box client of the HTTP API (it imports nothing
+from the backend). Modules: `scenario.py` (YAML format, strict validation), `client.py` (HTTP, login,
+error classification: `StackError` = could not run, `RequestFailed` = the lab refused a step),
+`runner.py` (steps in order; `expect` polls `GET /api/robots` and `GET /api/validation` every 0.25 s;
+cleanup), `report.py` (console log, JUnit XML), `cli.py` (arguments, exit codes). Scenario files live in
+`scenarios/`.
+
 ## Tests and CI
 
 | Suite | Command | In CI |

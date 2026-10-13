@@ -39,6 +39,17 @@ jobs:
       - run: pip install -r simulator/requirements-dev.txt
       - run: pytest -q simulator
 
+  cli:
+    # actunode test, the scenario runner (D-45); its e2e runs in the e2e job below.
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.12"
+      - run: pip install -r cli/requirements-dev.txt
+      - run: pytest -q cli/tests
+
   frontend:
     runs-on: ubuntu-24.04
     defaults:
@@ -60,7 +71,7 @@ jobs:
     # Builds and runs the real Docker Compose stack (Mosquitto, backend, simulator, nginx),
     # once with robots speaking VDA 5050 2.1.0 and once with 3.0.0 (D-15).
     runs-on: ubuntu-24.04
-    needs: [lint, backend, simulator, frontend]
+    needs: [lint, backend, simulator, cli, frontend]
     strategy:
       fail-fast: false
       matrix:

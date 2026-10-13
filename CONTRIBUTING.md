@@ -15,6 +15,9 @@ cd backend && python3 -m venv .venv && .venv/bin/pip install -r requirements-dev
 # Simulator (from repo root)
 python3 -m venv simulator/.venv && simulator/.venv/bin/pip install -r simulator/requirements-dev.txt
 
+# Scenario runner (from repo root)
+python3 -m venv cli/.venv && cli/.venv/bin/pip install -r cli/requirements-dev.txt
+
 # Frontend (Node 24, see frontend/.nvmrc)
 cd frontend && nvm use && npm install
 ```
@@ -28,6 +31,7 @@ Write the test first, watch it fail, then make it pass. Every bug fix gets a tes
 | Python lint/format (repo root) | `backend/.venv/bin/ruff check . && backend/.venv/bin/ruff format --check .` |
 | Backend | `cd backend && .venv/bin/pytest` |
 | Simulator | `simulator/.venv/bin/pytest simulator` |
+| Scenario runner | `cli/.venv/bin/pytest -q cli/tests` |
 | Frontend | `cd frontend && npm run lint && npm test && npm run build` |
 | End to end (needs Docker) | `tests/e2e/.venv/bin/pytest tests/e2e` (Playwright: `tests/e2e/.venv/bin/python -m playwright install chromium` once) |
 | Load (needs Docker, about 4–5 minutes, by hand) | `tests/e2e/.venv/bin/python tests/load/run_load.py` |

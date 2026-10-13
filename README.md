@@ -19,7 +19,7 @@ so you can replay them** against the system under test, with no physical fleet.
 ## Contents
 
 [Features](#features) · [Quick start](#quick-start) · [Five-minute tour](#five-minute-tour) · [Sharing the lab](#sharing-the-lab-on-a-network) · [Connecting a real robot](#connecting-a-real-robot) · [Configuration](#configuration) ·
-[API](#api) · [CLI](#cli-validate-a-session-file) · [Troubleshooting](#troubleshooting) · [Development](#development) · [Project status](#project-status) · [License](#license) · [Security](#security)
+[API](#api) · [Scenario tests](#scenario-tests-actunode-test) · [CLI](#cli-validate-a-session-file) · [Troubleshooting](#troubleshooting) · [Development](#development) · [Project status](#project-status) · [License](#license) · [Security](#security)
 
 ## Features
 
@@ -107,7 +107,8 @@ recordings, and a line is drawn between them on the map. Simulated robots drive 
 | Backend (pytest) | 438 | CI |
 | Simulator (pytest, incl. conformance against the official 2.1.0 and 3.0.0 schemas) | 391 | CI |
 | Frontend (Vitest: unit, component, shared backend contract fixtures) | 96 | CI |
-| End to end against the real Docker stack, incl. Chromium via Playwright | 37 | CI, three configurations: VDA 2.1, VDA 3.0, VDA 2.1 with login |
+| Scenario runner `actunode test` (pytest) | 79 | CI |
+| End to end against the real Docker stack, incl. Chromium via Playwright and `actunode test` | 39 | CI, three configurations: VDA 2.1, VDA 3.0, VDA 2.1 with login |
 | Load test, 10 / 25 / 50 robots with missions, 18 thresholds | 18/18 passed at each size | Weekly in CI ([load.yml](.github/workflows/load.yml)) |
 
 Plus ruff, oxlint, `tsc`, and weekly security scans (pip-audit, npm audit, Trivy). Load figures were
@@ -273,6 +274,30 @@ Interactive OpenAPI docs: **http://localhost:8080/api/docs**. Full table:
 MQTT topics, WebSocket events and the session file format are in
 [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).
 
+## Scenario tests: `actunode test`
+
+Describe an incident as a YAML scenario (send a mission, inject a failure, expect what the robot reports)
+and run it against the lab; it reports pass or fail, and JUnit XML for CI. The full format is in
+[cli/README.md](cli/README.md).
+
+```bash
+python3 -m venv cli/.venv && cli/.venv/bin/pip install ./cli
+cli/.venv/bin/actunode test scenarios/ --junit junit.xml
+```
+
+```yaml
+name: P-1042 blocked on the way to storage
+steps:
+  - send_mission: {robot: robot_01, source: RECEIVING_DOOR_2, destination: STORAGE_A17, load: P-1042, as: p1042}
+  - expect: {robot: robot_01, order: p1042, status: MOVING, within: 15}
+  - inject: {robot: robot_01, failure: BLOCKED_PATH}
+  - expect: {robot: robot_01, order: p1042, status: BLOCKED, error: pathBlocked, within: 5}
+  - clear: {robot: robot_01, failure: BLOCKED_PATH}
+  - expect: {robot: robot_01, order: p1042, status: COMPLETED, within: 120}
+```
+
+Exit codes: 0 passed, 1 failed, 2 invalid scenario, 3 the lab could not be used.
+
 ## CLI: validate a session file
 
 Checks a session file with the same validator as the live feed, without the stack, for example in your
@@ -353,6 +378,7 @@ Offline playground with no MQTT at all (one mission through the robot state mach
 | `frontend/` | React + TypeScript lab UI (nginx in Docker) |
 | `simulator/` | Python AMR simulator, VDA 5050 2.1 and 3.0 |
 | `mosquitto/`, `tls/` | Broker config, login and ACL generation, local CA |
+| `cli/`, `scenarios/` | `actunode test`, the scenario runner; scenario files |
 | `contracts/` | Shared fixtures that tie backend and frontend (and simulator) message shapes |
 | `tests/e2e`, `tests/load`, `tests/demo` | End-to-end tests, load test, demo recorder |
 | `docs/` | Architecture, decisions, protocol notes, progress |

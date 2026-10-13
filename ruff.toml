@@ -1,4 +1,4 @@
-# Python lint and format settings for backend/ and simulator/.
+# Python lint and format settings for backend/, simulator/ and cli/.
 # Run from the repo root:  ruff check .  &&  ruff format --check .
 line-length = 120
 target-version = "py312"
@@ -9,4 +9,4 @@ extend-exclude = ["frontend", "docs", "sessions"]
 select = ["E", "W", "F", "I", "B", "UP"]
 
 [lint.isort]
-known-first-party = ["app", "simulator"]
+known-first-party = ["app", "simulator", "actunode"]
