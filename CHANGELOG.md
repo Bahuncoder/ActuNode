@@ -4,6 +4,14 @@ What changed, per commit, newest first. Status and plans are in [docs/PROGRESS.m
 
 ## Unreleased
 
+### Week 12: scenarios in CI, site captures (D-49)
+- `docker compose run --rm runner test scenarios/`: the scenario runner in a container, inside the lab's
+  network; your own scenarios with `ACTUNODE_SCENARIOS`; JUnit to `ACTUNODE_RESULTS`.
+- CI job `scenarios` (VDA 2.1 and 3.0): sample scenarios and the example fleet manager, reports and
+  recordings as artifacts. `examples/ci/github-actions.yml`: the same for your repository.
+- `actunode import`: a `mosquitto_sub` capture from a site becomes a session to upload, validate and replay.
+- `ACTUNODE_TOKEN_FILE` as the default for `--token-file`.
+
 ### Week 11: testing a fleet manager (D-48)
 - `examples/fleet_manager/`: an example fleet manager with a choice of reaction to a blocked path, and
   `blocked_path_reaction.yaml`, which asks "does it cancel, reroute or escalate?" (pass/fail on the real stack).

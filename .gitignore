@@ -33,3 +33,6 @@ tests/demo/output/
 build/
 # JUnit reports written by actunode test
 junit*.xml
+
+# Scenario runner output (docker compose run --rm runner ..., D-49)
+test-results/

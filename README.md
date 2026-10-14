@@ -108,8 +108,8 @@ recordings, and a line is drawn between them on the map. Simulated robots drive 
 | Backend (pytest) | 463 | CI |
 | Simulator (pytest, incl. conformance against the official 2.1.0 and 3.0.0 schemas) | 397 | CI |
 | Frontend (Vitest: unit, component, shared backend contract fixtures) | 99 | CI |
-| Scenario runner `actunode test` (pytest) | 135 | CI |
-| End to end against the real Docker stack, incl. Chromium via Playwright, `actunode test` and an outside fleet manager | 43 | CI, three configurations: VDA 2.1, VDA 3.0, VDA 2.1 with login |
+| Scenario runner `actunode test` and `actunode import` (pytest) | 148 | CI |
+| End to end against the real Docker stack, incl. Chromium via Playwright, `actunode test` and an outside fleet manager | 44 | CI, three configurations: VDA 2.1, VDA 3.0, VDA 2.1 with login; plus the Docker scenario runner on 2.1 and 3.0 |
 | Load test, 10 / 25 / 50 robots with missions, 18 thresholds | 18/18 passed at each size | Weekly in CI ([load.yml](.github/workflows/load.yml)) |
 
 Plus ruff, oxlint, `tsc`, and weekly security scans (pip-audit, npm audit, Trivy). Load figures were
@@ -322,6 +322,17 @@ steps:
 ```
 
 Exit codes: 0 passed, 1 failed, 2 invalid scenario, 3 the lab could not be used.
+
+Without installing Python, in the lab's own Docker network ([D-49](docs/DECISIONS.md)):
+
+```bash
+mkdir -p test-results
+docker compose run --rm runner test scenarios/ --junit test-results/junit.xml
+ACTUNODE_SCENARIOS=/path/to/your/scenarios docker compose run --rm runner test scenarios/
+```
+
+In CI, on every push: copy [examples/ci/github-actions.yml](examples/ci/github-actions.yml) (guide:
+[examples/ci/](examples/ci/README.md)). ActuNode's own CI runs the same steps (job `scenarios`).
 
 ## CLI: validate a session file
 

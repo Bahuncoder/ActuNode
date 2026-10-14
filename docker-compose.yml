@@ -168,6 +168,32 @@ services:
       backend:
         condition: service_healthy
 
+  # Scenario tests (D-49), not started by `up`: docker compose run --rm runner test scenarios/
+  # It shares the frontend's network namespace, so it reaches the lab as http://localhost (an allowed host name,
+  # D-24) without publishing anything. Your own scenarios: ACTUNODE_SCENARIOS=/path/to/dir. JUnit reports and
+  # other output: ACTUNODE_RESULTS (default ./test-results; create it first, the runner writes as ACTUNODE_UID).
+  runner:
+    profiles: ["test"]
+    build: ./cli
+    network_mode: "service:frontend"
+    user: "${ACTUNODE_UID:-1000}:${ACTUNODE_GID:-1000}"
+    environment:
+      ACTUNODE_URL: http://localhost
+      # The web login token, used only when the lab requires login (D-25); the runner gets no MQTT password.
+      ACTUNODE_TOKEN_FILE: /run/actunode/api-token
+    volumes:
+      - type: volume
+        source: secrets
+        target: /run/actunode/api-token
+        read_only: true
+        volume:
+          subpath: backend/api-token
+      - ${ACTUNODE_SCENARIOS:-./scenarios}:/work/scenarios:ro
+      - ${ACTUNODE_RESULTS:-./test-results}:/work/test-results
+    depends_on:
+      frontend:
+        condition: service_healthy
+
 volumes:
   # Generated credentials: MQTT logins (D-23) and the web login token (D-25). Kept across
   # `docker compose down`; `down -v` deletes them (new ones are made on the next start).

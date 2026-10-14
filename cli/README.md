@@ -139,6 +139,27 @@ could not run (exit code 3) rather than passing or failing on messages it can no
 `status` reads ActuNode's own `missionStatus` field, which only ActuNode's simulated robots report.
 `error`, `no_error`, `connection` and `order` are plain VDA 5050 and work for any robot.
 
+## Importing a capture from a site
+
+An incident on a customer's own broker can be brought into the lab as a session (D-49). On site, with any
+login that may read the robots' topics:
+
+```bash
+mosquitto_sub -h <site broker> -u <user> -P <password> -t 'uagv/#' -F '%U %t %p' > capture.txt
+```
+
+Then, offline:
+
+```bash
+actunode import capture.txt -o site.jsonl --name site-incident     # or - for stdin; --strict, --force
+```
+
+It writes a session file like a recording: upload it in the lab (Sessions, **Upload**), then **Validate**
+(every VDA 5050 rule the live inspector checks) or **Replay** it, also to a connected fleet manager. Lines
+that cannot be read are skipped and listed (`--strict` stops at the first). Nothing connects anywhere: the
+customer sends a file, nobody needs access to their network. The capture has no retained flag, and times
+are kept to the millisecond.
+
 ## Sample scenarios
 
 [`scenarios/`](../scenarios/) has six, each a short story with a comment at the top:

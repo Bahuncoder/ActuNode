@@ -12,6 +12,7 @@ import time
 from pathlib import Path
 
 from actunode import __version__
+from actunode.capture import MAX_SESSION_BYTES, ImportError_, convert
 from actunode.client import DEFAULT_URL, Stack, StackError, read_token
 from actunode.report import Console, junit, safe
 from actunode.runner import ERROR, FAILED, Runner
@@ -37,7 +38,10 @@ def _parser() -> argparse.ArgumentParser:
         help=f"the stack's web address (default: $ACTUNODE_URL or {DEFAULT_URL})",
     )
     test.add_argument(
-        "--token-file", type=Path, help="file holding the API token, if the stack requires login (or $ACTUNODE_TOKEN)"
+        "--token-file",
+        type=Path,
+        default=Path(os.environ["ACTUNODE_TOKEN_FILE"]) if os.environ.get("ACTUNODE_TOKEN_FILE") else None,
+        help="file holding the API token, if the stack requires login ($ACTUNODE_TOKEN_FILE, or $ACTUNODE_TOKEN)",
     )
     test.add_argument("--ca-file", type=Path, help="CA certificate to trust for an https:// stack with its own CA")
     test.add_argument("--vda-version", choices=("2", "3"), help="address robots of this VDA 5050 major version")
@@ -49,7 +53,52 @@ def _parser() -> argparse.ArgumentParser:
     test.add_argument(
         "--no-cleanup", action="store_true", help="leave injected failures and running missions as they are"
     )
+    imp = commands.add_parser(
+        "import",
+        help="turn a mosquitto_sub capture into a session file",
+        description="Turn a capture made with  mosquitto_sub -t 'uagv/#' -F '%%U %%t %%p'  into a session file "
+        "for the lab (upload, validate, replay). Offline: nothing connects anywhere.",
+        epilog="Exit codes: 0 written, 2 unusable input or arguments.",
+    )
+    imp.add_argument("capture", metavar="CAPTURE", help="the capture file, or - for standard input")
+    imp.add_argument("-o", "--output", type=Path, required=True, help="session file to write (.jsonl)")
+    imp.add_argument("--name", help="name in the session id (letters, digits, - and _)")
+    imp.add_argument("--strict", action="store_true", help="fail on the first line that cannot be read")
+    imp.add_argument("--force", action="store_true", help="overwrite OUTPUT if it exists")
     return parser
+
+
+def _import(args, console: Console, stdin) -> int:
+    try:
+        source = stdin if args.capture == "-" else open(args.capture, "rb")  # noqa: SIM115
+    except OSError as error:
+        console.line(f"error: cannot read {args.capture}: {error.strerror or error}")
+        return EXIT_INVALID
+    try:
+        stats = convert(source, args.output, args.name, strict=args.strict, force=args.force)
+    except ImportError_ as error:
+        console.line(f"error: {error}")
+        return EXIT_INVALID
+    finally:
+        if source is not stdin:
+            source.close()
+    console.line(f"{stats['messages']} message(s) written to {args.output}  (session {stats['sessionId']})")
+    console.line(f"time span: {stats['seconds']:.3f} s, {stats['firstAt']} to {stats['lastAt']}")
+    robots = sorted(stats["robots"])
+    more = " and more" if stats["moreRobots"] else ""
+    console.line(
+        f"robots seen: {len(robots)}"
+        + (f" ({', '.join(robots[:10])}{', ...' if len(robots) > 10 else ''}{more})" if robots else "")
+    )
+    if stats["skipped"]:
+        lines = ", ".join(map(str, stats["badLines"]))
+        console.line(f"skipped {stats['skipped']} line(s) that could not be read (first: {lines})")
+    if stats["backwards"]:
+        console.line(f"{stats['backwards']} timestamp(s) went backwards; their time was held at the previous message")
+    if stats["bytes"] > MAX_SESSION_BYTES:
+        console.line(f"warning: {stats['bytes']} bytes is over the default upload limit of {MAX_SESSION_BYTES}")
+    console.line("next: upload it in the lab (Sessions, Upload) or POST /api/sessions/upload")
+    return EXIT_PASSED
 
 
 def _write(path: Path, data: bytes) -> None:
@@ -60,10 +109,12 @@ def _write(path: Path, data: bytes) -> None:
         raise StackError(f"cannot write {path}: {error.strerror or error}") from None
 
 
-def main(argv: list[str] | None = None, out=None, stack_factory=Stack) -> int:
+def main(argv: list[str] | None = None, out=None, stack_factory=Stack, stdin=None) -> int:
     out = out or sys.stdout
     args = _parser().parse_args(argv)
     console = Console(out)
+    if args.command == "import":
+        return _import(args, console, stdin or sys.stdin.buffer)
 
     files = find(args.paths)
     scenarios, invalid = [], False

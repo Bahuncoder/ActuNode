@@ -56,7 +56,7 @@ by the robot and flagged by the validator at once: the kind of fleet-manager bug
 | Step | How | Status |
 |---|---|---|
 | Record the traffic | Record button / `POST /api/recording/start` | ✅ for traffic through ActuNode's broker |
-| Record a site's own broker | — | ❌ ActuNode records only its own broker. Needs a broker bridge or a capture import (open question for user conversations) |
+| Bring in a site's own traffic | On site: `mosquitto_sub … -F '%U %t %p' > capture.txt`; then `actunode import capture.txt -o site.jsonl` and upload | ✅ capture import (D-49); a live bridge to a site broker only when a user asks |
 | Share and replay a recording | Download, upload (`POST /api/sessions/upload`), replay at 0.1×–20× | ✅ works |
 | Check a recording offline | `python -m app.validate_session` or the Validate button | ✅ works |
 

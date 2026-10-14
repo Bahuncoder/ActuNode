@@ -14,7 +14,7 @@ the status line, the schedule table, the session log, and the open issues.
 |---|---|
 | **Calendar** | Week 1 of 8 by date (Fri 9 Oct – Thu 15 Oct 2026); dates no longer gate the work (D-30) |
 | **Last updated** | Wed 14 Oct 2026 |
-| **Status** | **Phase 1 (weeks 1–8) complete; v0.1.0 released 13 Oct 2026** (D-43). Phase 2 (weeks 9–16, D-44) under way: **Weeks 9 and 10 done** (D-45, D-46: `actunode test`, timing and message expectations, every run recorded, five sample scenarios). **Decision point** (D-44): the founder's first user conversations decide the order of weeks 11–16; without new input, Week 11 is next. **Product audit 14 Oct (D-47):** outside fleet managers can now connect; security headers added. **Week 11 done (D-48):** the plan's demo question runs as a scenario against a fleet manager; `UNRESPONSIVE`; replay with current time. Next: Week 12 (scenarios in CI) plus the capture import (audit recommendation), unless user conversations reorder. No open issues. |
+| **Status** | **Phase 1 (weeks 1–8) complete; v0.1.0 released 13 Oct 2026** (D-43). Phase 2 (weeks 9–16, D-44) under way: **Weeks 9 and 10 done** (D-45, D-46: `actunode test`, timing and message expectations, every run recorded, five sample scenarios). **Decision point** (D-44): the founder's first user conversations decide the order of weeks 11–16; without new input, Week 11 is next. **Product audit 14 Oct (D-47):** outside fleet managers can now connect; security headers added. **Week 11 done (D-48):** the plan's demo question runs as a scenario against a fleet manager; `UNRESPONSIVE`; replay with current time. **Week 12 done (D-49):** Docker scenario runner, CI job, GitHub Actions template, `actunode import` for site captures. Next: Week 13 (ROS 2 robot stack), unless user conversations reorder. No open issues. |
 | **Working rule** | A week is done when its work is fully done (D-30): features, then a quality gate (independent bug and security review, scans, a test for every fix, all suites and e2e green, docs). Then the next week starts, whatever the date. |
 
 ## Schedule
@@ -34,7 +34,7 @@ Week 1 started on Friday 9 October 2026 (Day 1). Each week runs Friday to Thursd
 | 9 | 4–10 Dec | Scenario format + `actunode test` runner | P-1042 passes as a scenario; JUnit output | ✅ Built 13 Oct (D-45) | ✅ Quality gate passed 13 Oct: review of the scenario input, HTTP and cleanup paths |
 | 10 | 11–17 Dec | Expectations + five sample scenarios | `scenarios/`; decision point | ✅ Built 13 Oct (D-46) | ✅ Quality gate passed 13 Oct; decision point open |
 | 11 | 18–24 Dec | Testing an external master control | "cancel, reroute or escalate?" as a scenario | ✅ Built 14 Oct (D-47, D-48) | ✅ Quality gate passed 14 Oct |
-| 12 | 25–31 Dec | Scenarios in CI | Docker runner + GitHub Actions example | ⬜ | ⬜ |
+| 12 | 25–31 Dec | Scenarios in CI | Docker runner + GitHub Actions example | ✅ Built 14 Oct (D-49), with the site capture import | ✅ Quality gate passed 14 Oct |
 | 13 | 1–7 Jan | ROS 2 robot stack, part 1 | Nav2 robot behind the VDA 5050 connector, optional profile | ⬜ | ⬜ |
 | 14 | 8–14 Jan | ROS 2 robot stack, part 2 | Scenarios against it; conformance report; connect-your-robot guide | ⬜ | ⬜ |
 | 15 | 15–21 Jan | Developer credibility | Failure catalogue, scenario gallery, blog drafts | ⬜ | ⬜ |
@@ -57,6 +57,29 @@ the 8-week plan; the 8-week plan is the full roadmap. All of Days 1–7 were bui
 | Day 5 | `BLOCKED_PATH` failure | Week 6 (1 of 4 failures) |
 | Days 6–7 | Record to JSONL, replay | Week 7 |
 | 10 Oct | 10 robots; validator, schemas, VDA 5050 notes | Weeks 4, 5, 1 (rest) |
+
+## Week 12: scenarios in CI, site captures (14 Oct, D-49)
+
+Built: `cli/Dockerfile` and the `runner` service (`docker compose run --rm runner test scenarios/`): inside the
+frontend's network namespace, so the lab is `http://localhost` (no new allowed host names), with only the web
+login token mounted. CI job `scenarios` (2.1 and 3.0): the sample scenarios and the example fleet manager
+against the blocked-path scenario; JUnit, recordings and logs as artifacts; counts in the job summary.
+`examples/ci/github-actions.yml`: the same steps for a customer's repository. `actunode import`: a
+`mosquitto_sub -F '%U %t %p'` capture becomes a session (built by a delegated worker from a written spec,
+then reviewed and checked here on real traffic).
+
+| Found | Fix |
+|---|---|
+| A runner on the Compose network would call the lab as `frontend`, refused by the host allow-list (D-24) | Shares the frontend's network namespace: reaches it as `localhost`; no security change |
+| The runner image needs the token only when login is on, but the backend's secrets folder also holds its MQTT password | Only the token file is mounted (volume subpath to one file) |
+| GitHub's runner is uid 1001; the lab writes as 1000 | CI sets `ACTUNODE_UID`/`ACTUNODE_GID` to the runner's ids; the runner service runs as both |
+| The CI job's YAML did not parse (a `: ` in a step name) | Fixed; both workflow files are parse-checked |
+| Import: offline validation of a too-large payload relies on the recorded rule name (the recorder keeps only a preview) | The import writes the same `rejected` rule as the recorder |
+
+Verified: hands-on, the Docker runner ran the six sample scenarios and the fleet manager scenario on the local lab
+(JUnit, summary table); a real 5 s capture with an injected bad message was imported (2 garbage lines skipped
+and listed), uploaded, and the validator flagged it. Unit: backend 463, simulator 397, runner 148; ruff clean.
+e2e (44 tests): 40 passed + 4 login-only skipped on 2.1 and on 3.0, 43 passed + 1 skipped on 2.1 with login and TLS.
 
 ## Week 11: testing a fleet manager (14 Oct, D-48)
 
@@ -478,7 +501,7 @@ Open from the product audit (D-47), checked 14 Oct, with the recommended order:
    replay option that stamps messages with the current time.
 2. **Timeouts**: not injectable. Recommended for Week 11: an `UNRESPONSIVE` failure (stays ONLINE, stops
    publishing state, ignores commands for N s); the simulator's publisher already gates state per robot.
-3. **Site traffic**: recommended first a capture import (offline, read-only, a customer can send a file):
+3. **Site traffic**: done in Week 12 (D-49), `actunode import`; recommended first a capture import (offline, read-only, a customer can send a file):
    `mosquitto_sub -h <site> -t 'uagv/#' -F '%U %t %p' > capture.txt` → `actunode import` → a session file to
    upload, validate and replay. A live broker bridge (mosquitto 2.1 supports it, `in` direction only, so
    ActuNode could never command site robots) only when a user asks for it.
@@ -494,6 +517,10 @@ Numbered so they can be referenced from commits. Remove an item only when it is 
 ## Session log
 
 Newest first. One entry per work session: what was done, what was learned, what is next.
+
+### Wed 14 Oct 2026 (evening): Week 12 (D-49)
+- Docker scenario runner, CI job `scenarios`, GitHub Actions template, `actunode import`. Gate green in all
+  three e2e configurations.
 
 ### Wed 14 Oct 2026 (later): Week 11 (D-48)
 - Example fleet manager and the blocked-path reaction scenario; `UNRESPONSIVE`; replay with current time;

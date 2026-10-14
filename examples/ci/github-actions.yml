@@ -1,0 +1,58 @@
+# Test your fleet manager (or robot) against ActuNode on every push (D-49).
+# Copy to .github/workflows/actunode.yml in YOUR repository, then replace the two marked steps.
+# ActuNode's own CI runs these same steps with its example fleet manager (.github/workflows/ci.yml, "scenarios").
+name: ActuNode scenarios
+
+on: [push, pull_request]
+
+jobs:
+  scenarios:
+    runs-on: ubuntu-24.04
+    env:
+      ACTUNODE_VDA_VERSION: "2"          # or "3": the VDA 5050 version your system speaks
+    steps:
+      - uses: actions/checkout@v7       # your repository: your code and your scenario files
+      - uses: actions/checkout@v7       # the lab. Pin `ref` to a release tag once you depend on it.
+        with:
+          repository: Bahuncoder/ActuNode
+          ref: main
+          path: actunode
+      - name: Start the lab (simulated robots, broker, inspector)
+        working-directory: actunode
+        run: |
+          echo "ACTUNODE_UID=$(id -u)" >> "$GITHUB_ENV"
+          echo "ACTUNODE_GID=$(id -g)" >> "$GITHUB_ENV"
+          ACTUNODE_UID=$(id -u) ACTUNODE_GID=$(id -g) docker compose up -d --build --wait
+          mkdir -p test-results
+      - name: A login for your fleet manager
+        working-directory: actunode
+        run: |
+          docker compose run --rm -T mqtt-init add-master ci | grep -o 'password=[^ ]*' | cut -d= -f2 > "$RUNNER_TEMP/fm.pw"
+          docker compose up -d --force-recreate --wait mqtt-init mosquitto
+
+      # ▼ REPLACE: start your fleet manager in the background. Broker localhost:1883, user master@ci, password
+      #   in $RUNNER_TEMP/fm.pw, interface uagv, manufacturer ActuNode, robots robot_01, robot_02, robot_03.
+      - name: Start your fleet manager
+        run: |
+          echo "start your fleet manager here, e.g.:"
+          echo "./my-fleet-manager --broker localhost:1883 --user master@ci --password-file $RUNNER_TEMP/fm.pw &"
+
+      # ▼ REPLACE the path: the folder in your repository with your scenario files (*.yaml).
+      - name: Run your scenarios
+        working-directory: actunode
+        env:
+          ACTUNODE_SCENARIOS: ${{ github.workspace }}/actunode-scenarios
+        run: docker compose run --rm runner test scenarios/ --vda-version "$ACTUNODE_VDA_VERSION" --junit test-results/junit.xml
+
+      - name: Lab logs
+        if: failure()
+        working-directory: actunode
+        run: docker compose logs --no-color --timestamps > test-results/lab.log
+      - name: Keep the JUnit report and the recording of every run (replay it in the lab to see what happened)
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: actunode-results
+          path: |
+            actunode/test-results/
+            actunode/sessions/*.jsonl

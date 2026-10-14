@@ -858,3 +858,24 @@ customers for: sending an order twice before the robot confirms the first, reusi
 restart (the robot takes them as updates of an old order), and pausing a robot without ever resuming it.
 Escalation by e-mail or dashboard is invisible to ActuNode; the scenario documents that.
 
+## D-49 · Week 12: scenarios in CI (a Docker runner), and importing a site capture
+14 Oct 2026 · Accepted
+
+**Context.** Week 12: scenarios in CI, a Docker-based runner and a GitHub Actions example, ActuNode's own CI
+running the sample scenarios. Also the audit's recommended way to bring a site's traffic in (D-47).
+**Decision.** (1) `cli/Dockerfile` and a `runner` service in the `test` profile (`docker compose run --rm
+runner test scenarios/`). It shares the frontend's network namespace, so it reaches the lab as
+`http://localhost`, an allowed host name: no extra host names (D-24), no ports. It gets only the web login
+token (one file of the secrets volume, as `ACTUNODE_TOKEN_FILE`), not the backend's MQTT password. It runs as
+`ACTUNODE_UID:ACTUNODE_GID`; scenarios from `ACTUNODE_SCENARIOS`, reports to `ACTUNODE_RESULTS`.
+(2) A CI job `scenarios` (VDA 2.1 and 3.0) does what a user does: the sample scenarios, then a `master@` login
+for the example fleet manager and the blocked-path reaction scenario; JUnit reports, recordings and logs are
+artifacts, counts in the job summary. `examples/ci/github-actions.yml` is the same steps for a customer's
+repository, with two marked steps to replace, so the template is tested on every change. (3) `actunode
+import`: a `mosquitto_sub -F '%U %t %p'` capture becomes a session file (the recorder's record format and
+payload rules, copied, not imported), streamed; unreadable lines are skipped and listed. A file, not a live
+bridge: offline, read-only, nobody needs access to the customer's network.
+**Consequences.** A customer's CI can run their scenarios against the lab with five steps. A site incident
+can be validated and replayed (also to a fleet manager) from a capture. The upload assigns its own session
+id; the one the import writes is only a default. A live bridge stays open until a user asks for it.
+
