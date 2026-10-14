@@ -447,12 +447,20 @@ exercised by hand with a real browser and MQTT traffic.
 
 ## Open issues and technical debt
 
-Open from the product audit (D-47), for the decision point; ask in user conversations:
-- **Site traffic**: record a site's own broker (bridge into ActuNode) or import a capture. Needed for "reproduce
-  pilot bugs" and "understand downtime causes".
-- **More failures**: "timeouts" (a robot that stays connected but stops answering) and "duplicate missions",
-  both named in the plan; useful for testing fleet managers (Week 11).
-- **Replay against a fleet manager**: possible since D-47, untested end to end.
+Open from the product audit (D-47), checked 14 Oct, with the recommended order:
+1. **Replay against a fleet manager**: checked, it works (simulator stopped, as replay requires; a
+   `master@` client received all 105 robot messages of the recorded P-1042 incident, pathBlocked included, no
+   commands). Two limits: timestamps are the original ones (a fleet manager checking freshness may drop them),
+   and it is open-loop (robots in a replay cannot react to the fleet manager). Recommended for Week 11: a
+   replay option that stamps messages with the current time.
+2. **Timeouts**: not injectable. Recommended for Week 11: an `UNRESPONSIVE` failure (stays ONLINE, stops
+   publishing state, ignores commands for N s); the simulator's publisher already gates state per robot.
+3. **Site traffic**: recommended first a capture import (offline, read-only, a customer can send a file):
+   `mosquitto_sub -h <site> -t 'uagv/#' -F '%U %t %p' > capture.txt` → `actunode import` → a session file to
+   upload, validate and replay. A live broker bridge (mosquitto 2.1 supports it, `in` direction only, so
+   ActuNode could never command site robots) only when a user asks for it.
+4. **Duplicate missions**: no detection today. Recommended after asking users how duplicates show up: a
+   validator warning when two robots run orders that pick the same `loadId`.
 
 Numbered so they can be referenced from commits. Remove an item only when it is fixed and verified; numbers are never reused (fixed: 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24).
 
