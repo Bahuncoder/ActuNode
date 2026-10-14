@@ -2,7 +2,8 @@
 
 A scenario is a YAML file that describes a robot incident as a test: send a mission, inject a failure,
 and check what happens. `actunode test` runs scenario files against a running ActuNode lab and reports
-pass or fail, as a readable log and as JUnit XML for CI (D-45).
+pass or fail, as a readable log and as JUnit XML for CI (D-45). Every run is also recorded as a session in
+the lab, so a failing scenario comes with a recording you can replay (D-46).
 
 ```console
 $ actunode test scenarios/
@@ -39,6 +40,7 @@ cli/.venv/bin/actunode test scenarios/     # every *.yaml / *.yml in the directo
 | `--vda-version 2\|3` | Address the robots of this VDA 5050 major version (overrides the scenario's `vda_version`) |
 | `--junit FILE` | Also write a JUnit XML report (one test case per scenario) |
 | `--dry-run` | Check the files and list their steps; connect to nothing |
+| `--no-record` | Do not record each run as a session in the lab |
 | `--no-cleanup` | Leave injected failures and running missions as they are (for investigating a failure in the UI) |
 
 Exit codes: **0** every scenario passed · **1** at least one failed · **2** a scenario file or the
@@ -48,12 +50,16 @@ broke" (1) from "the test environment broke" (3).
 
 ## How a scenario runs
 
-1. Before the first step the runner waits up to 15 s for every robot the scenario names to be ONLINE.
+1. The runner starts a recording in the lab, named after the file (`20261013-201500_p1042_blocked_path`). If
+   someone is already recording, the run is in their recording and the runner says so; it never stops a
+   recording it did not start. The session id is printed and written to the JUnit report
+   (`<property name="actunode.session">`). Scenarios with message expectations also open the lab's live
+   feed. Then it waits up to 15 s for every robot the scenario names to be ONLINE.
 2. Steps run in order. The first step that fails ends the scenario; the rest are reported as skipped.
 3. Afterwards the runner **cleans up** what the scenario left: it clears injected `BLOCKED_PATH` and
    `LOW_BATTERY` failures it did not clear itself, and cancels orders it sent that are still running. The
    robots are left as the scenario found them, for the next scenario and for anyone using the lab. This
-   also happens on Ctrl-C.
+   also happens on Ctrl-C. Then the recording stops, so it contains the cleanup too.
 
 A step the lab refuses (for example `inject BLOCKED_PATH` on a robot that is not driving: HTTP 409) fails
 the scenario with the lab's reason.
@@ -82,15 +88,22 @@ file is reported at once. YAML anchors and aliases (`&name`, `*name`) are not su
 | `clear` | `robot`, `failure` | Clears `BLOCKED_PATH` or `LOW_BATTERY` (the other two end by themselves). |
 | `cancel_mission` | `robot` | Sends the VDA 5050 `cancelOrder` instant action. |
 | `wait` | seconds | `- wait: 2`. Up to 3600. |
-| `expect` | see below | Waits until all its conditions hold at the same moment. |
+| `expect` | see below | Waits until all its conditions hold at the same moment (and, with `for`, keep holding). |
+| `never` | see below, plus `for` (required) | Fails if all its conditions ever hold at the same moment during `for` seconds. |
 
 Locations: `CHARGING`, `RECEIVING_DOOR_1`, `RECEIVING_DOOR_2`, `STORAGE_A17`, `STORAGE_B04`, `PACK_SORT`,
 `CONVEYOR`, `LOADING_DOCK_1`, `LOADING_DOCK_2` (`GET /api/locations`).
 
 ### Expectations
 
-An `expect` passes as soon as **all** its conditions hold at once, and fails if that has not happened
-`within` seconds (default 10, up to 3600) after the step starts. The runner looks every 0.25 s.
+| Step | Passes when |
+|---|---|
+| `expect: {…, within: 10}` | **All** its conditions hold at the same moment, at the latest `within` seconds (default 10, up to 3600) after the step starts. |
+| `expect: {…, within: 5, for: 3}` | As above, and then they keep holding for `for` seconds. "Blocked means stopped": `status: BLOCKED, for: 3`. |
+| `never: {…, for: 3}` | During `for` seconds from the start of the step, its conditions never **all** hold at the same moment. "Stays stopped": `never: {robot: r, status: MOVING, for: 3}`. |
+
+The runner looks every 0.25 s, so a robot state that lasts less than that can be missed by `never` and
+`for`; messages cannot be missed (below). Conditions:
 
 | Condition | Holds when |
 |---|---|
@@ -102,14 +115,42 @@ An `expect` passes as soon as **all** its conditions hold at once, and fails if 
 | `connection: ONLINE` | Connection state `ONLINE`, `OFFLINE` or `CONNECTIONBROKEN` (`CONNECTION_BROKEN` in 3.0; either spelling matches both). |
 | `validation: {rule: header-id}` | The validator reported at least one issue of this rule since the scenario started (rules: README, live inspector). |
 | `validation: {no_errors: true}` | The validator reported no error-severity issue since the scenario started. |
+| `message: {topic: uagv/+/+/robot_01/instantActions, match: {actions: [{actionType: cancelOrder}]}}` | A message arrived on a topic matching the MQTT filter (`+` one level, `#` the rest), and its payload contains `match` (see below). Any robot or system, any direction: also orders and instant actions a fleet manager sends. |
 
-Timing in Week 9 is "eventually, within N seconds". Week 10 adds "never" and "holds for N seconds"
-checks and expectations on individual MQTT messages.
+### Message expectations
+
+The runner follows every MQTT message the lab sees through its live feed (the WebSocket the UI uses), so
+no message is missed between polls. A `message` condition looks at the messages that arrived **since the
+previous step began**: the `expect` after an `inject` or `cancel_mission` sees what that step caused, even
+if it arrived before the `expect` started.
+
+`match` is a pattern the payload must contain: for an object, the listed keys with matching values (other
+keys are ignored); for a list, every pattern item matches some item of the list (in any order); anything
+else must be equal (`true` is not `1`). YAML reads unquoted `yes`, `no`, `on` and `off` as true/false:
+quote them when you mean text. A payload over 16 KiB reaches the feed as a text preview and matches only
+as text.
+
+If the live feed closes during a scenario (for example the lab restarts), the scenario reports that it
+could not run (exit code 3) rather than passing or failing on messages it can no longer see.
 
 ### Status checks and robots other than ActuNode's
 
 `status` reads ActuNode's own `missionStatus` field, which only ActuNode's simulated robots report.
 `error`, `no_error`, `connection` and `order` are plain VDA 5050 and work for any robot.
+
+## Sample scenarios
+
+[`scenarios/`](../scenarios/) has five, each a short story with a comment at the top:
+
+| File | What it shows |
+|---|---|
+| `p1042_blocked_path.yaml` | The pitch demo's incident: blocked on the way, stopped and reporting it, completes once cleared |
+| `low_battery_during_mission.yaml` | `batteryLow` is a warning, not a stop: the robot finishes its job |
+| `disconnect_during_mission.yaml` | Broken connection announced by the broker's last will; the robot comes back ONLINE and completes the same order |
+| `invalid_traffic.yaml` | Four kinds of bad message, each flagged by its own validation rule; the robot's valid messages still count |
+| `cancel_and_resume.yaml` | `cancelOrder` (seen on the wire) stops the robot, it stays stopped, and a new order completes |
+
+They run in sequence against one lab (about 3 minutes) and leave the robots free for the next one.
 
 ## Development
 

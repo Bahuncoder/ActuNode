@@ -14,7 +14,7 @@ the status line, the schedule table, the session log, and the open issues.
 |---|---|
 | **Calendar** | Week 1 of 8 by date (Fri 9 Oct – Thu 15 Oct 2026); dates no longer gate the work (D-30) |
 | **Last updated** | Tue 13 Oct 2026 |
-| **Status** | **Phase 1 (weeks 1–8) complete; v0.1.0 released 13 Oct 2026** (D-43). Phase 2 (weeks 9–16, D-44) under way: **Week 9 done** (D-45: scenario format, `actunode test`, P-1042 passes as a scenario; quality gate passed). Next: Week 10, timing semantics and five sample scenarios. No open issues. |
+| **Status** | **Phase 1 (weeks 1–8) complete; v0.1.0 released 13 Oct 2026** (D-43). Phase 2 (weeks 9–16, D-44) under way: **Weeks 9 and 10 done** (D-45, D-46: `actunode test`, timing and message expectations, every run recorded, five sample scenarios). **Decision point** (D-44): the founder's first user conversations decide the order of weeks 11–16; without new input, Week 11 is next. No open issues. |
 | **Working rule** | A week is done when its work is fully done (D-30): features, then a quality gate (independent bug and security review, scans, a test for every fix, all suites and e2e green, docs). Then the next week starts, whatever the date. |
 
 ## Schedule
@@ -32,7 +32,7 @@ Week 1 started on Friday 9 October 2026 (Day 1). Each week runs Friday to Thursd
 | 7 | 20–26 Nov | Record/replay | Session file can reproduce incident | ✅ Built early (Days 6–7); completed 13 Oct (D-41) | ✅ Quality gate passed 13 Oct: retention, upload of a session someone sent you, hostile-file checks |
 | 8 | 27 Nov – 3 Dec | Demo + README + 3-minute video | GitHub repo + pitch demo | ✅ Completed 13 Oct (D-43): Apache-2.0, README, demo recorder; voice-over by the founder | ✅ Quality gate passed 13 Oct: docs accuracy review, fresh-clone quick start; v0.1.0 |
 | 9 | 4–10 Dec | Scenario format + `actunode test` runner | P-1042 passes as a scenario; JUnit output | ✅ Built 13 Oct (D-45) | ✅ Quality gate passed 13 Oct: review of the scenario input, HTTP and cleanup paths |
-| 10 | 11–17 Dec | Expectations + five sample scenarios | `scenarios/`; decision point | ⬜ | ⬜ |
+| 10 | 11–17 Dec | Expectations + five sample scenarios | `scenarios/`; decision point | ✅ Built 13 Oct (D-46) | ✅ Quality gate passed 13 Oct; decision point open |
 | 11 | 18–24 Dec | Testing an external master control | "cancel, reroute or escalate?" as a scenario | ⬜ | ⬜ |
 | 12 | 25–31 Dec | Scenarios in CI | Docker runner + GitHub Actions example | ⬜ | ⬜ |
 | 13 | 1–7 Jan | ROS 2 robot stack, part 1 | Nav2 robot behind the VDA 5050 connector, optional profile | ⬜ | ⬜ |
@@ -57,6 +57,32 @@ the 8-week plan; the 8-week plan is the full roadmap. All of Days 1–7 were bui
 | Day 5 | `BLOCKED_PATH` failure | Week 6 (1 of 4 failures) |
 | Days 6–7 | Record to JSONL, replay | Week 7 |
 | 10 Oct | 10 robots; validator, schemas, VDA 5050 notes | Weeks 4, 5, 1 (rest) |
+
+## Week 10: timing, message expectations, sample scenarios (13 Oct, D-46)
+
+Built: `expect … for: N` and a `never` step; `message` conditions (MQTT topic filter + JSON subset pattern)
+read from the lab's live feed on a background thread, so no message is missed between polls; every run
+recorded as a lab session (id in the console and JUnit); five sample scenarios in `scenarios/`:
+P-1042 blocked path, low battery during a mission, disconnect during a mission, invalid traffic, cancel and
+resume. The disconnect scenario ends with the robot ONLINE (the Week 9 open item).
+
+Gate: review of the new trust boundary (the WebSocket feed: snapshot check, frame limit, a closed feed is
+"could not run", never a pass), timing semantics against a fake clock, the feed client against a real
+local WebSocket server, pip-audit (now including `websockets`), and every sample scenario on the real stack.
+
+| Found | Fix |
+|---|---|
+| Two new unit tests were wrong (a vacuous `or True`; a test named for one thing that checked another) | Rewritten to assert the real window semantics and a real "no snapshot" server |
+| Recording calls shifted the fake lab's call log and order ids, failing eight older tests | Lab calls (recording, feed) kept apart from robot commands in the fake |
+| Known limits, documented in cli/README.md | Robot state is polled every 0.25 s (`never`/`for` can miss shorter states); payloads over 16 KiB match only as text |
+| Noted, not changed | Clearing LOW_BATTERY restores the battery level from before the injection, so the drain during the injection is undone (simulator design, D-42) |
+
+Verified: runner unit tests 125; e2e `test_09_scenarios.py` 2/2 (all five sample scenarios, each recorded,
+plus the failing-scenario cleanup test) on VDA 2.1, 3.0 and 2.1 with login, about 3.5 min each; ruff clean;
+pip-audit clean.
+
+Decision point (D-44): the order of weeks 11–16 is open to what the first user conversations say. The
+outreach messages are the founder's to send (docs/discovery/OUTREACH.md).
 
 ## Week 9: scenario tests (13 Oct, D-45)
 
@@ -397,6 +423,10 @@ Numbered so they can be referenced from commits. Remove an item only when it is 
 ## Session log
 
 Newest first. One entry per work session: what was done, what was learned, what is next.
+
+### Tue 13 Oct 2026 (later still): Week 10 (D-46)
+- `for`, `never`, message expectations from the live feed, every run recorded; five sample scenarios passing on
+  the real stack. Decision point reached; Week 11 next unless user conversations reorder.
 
 ### Tue 13 Oct 2026 (late night): Week 9 built (D-45)
 - `actunode test` and the scenario format (`cli/`); P-1042 as `scenarios/p1042_blocked_path.yaml`, passing on

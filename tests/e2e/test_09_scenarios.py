@@ -1,5 +1,6 @@
-"""Week 9 scenario tests on the real stack (D-45): `actunode test` runs the P-1042 scenario, reports a failing
-scenario with exit code 1 and JUnit XML, and leaves the robots as it found them."""
+"""Scenario tests on the real stack (D-45, D-46): `actunode test` runs the five sample scenarios (each recorded
+as a session), reports a failing scenario with exit code 1 and JUnit XML, and leaves the robots as it found
+them."""
 
 import os
 import subprocess
@@ -26,13 +27,20 @@ def actunode_test(stack, tmp_path, *paths, junit=None) -> subprocess.CompletedPr
     return result
 
 
-def test_p1042_passes_as_a_scenario(stack, tmp_path):
+def test_the_sample_scenarios_pass_and_each_run_is_recorded(stack, tmp_path):
     junit = tmp_path / "junit.xml"
-    result = actunode_test(stack, tmp_path, ROOT / "scenarios" / "p1042_blocked_path.yaml", junit=junit)
+    result = actunode_test(stack, tmp_path, ROOT / "scenarios", junit=junit)
     assert result.returncode == 0, result.stdout
-    assert "1 scenario(s): 1 passed, 0 failed, 0 could not run" in result.stdout
-    suite = ET.parse(junit).getroot().find("testsuite")
-    assert (suite.get("tests"), suite.get("failures"), suite.get("errors")) == ("1", "0", "0")
+    assert "5 scenario(s): 5 passed, 0 failed, 0 could not run" in result.stdout
+    root = ET.parse(junit).getroot()
+    suite = root.find("testsuite")
+    assert (suite.get("tests"), suite.get("failures"), suite.get("errors")) == ("5", "0", "0")
+    # D-46: every run is a session in the lab, named after its file.
+    recorded = [p.get("value") for p in root.iter("property") if p.get("name") == "actunode.session"]
+    assert len(recorded) == 5
+    sessions = {s["sessionId"] for s in stack.api.get("/sessions").json()}
+    assert set(recorded) <= sessions
+    assert any(name.endswith("_p1042_blocked_path") for name in recorded)
 
 
 def test_a_failing_scenario_exits_1_and_cleans_up(stack, tmp_path):

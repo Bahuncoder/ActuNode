@@ -1,0 +1,31 @@
+# A job is cancelled half-way (VDA 5050 cancelOrder instant action): the robot must stop where it is and
+# stay stopped; a new order for the same destination must then be accepted and completed.
+#
+#   actunode test scenarios/cancel_and_resume.yaml
+name: Cancel a mission and resume with a new one
+description: >
+  robot_01 drives from Receiving Door 2 to Loading Dock 2. A cancelOrder goes out on its instantActions
+  topic; the robot reports CANCELLED and does not move again by itself. A new mission to Loading Dock 2
+  from where it stopped is accepted and completed.
+
+steps:
+  - expect: {robot: robot_01, status: [IDLE, COMPLETED, CANCELLED, FAILED], within: 120}
+
+  - send_mission: {robot: robot_01, source: RECEIVING_DOOR_2, destination: LOADING_DOCK_2, as: first}
+  - expect: {robot: robot_01, order: first, status: MOVING, within: 15}
+  - wait: 2
+
+  - cancel_mission: {robot: robot_01}
+  - expect:
+      robot: robot_01
+      order: first
+      status: CANCELLED
+      message: {topic: uagv/+/+/robot_01/instantActions, match: {actions: [{actionType: cancelOrder}]}}
+      within: 5
+  # Stopped means stopped: it does not drive on by itself.
+  - never: {robot: robot_01, status: [MOVING, ACCEPTED], for: 3}
+
+  - send_mission: {robot: robot_01, destination: LOADING_DOCK_2, as: resumed}
+  - expect: {robot: robot_01, order: resumed, status: MOVING, within: 15}
+  - expect: {robot: robot_01, order: resumed, status: COMPLETED, within: 90}
+  - expect: {validation: {no_errors: true}}

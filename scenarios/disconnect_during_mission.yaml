@@ -1,0 +1,27 @@
+# A robot loses its network connection in the middle of a job. The broker announces it with the robot's
+# last will (CONNECTIONBROKEN); the robot keeps driving, comes back ONLINE and still finishes the same order.
+#
+#   actunode test scenarios/disconnect_during_mission.yaml
+name: Disconnect during a mission
+description: >
+  robot_03 drives from Receiving Door 1 to Loading Dock 1. Its connection drops abruptly for 5 s: the
+  lab sees CONNECTIONBROKEN (CONNECTION_BROKEN in 3.0) from the broker, then ONLINE again from the robot,
+  which completes the order it had. No VDA 5050 rule is broken on the way.
+
+steps:
+  - expect: {robot: robot_03, status: [IDLE, COMPLETED, CANCELLED, FAILED], within: 120}
+
+  - send_mission: {robot: robot_03, source: RECEIVING_DOOR_1, destination: LOADING_DOCK_1, as: job}
+  - expect: {robot: robot_03, order: job, status: MOVING, within: 15}
+
+  - inject: {robot: robot_03, failure: DISCONNECT, params: {duration_s: 5, mode: broken}}
+  - expect: {robot: robot_03, connection: CONNECTIONBROKEN, within: 10}
+  # Back on its own: the robot announces ONLINE on its connection topic and still runs the same order.
+  - expect:
+      robot: robot_03
+      connection: ONLINE
+      order: job
+      message: {topic: uagv/+/+/robot_03/connection, match: {connectionState: ONLINE}}
+      within: 20
+  - expect: {robot: robot_03, order: job, status: COMPLETED, within: 120}
+  - expect: {validation: {no_errors: true}}

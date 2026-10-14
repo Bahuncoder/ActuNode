@@ -791,3 +791,24 @@ the Week 13 ROS 2 robot will need a status derived from plain VDA 5050 state. Th
 must match the real answers: the first e2e run found `vdaMajor` is `"v2"`, not `"2"`, which the fake had
 wrong too; a contract test on the backend's shared fixtures now pins it (D-38).
 
+## D-46 · Scenario timing (`for`, `never`), message expectations from the live feed, every run recorded
+13 Oct 2026 · Accepted
+
+**Context.** Week 10: "within N s" / "never" timing, expectations on individual messages (topic and JSON
+pattern), every run recorded as a session, and five sample scenarios. Week 11 will check what an external
+fleet manager sends ("after pathBlocked, a cancelOrder within 10 s"), so message checks must see commands
+as well as robot state, and must not miss a message between polls.
+**Decision.** `expect` keeps `within` (eventually) and gains `for` (then keeps holding); a new `never` step
+fails if its conditions all hold at any moment during `for` seconds. Robot and validation conditions are
+polled every 0.25 s (documented: a state shorter than that can be missed). Messages come from the lab's live
+feed (WebSocket `/api/ws`, the UI's own feed, opened only when a scenario has a `message` condition), read on
+a background thread and stamped on arrival, so none is missed. A message condition sees messages since the
+previous step began, so the expect after an action sees what the action caused even if it arrived first.
+`match` is a subset pattern (object keys, list items in any order, scalars equal, booleans never equal
+numbers). A feed that closes mid-scenario makes it "could not run", never a pass or a fail. Every run starts
+a lab recording named after the file and stops it after cleanup; a recording someone else started is left
+alone (the run is in it). The session id goes to the console and to JUnit `<properties>`.
+**Consequences.** Five sample scenarios in `scenarios/` pass on the real stack in all three configurations;
+the disconnect scenario ends with the robot ONLINE, closing the Week 9 open item. A failing CI run comes
+with a recording to download and replay. The runner now depends on `websockets`.
+

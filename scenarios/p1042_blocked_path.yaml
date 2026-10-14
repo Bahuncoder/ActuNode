@@ -23,10 +23,8 @@ steps:
   - wait: 1
 
   - inject: {robot: robot_01, failure: BLOCKED_PATH}
-  - expect: {robot: robot_01, order: p1042, status: BLOCKED, error: pathBlocked, within: 5}
-  # Blocked means stopped: still blocked a few seconds later, not driving through.
-  - wait: 3
-  - expect: {robot: robot_01, order: p1042, status: BLOCKED, within: 1}
+  # Blocked means stopped: blocked and reporting it, and still so 3 s later, not driving through.
+  - expect: {robot: robot_01, order: p1042, status: BLOCKED, error: pathBlocked, within: 5, for: 3}
 
   - clear: {robot: robot_01, failure: BLOCKED_PATH}
   - expect: {robot: robot_01, order: p1042, status: MOVING, no_error: pathBlocked, within: 5}

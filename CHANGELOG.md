@@ -4,6 +4,14 @@ What changed, per commit, newest first. Status and plans are in [docs/PROGRESS.m
 
 ## Unreleased
 
+### Week 10: timing, message expectations, sample scenarios (D-46)
+- `expect … for: N` (keeps holding) and a `never` step (must not happen during N s).
+- `message` condition: a message on an MQTT topic filter whose payload contains a JSON pattern, from the lab's
+  live feed (none missed between polls); it sees messages since the previous step began.
+- Every scenario run is recorded as a lab session (id in the console and the JUnit report); `--no-record`.
+- Five sample scenarios: P-1042 blocked path, low battery during a mission, disconnect during a mission,
+  invalid traffic, cancel and resume.
+
 ### Week 9: scenario tests (D-45)
 - `actunode test` (`cli/`, `pip install ./cli`): runs YAML scenario files against a running lab. Steps:
   send mission, inject and clear failures, cancel, wait, expect (robot status, order, error and level,

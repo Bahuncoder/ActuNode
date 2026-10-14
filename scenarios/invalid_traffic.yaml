@@ -1,0 +1,28 @@
+# Bad messages from a robot: not JSON, against the schema, the wrong serial number, the wrong protocol
+# version. The lab must flag each one with its own rule, and keep following the robot's valid messages.
+#
+#   actunode test scenarios/invalid_traffic.yaml
+name: Invalid traffic is flagged rule by rule
+description: >
+  robot_01 publishes one bad state message of each kind. The validator reports invalid-json, schema,
+  topic-mismatch and version-mismatch, and the robot's next valid state still arrives and is used.
+
+steps:
+  - inject: {robot: robot_01, failure: INVALID_PAYLOAD, params: {kind: not-json}}
+  - expect: {validation: {rule: invalid-json}, within: 5}
+
+  - inject: {robot: robot_01, failure: INVALID_PAYLOAD, params: {kind: schema}}
+  - expect: {validation: {rule: schema}, within: 5}
+
+  - inject: {robot: robot_01, failure: INVALID_PAYLOAD, params: {kind: wrong-serial}}
+  - expect: {validation: {rule: topic-mismatch}, within: 5}
+
+  - inject: {robot: robot_01, failure: INVALID_PAYLOAD, params: {kind: wrong-version}}
+  - expect: {validation: {rule: version-mismatch}, within: 5}
+
+  # Still followed: a valid state from robot_01 after the bad ones, and the robot is still online.
+  - expect:
+      robot: robot_01
+      connection: ONLINE
+      message: {topic: uagv/+/+/robot_01/state, match: {serialNumber: robot_01}}
+      within: 5

@@ -44,6 +44,9 @@ def _parser() -> argparse.ArgumentParser:
     test.add_argument("--junit", type=Path, metavar="FILE", help="also write a JUnit XML report to FILE")
     test.add_argument("--dry-run", action="store_true", help="check the scenario files and list their steps only")
     test.add_argument(
+        "--no-record", action="store_true", help="do not record each scenario run as a session in the lab"
+    )
+    test.add_argument(
         "--no-cleanup", action="store_true", help="leave injected failures and running missions as they are"
     )
     return parser
@@ -101,7 +104,13 @@ def main(argv: list[str] | None = None, out=None, stack_factory=Stack) -> int:
         except StackError as error:
             console.line(f"error: {error}")
             return EXIT_ERROR
-        runner = Runner(stack, vda_version=args.vda_version, cleanup=not args.no_cleanup, on_step=console.step)
+        runner = Runner(
+            stack,
+            vda_version=args.vda_version,
+            cleanup=not args.no_cleanup,
+            record=not args.no_record,
+            on_step=console.step,
+        )
         for scenario in scenarios:
             console.scenario_started(scenario.name, scenario.path)
             result = runner.run(scenario)

@@ -1,13 +1,22 @@
 """The runner's view of a running ActuNode stack: its HTTP API, as the web UI uses it (D-45)."""
 
+import json
 import os
 import ssl
+import threading
+import time
+from collections import deque
 from pathlib import Path
 
 import httpx
+from websockets.exceptions import ConnectionClosed, InvalidHandshake, InvalidURI
+from websockets.sync.client import connect as ws_connect
 
 DEFAULT_URL = "http://localhost:8080"
 TIMEOUT_S = 10
+# Messages kept for message expectations: at 50 robots (about 60 messages/s) a quarter of an hour.
+FEED_MESSAGES = 50_000
+FEED_MAX_FRAME = 16 * 1024 * 1024  # the first frame is a snapshot of the whole lab
 
 
 class StackError(Exception):
@@ -74,6 +83,7 @@ class Stack:
                 verify = ssl.create_default_context(cafile=str(ca_file))
             except (OSError, ssl.SSLError) as error:
                 raise StackError(f"cannot use CA file {ca_file}: {error}") from None
+        self._verify = verify
         self._http = httpx.Client(base_url=f"{url}/api", timeout=TIMEOUT_S, verify=verify, transport=transport)
 
     def close(self) -> None:
@@ -114,6 +124,21 @@ class Stack:
             raise StackError("the backend is not connected to the MQTT broker")
         return health
 
+    def start_recording(self, name: str) -> dict:
+        return self._shaped(self._call("POST", "/recording/start", {"name": name}), dict, "a started recording")
+
+    def stop_recording(self) -> dict:
+        return self._shaped(self._call("POST", "/recording/stop"), dict, "a stopped recording")
+
+    def open_feed(self, clock=time.monotonic) -> "Feed":
+        cookie = self._http.cookies.get("actunode_session")
+        return Feed(
+            "ws" + self.url.removeprefix("http") + "/api/ws",
+            {"Cookie": f"actunode_session={cookie}"} if cookie else {},
+            self._verify if isinstance(self._verify, ssl.SSLContext) else None,
+            clock,
+        )
+
     def _shaped(self, answer, kind: type, what: str):
         if not isinstance(answer, kind):
             raise StackError(f"unexpected answer for {what} (is {self.url} an ActuNode stack?)")
@@ -138,3 +163,57 @@ class Stack:
         return self._call(
             "POST", "/failures", {"robot_id": robot, "failure": failure, "action": action, "params": params or {}}
         )
+
+
+class Feed:
+    """The lab's live feed (WebSocket /api/ws), read on a background thread: every MQTT message the lab sees,
+    stamped with the runner's clock on arrival, for message expectations (D-46)."""
+
+    def __init__(self, url: str, headers: dict, ssl_context: ssl.SSLContext | None, clock):
+        self._clock = clock
+        self._messages: deque[tuple[float, dict]] = deque(maxlen=FEED_MESSAGES)
+        self._lock = threading.Lock()
+        self.error: str | None = None
+        options = {"ssl": ssl_context} if url.startswith("wss://") and ssl_context else {}
+        try:
+            self._ws = ws_connect(
+                url, additional_headers=headers, open_timeout=TIMEOUT_S, max_size=FEED_MAX_FRAME, **options
+            )
+            first = json.loads(self._ws.recv(timeout=TIMEOUT_S))
+        except (OSError, TimeoutError, InvalidHandshake, InvalidURI, ConnectionClosed, ValueError) as error:
+            raise StackError(f"cannot open the live feed {url}: {type(error).__name__}: {error}") from None
+        if not isinstance(first, dict) or first.get("type") != "snapshot":
+            self._ws.close()
+            raise StackError(f"the live feed {url} did not start with a snapshot (is it an ActuNode stack?)")
+        self._thread = threading.Thread(target=self._read, name="actunode-feed", daemon=True)
+        self._thread.start()
+
+    def _read(self) -> None:
+        try:
+            for frame in self._ws:
+                try:
+                    event = json.loads(frame)
+                except ValueError:
+                    continue
+                message = event.get("message") if isinstance(event, dict) and event.get("type") == "message" else None
+                if isinstance(message, dict) and isinstance(message.get("topic"), str):
+                    with self._lock:
+                        self._messages.append((self._clock(), message))
+        except ConnectionClosed as error:
+            close = error.rcvd
+            self.error = f"the live feed closed ({close.code}: {close.reason})" if close else "the live feed closed"
+        except Exception as error:  # noqa: BLE001 - reported to the scenario, never lost on a thread
+            self.error = f"the live feed failed: {type(error).__name__}: {error}"
+        else:
+            self.error = "the live feed closed"
+
+    def since(self, start: float) -> list[dict]:
+        """Messages that arrived at or after `start` (runner clock). Raises StackError once the feed is gone:
+        a message expectation must not pass or fail on a feed that stopped listening."""
+        if self.error:
+            raise StackError(self.error)
+        with self._lock:
+            return [message for at, message in self._messages if at >= start]
+
+    def close(self) -> None:
+        self._ws.close()

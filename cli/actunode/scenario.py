@@ -12,6 +12,7 @@ Every key is checked: an unknown or duplicated key is an error, so a typo never 
 The full reference is cli/README.md.
 """
 
+import json
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Annotated, Any, Literal
@@ -126,9 +127,31 @@ class ValidationCheck(_Strict):
 ROBOT_CHECKS = ("status", "order", "error", "no_error", "connection")
 
 
-class Expect(_Strict):
-    """Conditions that must all hold at the same moment, at the latest `within` seconds after the step starts."""
+class MessageCheck(_Strict):
+    """A message seen on the live feed (D-46): on a topic matching `topic` (MQTT filter: `+` one level, `#`
+    the rest) and, with `match`, with a payload that contains `match` (objects: these keys with matching
+    values, others ignored; lists: each pattern item matches some item; anything else: equal)."""
 
+    topic: str = Field(min_length=1, max_length=256)
+    match: dict | None = None
+
+    @field_validator("topic")
+    @classmethod
+    def _filter(cls, value: str):
+        levels = value.split("/")
+        for index, level in enumerate(levels):
+            if "#" in level and (level != "#" or index != len(levels) - 1):
+                raise ValueError("# must be a whole last level")
+            if "+" in level and level != "+":
+                raise ValueError("+ must be a whole level")
+        return value
+
+    def describe(self) -> str:
+        text = f"message on {self.topic}"
+        return text + (f" matching {json.dumps(self.match, separators=(', ', ': '))}" if self.match else "")
+
+
+class _Conditions(_Strict):
     robot: RobotId | None = None
     status: list[MissionStatus] | None = Field(default=None, min_length=1)  # any of these
     order: Name | None = None  # the robot runs the order named with send_mission `as`
@@ -136,7 +159,7 @@ class Expect(_Strict):
     no_error: str | None = Field(default=None, min_length=1, max_length=200)
     connection: Connection | None = None
     validation: ValidationCheck | None = None
-    within: Seconds = DEFAULT_WITHIN_S
+    message: MessageCheck | None = None
 
     @field_validator("status", mode="before")
     @classmethod
@@ -155,11 +178,13 @@ class Expect(_Strict):
             raise ValueError(f"{', '.join(robot_checks)} needs robot")
         if self.robot is not None and not robot_checks:
             raise ValueError(f"nothing to check on {self.robot}: give one of {', '.join(ROBOT_CHECKS)}")
-        if not robot_checks and self.validation is None:
-            raise ValueError(f"nothing to check: give robot and one of {', '.join(ROBOT_CHECKS)}, or validation")
+        if not robot_checks and self.validation is None and self.message is None:
+            raise ValueError(
+                f"nothing to check: give robot and one of {', '.join(ROBOT_CHECKS)}, or validation, or message"
+            )
         return self
 
-    def describe(self) -> str:
+    def conditions(self) -> str:
         parts = []
         if self.robot:
             checks = []
@@ -176,10 +201,33 @@ class Expect(_Strict):
             parts.append(f"{self.robot} " + ", ".join(checks))
         if self.validation:
             parts.append(self.validation.describe())
-        return f"expect {'; '.join(parts)} within {self.within:g} s"
+        if self.message:
+            parts.append(self.message.describe())
+        return "; ".join(parts)
 
 
-Step = SendMission | Inject | Clear | CancelMission | Wait | Expect
+class Expect(_Conditions):
+    """Conditions that must all hold at the same moment, at the latest `within` seconds after the step starts;
+    with `for`, they must then keep holding that long (D-46)."""
+
+    within: Seconds = DEFAULT_WITHIN_S
+    for_: Seconds | None = Field(default=None, alias="for")
+
+    def describe(self) -> str:
+        held = f", then for {self.for_:g} s" if self.for_ else ""
+        return f"expect {self.conditions()} within {self.within:g} s{held}"
+
+
+class Never(_Conditions):
+    """Conditions that must not all hold at any moment during `for` seconds from the start of the step (D-46)."""
+
+    for_: Seconds = Field(alias="for")
+
+    def describe(self) -> str:
+        return f"never {self.conditions()} for {self.for_:g} s"
+
+
+Step = SendMission | Inject | Clear | CancelMission | Wait | Expect | Never
 STEP_TYPES: dict[str, type[_Strict]] = {
     "send_mission": SendMission,
     "inject": Inject,
@@ -187,6 +235,7 @@ STEP_TYPES: dict[str, type[_Strict]] = {
     "cancel_mission": CancelMission,
     "wait": Wait,
     "expect": Expect,
+    "never": Never,
 }
 
 
@@ -197,6 +246,10 @@ class Scenario:
     description: str
     vda_version: str | None
     steps: tuple[Step, ...]
+
+    @property
+    def uses_messages(self) -> bool:
+        return any(isinstance(step, _Conditions) and step.message for step in self.steps)
 
     @property
     def robots(self) -> tuple[str, ...]:
@@ -302,8 +355,9 @@ def parse(text: str, path: Path) -> Scenario:
             if step.as_ in named:
                 problems.append(f"steps[{index}].send_mission.as: order name {step.as_!r} is already used")
             named.add(step.as_)
-        if isinstance(step, Expect) and step.order and step.order not in named:
-            problems.append(f"steps[{index}].expect.order: no earlier send_mission is named {step.order!r} (use `as:`)")
+        if isinstance(step, _Conditions) and step.order and step.order not in named:
+            kind = "expect" if isinstance(step, Expect) else "never"
+            problems.append(f"steps[{index}].{kind}.order: no earlier send_mission is named {step.order!r} (use `as:`)")
     if problems:
         raise ScenarioError("\n".join(problems))
     return Scenario(path, header.name, header.description, header.vda_version, tuple(steps))

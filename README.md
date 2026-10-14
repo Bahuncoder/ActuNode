@@ -107,7 +107,7 @@ recordings, and a line is drawn between them on the map. Simulated robots drive 
 | Backend (pytest) | 438 | CI |
 | Simulator (pytest, incl. conformance against the official 2.1.0 and 3.0.0 schemas) | 391 | CI |
 | Frontend (Vitest: unit, component, shared backend contract fixtures) | 96 | CI |
-| Scenario runner `actunode test` (pytest) | 82 | CI |
+| Scenario runner `actunode test` (pytest) | 125 | CI |
 | End to end against the real Docker stack, incl. Chromium via Playwright and `actunode test` | 39 | CI, three configurations: VDA 2.1, VDA 3.0, VDA 2.1 with login |
 | Load test, 10 / 25 / 50 robots with missions, 18 thresholds | 18/18 passed at each size | Weekly in CI ([load.yml](.github/workflows/load.yml)) |
 
@@ -277,7 +277,8 @@ MQTT topics, WebSocket events and the session file format are in
 ## Scenario tests: `actunode test`
 
 Describe an incident as a YAML scenario (send a mission, inject a failure, expect what the robot reports)
-and run it against the lab; it reports pass or fail, and JUnit XML for CI. The full format is in
+and run it against the lab; it reports pass or fail, and JUnit XML for CI, and records each run as a session
+you can replay. Five sample scenarios are in [scenarios/](scenarios/); the full format is in
 [cli/README.md](cli/README.md).
 
 ```bash

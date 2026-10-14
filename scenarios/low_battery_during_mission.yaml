@@ -1,0 +1,25 @@
+# A robot's battery drops below 20 % in the middle of a job. VDA 5050 makes that a warning (batteryLow),
+# not a stop: the robot must report it and still finish the job it has.
+#
+#   actunode test scenarios/low_battery_during_mission.yaml
+name: Low battery during a mission
+description: >
+  robot_02 moves a pallet from Storage B04 to Storage A17. At 15 % battery it reports batteryLow
+  (WARNING in 2.1, URGENT in 3.0), keeps driving and completes the order; once the battery is back,
+  the error goes away. 15 % is enough for about 75 m; this trip is at most about 35 m.
+
+steps:
+  - expect: {robot: robot_02, status: [IDLE, COMPLETED, CANCELLED, FAILED], within: 120}
+
+  - send_mission: {robot: robot_02, source: STORAGE_B04, destination: STORAGE_A17, load: P-2077, as: job}
+  - expect: {robot: robot_02, order: job, status: MOVING, within: 15}
+
+  - inject: {robot: robot_02, failure: LOW_BATTERY, params: {level: 15}}
+  - expect: {robot: robot_02, order: job, error: batteryLow, within: 5}
+  # A warning, not a stop: no failed, cancelled or blocked order while the battery is low.
+  - never: {robot: robot_02, status: [FAILED, CANCELLED, BLOCKED], for: 3}
+  - expect: {robot: robot_02, order: job, status: COMPLETED, error: batteryLow, within: 90}
+
+  - clear: {robot: robot_02, failure: LOW_BATTERY}
+  - expect: {robot: robot_02, no_error: batteryLow, within: 5}
+  - expect: {validation: {no_errors: true}}

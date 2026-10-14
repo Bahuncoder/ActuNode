@@ -37,6 +37,10 @@ class Console:
             self.line(f"  ERR  {result.message}")
         for line in result.cleanup:
             self.line(f"  cleanup: {line}")
+        if result.session:
+            self.line(f"  recorded: session {result.session} (replay or download it in the lab)")
+        if result.recording:
+            self.line(f"  recording: {result.recording}")
         self.line(f"  -> {result.outcome.upper()} in {result.seconds:.1f} s")
         self.line()
 
@@ -55,6 +59,10 @@ def step_log(result: ScenarioResult) -> str:
         if step.message:
             lines.append(f"         {step.message}")
     lines += [f"cleanup: {line}" for line in result.cleanup]
+    if result.session:
+        lines.append(f"recorded: session {result.session}")
+    if result.recording:
+        lines.append(f"recording: {result.recording}")
     return safe("\n".join(lines))
 
 
@@ -76,6 +84,9 @@ def junit(results: list[ScenarioResult], seconds: float) -> bytes:
                 "time": f"{result.seconds:.3f}",
             },
         )
+        if result.session:
+            properties = ET.SubElement(case, "properties")
+            ET.SubElement(properties, "property", {"name": "actunode.session", "value": safe(result.session)})
         if result.outcome in (FAILED, ERROR):
             kind = "failure" if result.outcome == FAILED else "error"
             element = ET.SubElement(case, kind, {"message": safe(result.message), "type": kind})
