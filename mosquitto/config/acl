@@ -23,3 +23,6 @@ topic read $SYS/broker/uptime
 # this file in the secrets volume; that copy is what the broker loads. Each robot may publish only its
 # own robot-to-master topics and read only its own commands, under its own manufacturer and serial
 # (any VDA major version). A robot can never publish as another robot or send orders.
+# Master controls (outside fleet managers, D-47) log in as master@<name>, added with
+# `docker compose run --rm mqtt-init add-master <name> [<manufacturer> ...]`: they may send commands to those
+# manufacturers' robots and read their traffic; they cannot publish robot topics or reach actunode/#.

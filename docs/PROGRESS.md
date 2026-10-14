@@ -13,8 +13,8 @@ the status line, the schedule table, the session log, and the open issues.
 | | |
 |---|---|
 | **Calendar** | Week 1 of 8 by date (Fri 9 Oct – Thu 15 Oct 2026); dates no longer gate the work (D-30) |
-| **Last updated** | Tue 13 Oct 2026 |
-| **Status** | **Phase 1 (weeks 1–8) complete; v0.1.0 released 13 Oct 2026** (D-43). Phase 2 (weeks 9–16, D-44) under way: **Weeks 9 and 10 done** (D-45, D-46: `actunode test`, timing and message expectations, every run recorded, five sample scenarios). **Decision point** (D-44): the founder's first user conversations decide the order of weeks 11–16; without new input, Week 11 is next. No open issues. |
+| **Last updated** | Wed 14 Oct 2026 |
+| **Status** | **Phase 1 (weeks 1–8) complete; v0.1.0 released 13 Oct 2026** (D-43). Phase 2 (weeks 9–16, D-44) under way: **Weeks 9 and 10 done** (D-45, D-46: `actunode test`, timing and message expectations, every run recorded, five sample scenarios). **Decision point** (D-44): the founder's first user conversations decide the order of weeks 11–16; without new input, Week 11 is next. **Product audit 14 Oct (D-47):** outside fleet managers can now connect (Week 11's prerequisite); security headers added; three product gaps open for the decision point (below). No open issues. |
 | **Working rule** | A week is done when its work is fully done (D-30): features, then a quality gate (independent bug and security review, scans, a test for every fix, all suites and e2e green, docs). Then the next week starts, whatever the date. |
 
 ## Schedule
@@ -57,6 +57,37 @@ the 8-week plan; the 8-week plan is the full roadmap. All of Days 1–7 were bui
 | Day 5 | `BLOCKED_PATH` failure | Week 6 (1 of 4 failures) |
 | Days 6–7 | Record to JSONL, replay | Week 7 |
 | 10 Oct | 10 robots; validator, schemas, VDA 5050 notes | Weeks 4, 5, 1 (rest) |
+
+## Product audit after Week 10 (14 Oct, D-47)
+
+The product checked against the company plan (problem, users, the demo question), hands-on on a running lab,
+plus black-box attacks and every test suite and scanner. Who uses it for what: [USE_CASES.md](USE_CASES.md).
+
+**Does it do the job?**
+
+| Plan promise | Today |
+|---|---|
+| Simulate 5–50 AMRs; send missions; validate VDA 5050 2.1 and 3.0; inject blocked path, low battery, disconnect, bad message; record and replay | ✅ all, verified (Weeks 1–8) |
+| "Turn scenarios into test suites; run `robotlab test`" | ✅ `actunode test`, five sample scenarios (Weeks 9–10) |
+| An AMR vendor tests its robot against ActuNode | ✅ checked: own login, validated, missions received, isolated from other robots |
+| **"Does the system cancel, reroute or escalate?"**: the customer's fleet manager under test | ❌ → ✅ **fixed**: no outside system could send orders (only ActuNode's backend). New `master@<name>` login; an outside client drove and cancelled a robot, e2e in all three configurations |
+| Reproduce a pilot bug from a site; understand a site's downtime | ⚠️ only for traffic through ActuNode's own broker. A site's broker cannot be recorded or imported (open) |
+| Failures named in the plan: duplicate missions, timeouts | ⚠️ not injectable yet (open) |
+| Replay an incident against a connected fleet manager | ⚠️ possible since D-47 (replay sends only robot messages by default), untested (open) |
+| "Understand the value within five minutes" | ✅ quick start, sample scenarios; the new USE_CASES.md says who does what |
+
+**Bugs and vulnerabilities**
+
+| Check | Result |
+|---|---|
+| All suites | backend 438, simulator 391, runner 128, frontend 96 (Node 24) passed; e2e 41 tests (incl. 2 new) |
+| pip-audit (4 requirement sets), npm audit | no known vulnerabilities |
+| bandit | 2 findings, both false positives (SafeLoader subclass; XML only written), annotated: 0 left |
+| Black-box attacks on the running lab (19) | refused: cross-site POST and WebSocket, foreign Host, topic injection in ids, path traversal (served the UI page, no file), anonymous and wrong-password MQTT, a robot login reading or spoofing others or injecting failures, 2 MiB payload. All ports on 127.0.0.1 |
+| Found: no security headers on the UI | Fixed: strict CSP, no framing, nosniff, no-referrer, nginx version hidden; real browser shows no CSP errors |
+| Found: under Node 20 `npm test` printed "no tests" (Node 24 required) | Fixed: `engine-strict` |
+| Found by the full e2e run: ActuNode's mission sender and an outside fleet manager on one robot give a header-id warning | Correct per VDA 5050 (one master per robot): documented in the README; the test accepts that warning only |
+| Suspected simulator bug (robot refused an order after COMPLETED) | Not a bug: it was still busy; the probe's earlier cancel was malformed (2.x field `actions`), which the validator flagged |
 
 ## Week 10: timing, message expectations, sample scenarios (13 Oct, D-46)
 
@@ -416,6 +447,13 @@ exercised by hand with a real browser and MQTT traffic.
 
 ## Open issues and technical debt
 
+Open from the product audit (D-47), for the decision point; ask in user conversations:
+- **Site traffic**: record a site's own broker (bridge into ActuNode) or import a capture. Needed for "reproduce
+  pilot bugs" and "understand downtime causes".
+- **More failures**: "timeouts" (a robot that stays connected but stops answering) and "duplicate missions",
+  both named in the plan; useful for testing fleet managers (Week 11).
+- **Replay against a fleet manager**: possible since D-47, untested end to end.
+
 Numbered so they can be referenced from commits. Remove an item only when it is fixed and verified; numbers are never reused (fixed: 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24).
 
 | # | Issue | Impact | Plan |
@@ -425,6 +463,12 @@ Numbered so they can be referenced from commits. Remove an item only when it is 
 ## Session log
 
 Newest first. One entry per work session: what was done, what was learned, what is next.
+
+### Wed 14 Oct 2026: product audit (D-47)
+- Checked the product against the company plan, hands-on: AMR-vendor path works; an outside fleet manager could
+  not connect at all. Added `master@<name>` logins (`add-master`), e2e in three configurations.
+- Black-box attacks (19), all suites, pip-audit, npm audit, bandit. Fixed: security headers, npm engine check.
+- docs/USE_CASES.md: each user's path and what works today. Three gaps recorded for the decision point.
 
 ### Tue 13 Oct 2026 (later still): Week 10 (D-46)
 - `for`, `never`, message expectations from the live feed, every run recorded; five sample scenarios passing on

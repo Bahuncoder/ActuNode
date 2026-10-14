@@ -18,7 +18,7 @@ so you can replay them** against the system under test, with no physical fleet.
 
 ## Contents
 
-[Features](#features) · [Quick start](#quick-start) · [Five-minute tour](#five-minute-tour) · [Sharing the lab](#sharing-the-lab-on-a-network) · [Connecting a real robot](#connecting-a-real-robot) · [Configuration](#configuration) ·
+[Features](#features) · [Quick start](#quick-start) · [Five-minute tour](#five-minute-tour) · [Sharing the lab](#sharing-the-lab-on-a-network) · [Connecting a real robot](#connecting-a-real-robot) · [Connecting your fleet manager](#connecting-your-fleet-manager-master-control) · [Configuration](#configuration) ·
 [API](#api) · [Scenario tests](#scenario-tests-actunode-test) · [CLI](#cli-validate-a-session-file) · [Troubleshooting](#troubleshooting) · [Development](#development) · [Project status](#project-status) · [License](#license) · [Security](#security)
 
 ## Features
@@ -108,7 +108,7 @@ recordings, and a line is drawn between them on the map. Simulated robots drive 
 | Simulator (pytest, incl. conformance against the official 2.1.0 and 3.0.0 schemas) | 391 | CI |
 | Frontend (Vitest: unit, component, shared backend contract fixtures) | 96 | CI |
 | Scenario runner `actunode test` (pytest) | 128 | CI |
-| End to end against the real Docker stack, incl. Chromium via Playwright and `actunode test` | 39 | CI, three configurations: VDA 2.1, VDA 3.0, VDA 2.1 with login |
+| End to end against the real Docker stack, incl. Chromium via Playwright, `actunode test` and an outside fleet manager | 41 | CI, three configurations: VDA 2.1, VDA 3.0, VDA 2.1 with login |
 | Load test, 10 / 25 / 50 robots with missions, 18 thresholds | 18/18 passed at each size | Weekly in CI ([load.yml](.github/workflows/load.yml)) |
 
 Plus ruff, oxlint, `tsc`, and weekly security scans (pip-audit, npm audit, Trivy). Load figures were
@@ -235,6 +235,28 @@ docker compose up -d --force-recreate mqtt-init mosquitto       # apply the new 
   the target: `"manufacturer": "Acme", "vda_version": "2"` in `POST /api/missions`, or the **Target**
   select in the UI. Orders are never routed from observed traffic ([D-21](docs/DECISIONS.md)).
 - Failure injection works only on ActuNode's simulated robots.
+
+## Connecting your fleet manager (master control)
+
+To test a fleet manager against simulated robots (does it cancel, reroute or escalate when an aisle is
+blocked?), give it its own login ([D-47](docs/DECISIONS.md)):
+
+```bash
+docker compose run --rm mqtt-init add-master wms_fleet           # prints the password; user = master@wms_fleet
+docker compose up -d --force-recreate mqtt-init mosquitto        # apply the new login
+```
+
+- Point it at the broker (`localhost:1883`, or MQTT over TLS on 8883 from the network), interface `uagv`,
+  manufacturer `ActuNode`, robots `robot_01`, `robot_02`, ... (VDA 5050 2.1 or 3.0, `ACTUNODE_VDA_VERSION`).
+- The login may send `order`, `instantActions`, `zoneSet` and `responses` to those robots and read their
+  traffic. It cannot publish as a robot or inject failures. For real robots of other makers, list them:
+  `add-master wms_fleet ActuNode Acme`.
+- Everything it sends is inspected, validated and recorded. Inject failures from the UI and check its
+  reactions with scenario `message` expectations ([cli/README.md](cli/README.md)).
+- VDA 5050 assumes one master per robot. If ActuNode's mission sender and your fleet manager both send orders
+  to the same robot, the validator warns about `headerId` restarting: two senders on one topic.
+
+Who uses ActuNode for what, and what works today: [docs/USE_CASES.md](docs/USE_CASES.md).
 
 ## Configuration
 

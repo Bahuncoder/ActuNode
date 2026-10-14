@@ -813,3 +813,26 @@ the disconnect scenario ends with the robot ONLINE, closing the Week 9 open item
 with a recording to download and replay. The runner now depends on `websockets`. Opening the feed is retried (3 attempts of 5 s) after CI saw one
 connection stall before reaching the proxy; a refused handshake is not retried.
 
+## D-47 · Product audit after Week 10: outside fleet managers get a login; security headers
+14 Oct 2026 · Accepted
+
+**Context.** An audit of the product against the company plan (users, jobs, the demo question "does the
+system cancel, reroute or escalate?"), with hands-on checks on a running lab and black-box attacks on it.
+Found: an AMR vendor's robot could connect, be validated and receive missions, but an outside fleet manager
+(master control) could not connect at all: only ActuNode's backend may publish orders (D-23). So the plan's
+demo question, which is about the customer's system, could not be asked of a real fleet manager. Also: the
+web UI had no security headers (a shared lab could be framed by another site and a logged-in user tricked
+into clicking "Inject failure"); npm ran under an old Node with confusing results.
+**Decision.** A master control login, `master@<name>`, created with `mqtt-init add-master <name>
+[<manufacturer> ...]` (default `ActuNode`, the simulated robots). Its ACL block, per manufacturer: write
+`order`, `instantActions`, `zoneSet`, `responses`; read `uagv/+/<manufacturer>/#`; nothing under
+`actunode/#`. `@` cannot appear in a robot login (`<manufacturer>.<serial>`), so the two cannot collide.
+nginx sends a strict Content-Security-Policy on the UI (own scripts only, `frame-ancestors 'none'`),
+`X-Frame-Options DENY`, `nosniff`, `no-referrer` everywhere, and hides its version; no HSTS (it is per host
+name and would break the plain local port). `engine-strict` for npm. docs/USE_CASES.md describes each user's
+path and what works today.
+**Consequences.** Week 11's prerequisite is done: an outside fleet manager drives the simulated robots (e2e
+in all three configurations). Open, for the decision point: recording a site's own broker (bridge or
+capture import), injecting "timeouts" and "duplicate missions" (named in the plan, not built), and replaying
+an incident against a connected fleet manager (possible, untested).
+

@@ -1,7 +1,7 @@
 """What a run tells people (a readable log) and CI systems (JUnit XML)."""
 
 import re
-import xml.etree.ElementTree as ET
+import xml.etree.ElementTree as ET  # writes XML only, never parses input  # nosec B405
 from pathlib import Path
 from typing import TextIO
 

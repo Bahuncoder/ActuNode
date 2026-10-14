@@ -4,6 +4,14 @@ What changed, per commit, newest first. Status and plans are in [docs/PROGRESS.m
 
 ## Unreleased
 
+### Product audit after Week 10 (D-47)
+- Outside fleet managers (master controls) can connect: `mqtt-init add-master <name> [<manufacturer> ...]`
+  creates `master@<name>`, which may command those robots and read their traffic, nothing else.
+- Security headers: strict Content-Security-Policy and no framing on the UI, `nosniff` and `no-referrer`
+  everywhere; nginx version hidden.
+- npm refuses a Node older than 24 (`engine-strict`) instead of failing confusingly.
+- docs/USE_CASES.md: who uses ActuNode for what, and what works today.
+
 ### Week 10: timing, message expectations, sample scenarios (D-46)
 - `expect … for: N` (keeps holding) and a `never` step (must not happen during N s).
 - `message` condition: a message on an MQTT topic filter whose payload contains a JSON pattern, from the lab's

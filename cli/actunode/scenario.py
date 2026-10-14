@@ -332,7 +332,7 @@ def _step(index: int, raw) -> Step:
 
 def parse(text: str, path: Path) -> Scenario:
     try:
-        data = yaml.load(text, Loader=_UniqueKeyLoader)  # a SafeLoader: plain data only, never Python objects
+        data = yaml.load(text, Loader=_UniqueKeyLoader)  # SafeLoader subclass, plain data only (tested)  # nosec B506
     except yaml.YAMLError as error:
         raise ScenarioError(f"not valid YAML: {error}") from None
     if not isinstance(data, dict):
