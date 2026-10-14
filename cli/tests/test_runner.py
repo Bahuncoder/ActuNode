@@ -39,10 +39,10 @@ def test_p1042_passes_when_the_robot_behaves(clock):
             (30, [robot(status="COMPLETED", order=order)]),
         ],
     )
-    # Inject at about 1.5 s and clear at about 5.5 s of fake time, as the timeline above assumes.
+    # Inject at about 1.5 s; BLOCKED from 2 s, held 3 s; clear at about 5 s, as the timeline above assumes.
     result, seen = run(stack, clock, load(ROOT / "scenarios" / "p1042_blocked_path.yaml"))
     assert result.outcome == PASSED, result.message
-    assert [s.outcome for s in seen] == [PASSED] * 12
+    assert [s.outcome for s in seen] == [PASSED] * 10
     assert stack.calls[0] == (
         "send_mission",
         {"robot_id": "robot_01", "destination": "STORAGE_A17", "source": "RECEIVING_DOOR_2", "load_id": "P-1042"},
