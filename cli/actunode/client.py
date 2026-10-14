@@ -17,6 +17,10 @@ TIMEOUT_S = 10
 # Messages kept for message expectations: at 50 robots (about 60 messages/s) a quarter of an hour.
 FEED_MESSAGES = 50_000
 FEED_MAX_FRAME = 16 * 1024 * 1024  # the first frame is a snapshot of the whole lab
+# Opening the feed is retried: CI once saw a connection stall before reaching the lab's proxy at all (D-46).
+FEED_ATTEMPTS = 3
+FEED_OPEN_S = 5
+FEED_RETRY_PAUSE_S = 1
 
 
 class StackError(Exception):
@@ -175,13 +179,23 @@ class Feed:
         self._lock = threading.Lock()
         self.error: str | None = None
         options = {"ssl": ssl_context} if url.startswith("wss://") and ssl_context else {}
-        try:
-            self._ws = ws_connect(
-                url, additional_headers=headers, open_timeout=TIMEOUT_S, max_size=FEED_MAX_FRAME, **options
-            )
-            first = json.loads(self._ws.recv(timeout=TIMEOUT_S))
-        except (OSError, TimeoutError, InvalidHandshake, InvalidURI, ConnectionClosed, ValueError) as error:
-            raise StackError(f"cannot open the live feed {url}: {type(error).__name__}: {error}") from None
+        for attempt in range(1, FEED_ATTEMPTS + 1):
+            self._ws = None
+            try:
+                self._ws = ws_connect(
+                    url, additional_headers=headers, open_timeout=FEED_OPEN_S, max_size=FEED_MAX_FRAME, **options
+                )
+                first = json.loads(self._ws.recv(timeout=TIMEOUT_S))
+                break
+            except (OSError, TimeoutError, InvalidHandshake, InvalidURI, ConnectionClosed, ValueError) as error:
+                failed = f"{type(error).__name__}: {error}"
+                if self._ws is not None:
+                    self._ws.close()
+                # Only the connection itself is retried; a refused handshake (401, 403) or a wrong answer is not.
+                transient = isinstance(error, (OSError, TimeoutError, ConnectionClosed))
+                if attempt == FEED_ATTEMPTS or not transient:
+                    raise StackError(f"cannot open the live feed {url} ({attempt} attempt(s)): {failed}") from None
+                time.sleep(FEED_RETRY_PAUSE_S)
         if not isinstance(first, dict) or first.get("type") != "snapshot":
             self._ws.close()
             raise StackError(f"the live feed {url} did not start with a snapshot (is it an ActuNode stack?)")

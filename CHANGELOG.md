@@ -8,6 +8,7 @@ What changed, per commit, newest first. Status and plans are in [docs/PROGRESS.m
 - `expect … for: N` (keeps holding) and a `never` step (must not happen during N s).
 - `message` condition: a message on an MQTT topic filter whose payload contains a JSON pattern, from the lab's
   live feed (none missed between polls); it sees messages since the previous step began.
+- The live feed is opened with retries (a stalled connection no longer makes a scenario "could not run").
 - Every scenario run is recorded as a lab session (id in the console and the JUnit report); `--no-record`.
 - Five sample scenarios: P-1042 blocked path, low battery during a mission, disconnect during a mission,
   invalid traffic, cancel and resume.

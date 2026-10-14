@@ -810,5 +810,6 @@ a lab recording named after the file and stops it after cleanup; a recording som
 alone (the run is in it). The session id goes to the console and to JUnit `<properties>`.
 **Consequences.** Five sample scenarios in `scenarios/` pass on the real stack in all three configurations;
 the disconnect scenario ends with the robot ONLINE, closing the Week 9 open item. A failing CI run comes
-with a recording to download and replay. The runner now depends on `websockets`.
+with a recording to download and replay. The runner now depends on `websockets`. Opening the feed is retried (3 attempts of 5 s) after CI saw one
+connection stall before reaching the proxy; a refused handshake is not retried.
 

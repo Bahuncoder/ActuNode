@@ -75,9 +75,11 @@ local WebSocket server, pip-audit (now including `websockets`), and every sample
 | Two new unit tests were wrong (a vacuous `or True`; a test named for one thing that checked another) | Rewritten to assert the real window semantics and a real "no snapshot" server |
 | Recording calls shifted the fake lab's call log and order ids, failing eight older tests | Lab calls (recording, feed) kept apart from robot commands in the fake |
 | Known limits, documented in cli/README.md | Robot state is polled every 0.25 s (`never`/`for` can miss shorter states); payloads over 16 KiB match only as text |
+| Found by CI (login + TLS) | One scenario "could not run": opening its live feed stalled for 10 s. Container logs showed the attempt reached neither nginx nor the backend (a connection stall before the proxy). CI also used websockets 17.2, outside the runner's own `<16` pin, because e2e installed its own copy | Opening the feed is retried (3 × 5 s; refusals are not retried); e2e installs the runner's pinned requirements |
+| Found by CI | Two runner unit tests still described the old P-1042 (edited after the last local run) | Updated; the full suite runs before every commit |
 | Noted, not changed | Clearing LOW_BATTERY restores the battery level from before the injection, so the drain during the injection is undone (simulator design, D-42) |
 
-Verified: runner unit tests 125; e2e `test_09_scenarios.py` 2/2 (all five sample scenarios, each recorded,
+Verified: runner unit tests 128; e2e `test_09_scenarios.py` 2/2 (all five sample scenarios, each recorded,
 plus the failing-scenario cleanup test) on VDA 2.1, 3.0 and 2.1 with login, about 3.5 min each; ruff clean;
 pip-audit clean.
 

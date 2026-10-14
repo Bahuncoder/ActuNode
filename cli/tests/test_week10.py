@@ -6,8 +6,10 @@ from pathlib import Path
 
 import pytest
 from fakes import Clock, FakeStack, robot
+from websockets.exceptions import InvalidHandshake
 from websockets.sync.server import serve
 
+import actunode.client as client
 from actunode.client import RequestFailed, Stack, StackError
 from actunode.runner import ERROR, FAILED, PASSED, Runner, contains, recording_name, topic_matches
 from actunode.scenario import Expect, Never, ScenarioError, parse
@@ -332,3 +334,40 @@ def test_a_closed_feed_raises_on_the_next_check(lab_ws):
         threading.Event().wait(0.01)
     with pytest.raises(StackError, match="live feed"):
         feed.since(0)
+
+
+def test_opening_the_feed_is_retried_after_a_stalled_connection(lab_ws, monkeypatch):
+    sent, url = lab_ws
+    real, calls = client.ws_connect, []
+
+    def flaky(*args, **kwargs):
+        calls.append(kwargs["open_timeout"])
+        if len(calls) == 1:
+            raise TimeoutError("timed out while waiting for handshake response")
+        return real(*args, **kwargs)
+
+    monkeypatch.setattr(client, "ws_connect", flaky)
+    monkeypatch.setattr(client, "FEED_RETRY_PAUSE_S", 0)
+    feed = Stack(url).open_feed()
+    feed.close()
+    assert calls == [client.FEED_OPEN_S, client.FEED_OPEN_S]
+
+
+def test_a_refused_feed_is_not_retried(monkeypatch):
+    calls = []
+
+    def refused(*args, **kwargs):
+        calls.append(1)
+        raise InvalidHandshake("server rejected WebSocket connection: HTTP 401")
+
+    monkeypatch.setattr(client, "ws_connect", refused)
+    with pytest.raises(StackError, match=r"\(1 attempt\(s\)\).*401"):
+        Stack("http://lab").open_feed()
+    assert calls == [1]
+
+
+def test_a_feed_that_keeps_stalling_gives_up_after_three_attempts(monkeypatch):
+    monkeypatch.setattr(client, "ws_connect", lambda *a, **k: (_ for _ in ()).throw(TimeoutError("stalled")))
+    monkeypatch.setattr(client, "FEED_RETRY_PAUSE_S", 0)
+    with pytest.raises(StackError, match=r"\(3 attempt\(s\)\): TimeoutError: stalled"):
+        Stack("http://lab").open_feed()
