@@ -84,8 +84,8 @@ file is reported at once. YAML anchors and aliases (`&name`, `*name`) are not su
 | Step | Fields | Does |
 |---|---|---|
 | `send_mission` | `robot`, `destination`; optional `source`, `load`, `as` | Sends a mission (`POST /api/missions`). With `source` the robot picks up there and drops at `destination`. `as` names the order for later `expect … order:` checks. |
-| `inject` | `robot`, `failure`; optional `params` (numbers and text, passed as written) | Injects `BLOCKED_PATH`, `LOW_BATTERY` (`level`), `DISCONNECT` (`duration_s`, `mode`) or `INVALID_PAYLOAD` (`kind`, `count`), as in the main README (Failure injection). |
-| `clear` | `robot`, `failure` | Clears `BLOCKED_PATH` or `LOW_BATTERY` (the other two end by themselves). |
+| `inject` | `robot`, `failure`; optional `params` (numbers and text, passed as written) | Injects `BLOCKED_PATH`, `LOW_BATTERY` (`level`), `DISCONNECT` (`duration_s`, `mode`), `INVALID_PAYLOAD` (`kind`, `count`) or `UNRESPONSIVE` (`duration_s`: online but silent, commands ignored), as in the main README (Failure injection). |
+| `clear` | `robot`, `failure` | Clears `BLOCKED_PATH` or `LOW_BATTERY` (the others end by themselves). |
 | `cancel_mission` | `robot` | Sends the VDA 5050 `cancelOrder` instant action. |
 | `wait` | seconds | `- wait: 2`. Up to 3600. |
 | `expect` | see below | Waits until all its conditions hold at the same moment (and, with `for`, keep holding). |
@@ -115,14 +115,15 @@ The runner looks every 0.25 s, so a robot state that lasts less than that can be
 | `connection: ONLINE` | Connection state `ONLINE`, `OFFLINE` or `CONNECTIONBROKEN` (`CONNECTION_BROKEN` in 3.0; either spelling matches both). |
 | `validation: {rule: header-id}` | The validator reported at least one issue of this rule since the scenario started (rules: README, live inspector). |
 | `validation: {no_errors: true}` | The validator reported no error-severity issue since the scenario started. |
-| `message: {topic: uagv/+/+/robot_01/instantActions, match: {actions: [{actionType: cancelOrder}]}}` | A message arrived on a topic matching the MQTT filter (`+` one level, `#` the rest), and its payload contains `match` (see below). Any robot or system, any direction: also orders and instant actions a fleet manager sends. |
+| `message: {topic: uagv/+/+/robot_01/instantActions, match: {actions: [{actionType: cancelOrder}]}}` | A message arrived on a topic matching the MQTT filter (`+` one level, `#` the rest), and its payload contains `match` (see below). Any robot or system, any direction: also orders and instant actions a fleet manager sends. A list of such checks means **any one of them** (D-48): "cancel, reroute or pause". |
 
 ### Message expectations
 
 The runner follows every MQTT message the lab sees through its live feed (the WebSocket the UI uses), so
-no message is missed between polls. A `message` condition looks at the messages that arrived **since the
-previous step began**: the `expect` after an `inject` or `cancel_mission` sees what that step caused, even
-if it arrived before the `expect` started.
+no message is missed between polls. In an `expect`, a `message` condition looks at the messages that arrived
+**since the previous step began**: the `expect` after an `inject` or `cancel_mission` sees what that step
+caused, even if it arrived before the `expect` started. A `never` looks only at messages from its own start:
+"never during the next N s" (D-48).
 
 `match` is a pattern the payload must contain: for an object, the listed keys with matching values (other
 keys are ignored); for a list, every pattern item matches some item of the list (in any order); anything
@@ -140,7 +141,7 @@ could not run (exit code 3) rather than passing or failing on messages it can no
 
 ## Sample scenarios
 
-[`scenarios/`](../scenarios/) has five, each a short story with a comment at the top:
+[`scenarios/`](../scenarios/) has six, each a short story with a comment at the top:
 
 | File | What it shows |
 |---|---|
@@ -149,8 +150,13 @@ could not run (exit code 3) rather than passing or failing on messages it can no
 | `disconnect_during_mission.yaml` | Broken connection announced by the broker's last will; the robot comes back ONLINE and completes the same order |
 | `invalid_traffic.yaml` | Four kinds of bad message, each flagged by its own validation rule; the robot's valid messages still count |
 | `cancel_and_resume.yaml` | `cancelOrder` (seen on the wire) stops the robot, it stays stopped, and a new order completes |
+| `unresponsive_robot.yaml` | A robot that hangs: still ONLINE, no state, a mission sent meanwhile is lost; then it answers again |
 
 They run in sequence against one lab (about 3 minutes) and leave the robots free for the next one.
+
+To test **your fleet manager** (does it cancel, reroute or escalate when an aisle is blocked?), see
+[examples/fleet_manager/](../examples/fleet_manager/README.md): an example fleet manager and the scenario
+that tells a good one from a bad one.
 
 ## Development
 

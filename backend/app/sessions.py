@@ -113,6 +113,8 @@ REPLAY_ECHO = timedelta(seconds=0.5)
 class ReplayRequest(BaseModel):
     speed: float = Field(default=1.0, ge=0.1, le=20)
     include_commands: bool = False
+    # Stamp each message with the time it is sent again, for a fleet manager that drops stale state (D-48).
+    current_time: bool = False
 
 
 class StartRequest(BaseModel):
@@ -328,7 +330,9 @@ async def start_replay(session_id: str, request: ReplayRequest | None = None) ->
         )
 
     try:
-        return replayer.start(session_id, path, scan, request.speed, request.include_commands)
+        return replayer.start(
+            session_id, path, scan, request.speed, request.include_commands, current_time=request.current_time
+        )
     except ReplayError as error:
         raise HTTPException(409, str(error)) from error
 

@@ -1,0 +1,21 @@
+# A robot whose VDA 5050 software hangs: it stays connected (no last will, no OFFLINE) but stops sending state
+# and ignores commands, the "timeouts" of the company plan (D-48). A fleet manager must notice stale state.
+#
+#   actunode test scenarios/unresponsive_robot.yaml
+name: An unresponsive robot stays online but goes silent
+description: >
+  robot_02 hangs for 5 s. It is still ONLINE, sends no state, and a mission sent meanwhile is lost; then it
+  answers again, without that mission.
+
+steps:
+  - inject: {robot: robot_02, failure: UNRESPONSIVE, params: {duration_s: 5}}
+  - wait: 1
+  # A command sent while it hangs is lost.
+  - send_mission: {robot: robot_02, source: RECEIVING_DOOR_1, destination: STORAGE_B04, as: lost}
+  # Silent but connected: a fleet manager watching only the connection topic would not notice.
+  - expect: {robot: robot_02, connection: ONLINE, within: 1}
+  - never: {message: {topic: uagv/+/+/robot_02/state}, for: 2.5}
+
+  # It answers again on its own, and never took the lost order.
+  - expect: {message: {topic: uagv/+/+/robot_02/state}, within: 5}
+  - never: {robot: robot_02, order: lost, for: 2}

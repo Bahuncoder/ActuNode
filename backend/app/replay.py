@@ -6,9 +6,13 @@ replay reads it again line by line, so memory does not grow with the size of the
 By default only robot-side traffic is replayed (state, connection, ...), so the
 system under test sees the incident again without any robot being commanded.
 Commands (orders, instant actions, ActuNode failure injections) are opt-in.
+
+With `current_time`, each message's `timestamp` is set to the moment it is published again (D-48): a fleet
+manager that drops stale state sees the incident as live. The gaps between messages stay as recorded.
 """
 
 import asyncio
+import json
 import logging
 import re
 import time
@@ -149,6 +153,19 @@ def snapshot_plan(robots: list[dict]) -> list[tuple[float, str, str]]:
     return plan
 
 
+def with_current_time(payload: str) -> str:
+    """The payload with its header `timestamp` set to now; anything that is not a JSON object with a
+    timestamp (a recorded invalid payload, for one) is replayed exactly as it was."""
+    try:
+        message = json.loads(payload)
+    except ValueError:
+        return payload
+    if not isinstance(message, dict) or "timestamp" not in message:
+        return payload
+    message["timestamp"] = vda5050.utc_timestamp()
+    return vda5050.dumps(message)
+
+
 def iter_plan(path: Path, robots: list[dict], include_commands: bool) -> Iterator[tuple[float, str, str]]:
     """(t, topic, payload) to publish: starting robot states, then the file's messages, streamed."""
     yield from snapshot_plan(robots)
@@ -174,7 +191,9 @@ class Replayer:
     def status(self) -> dict | None:
         return dict(self._status) if self._status else None
 
-    def start(self, session_id: str, path: Path, scan: dict, speed: float, include_commands: bool) -> dict:
+    def start(
+        self, session_id: str, path: Path, scan: dict, speed: float, include_commands: bool, current_time: bool = False
+    ) -> dict:
         """Start replaying `path` (already checked by scan_session); must be called on the event loop."""
         if self.running:
             raise ReplayError(f"Already replaying {self._status['sessionId']}")
@@ -185,6 +204,7 @@ class Replayer:
             "state": "running",
             "speed": speed,
             "includeCommands": include_commands,
+            "currentTime": current_time,
             "sent": 0,
             "total": total,
             "position": 0.0,
@@ -194,7 +214,7 @@ class Replayer:
         }
         self.ended_at = None
         plan = iter_plan(path, scan["robots"], include_commands)
-        self._task = asyncio.create_task(self._run(plan, speed))
+        self._task = asyncio.create_task(self._run(plan, speed, current_time))
         log.info("Replaying %s at %sx (%d messages)", session_id, speed, total)
         return self.status()
 
@@ -203,7 +223,7 @@ class Replayer:
             raise ReplayError("Not replaying")
         self._task.cancel()
 
-    async def _run(self, plan: Iterator[tuple[float, str, str]], speed: float) -> None:
+    async def _run(self, plan: Iterator[tuple[float, str, str]], speed: float, current_time: bool = False) -> None:
         loop = asyncio.get_running_loop()
         started = loop.time()
         last_report = 0.0
@@ -213,6 +233,8 @@ class Replayer:
                 delay = started + t / speed - loop.time()
                 if delay > 0:
                     await asyncio.sleep(delay)
+                if current_time:
+                    payload = with_current_time(payload)
                 try:
                     self._publish(topic, payload)
                 except PayloadTooLarge:

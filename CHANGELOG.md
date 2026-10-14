@@ -4,6 +4,14 @@ What changed, per commit, newest first. Status and plans are in [docs/PROGRESS.m
 
 ## Unreleased
 
+### Week 11: testing a fleet manager (D-48)
+- `examples/fleet_manager/`: an example fleet manager with a choice of reaction to a blocked path, and
+  `blocked_path_reaction.yaml`, which asks "does it cancel, reroute or escalate?" (pass/fail on the real stack).
+- New failure `UNRESPONSIVE` (`duration_s`): online but silent, commands ignored (the plan's "timeouts").
+- Replay option **Current time** (`current_time`): replayed messages carry the time they are sent again.
+- Scenarios: a `message` list means "any of these"; `never` counts messages from its own start; sixth sample
+  scenario `unresponsive_robot.yaml`; cleanup no longer tries to clear a block that is already over.
+
 ### Product audit after Week 10 (D-47)
 - Outside fleet managers (master controls) can connect: `mqtt-init add-master <name> [<manufacturer> ...]`
   creates `master@<name>`, which may command those robots and read their traffic, nothing else.

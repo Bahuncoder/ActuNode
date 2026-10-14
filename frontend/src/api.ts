@@ -184,8 +184,17 @@ export async function stopRecording(): Promise<void> {
   await postJson('/api/recording/stop', {})
 }
 
-export async function startReplay(sessionId: string, speed: number, includeCommands: boolean): Promise<void> {
-  await postJson(`/api/sessions/${encodeURIComponent(sessionId)}/replay`, { speed, include_commands: includeCommands })
+export async function startReplay(
+  sessionId: string,
+  speed: number,
+  includeCommands: boolean,
+  currentTime = false,
+): Promise<void> {
+  await postJson(`/api/sessions/${encodeURIComponent(sessionId)}/replay`, {
+    speed,
+    include_commands: includeCommands,
+    current_time: currentTime,
+  })
 }
 
 export async function stopReplay(): Promise<void> {

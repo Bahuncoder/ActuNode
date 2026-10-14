@@ -100,6 +100,7 @@ export default function RecorderPanel({
   const [now, setNow] = useState(() => Date.now())
   const [speed, setSpeed] = useState(1)
   const [includeCommands, setIncludeCommands] = useState(false)
+  const [currentTime, setCurrentTime] = useState(false)
   const [storage, setStorage] = useState<SessionStorage | null>(null)
   const [reports, setReports] = useState<Record<string, ValidationReport | string>>({})
   const [uploadName, setUploadName] = useState('')
@@ -160,7 +161,7 @@ export default function RecorderPanel({
   async function replaySession(sessionId: string) {
     setError(null)
     try {
-      await startReplay(sessionId, speed, includeCommands)
+      await startReplay(sessionId, speed, includeCommands, currentTime)
     } catch (err) {
       setError((err as Error).message)
     }
@@ -248,6 +249,10 @@ export default function RecorderPanel({
         <label title="Orders and failure injections would be executed by any robot listening">
           <input type="checkbox" checked={includeCommands} onChange={(e) => setIncludeCommands(e.target.checked)} />
           Include commands (orders, failure injections)
+        </label>
+        <label title="Each message gets the time it is sent again, for a fleet manager that ignores old state">
+          <input type="checkbox" checked={currentTime} onChange={(e) => setCurrentTime(e.target.checked)} />
+          Current time
         </label>
       </div>
 

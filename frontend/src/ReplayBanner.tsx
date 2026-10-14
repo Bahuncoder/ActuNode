@@ -21,6 +21,7 @@ export default function ReplayBanner({ replay }: { replay: ReplayStatus | null }
       <span className="mono muted">
         {replay.position.toFixed(1)} / {replay.duration.toFixed(1)} s · {replay.speed}× · {replay.sent}/{replay.total}{' '}
         msgs{replay.includeCommands ? ' · with commands' : ''}
+        {replay.currentTime ? ' · current time' : ''}
       </span>
       <span className="replay-progress">
         <span style={{ width: `${percent}%` }} />

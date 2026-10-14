@@ -35,6 +35,7 @@ EXPECTED_RESULTS = {
     ("LOW_BATTERY", "inject", (("level", 12),)): "battery set to 12%",
     ("DISCONNECT", "inject", (("duration_s", 3), ("mode", "broken"))): "disconnect for 3 s (broken)",
     ("DISCONNECT", "inject", (("duration_s", 4), ("mode", "offline"))): "disconnect for 4 s (offline)",
+    ("UNRESPONSIVE", "inject", (("duration_s", 5),)): "unresponsive for 5 s",
     ("INVALID_PAYLOAD", "inject", (("count", 2), ("kind", "schema"))): "2 malformed message(s) queued: schema",
     ("BLOCKED_PATH", "inject", ()): "path blocked",
     ("BLOCKED_PATH", "clear", ()): "path cleared",
@@ -461,6 +462,102 @@ def test_disconnect_never_blocks_the_simulation_thread(mode):
     assert time.monotonic() - started < 0.05
     settle(connection)
     assert "reconnect" in client.calls
+
+
+# --- UNRESPONSIVE ---------------------------------------------------------------------------------------------------
+
+
+def start_unresponsive(duration_s=5):
+    connection, client, clock = connection_with_fake()
+    connection.robot.accept_order(make_order(points=((0, 0), (30, 0))))
+    step([connection], 0, 1)
+    connection.robot.handle_command_payload(command("UNRESPONSIVE", duration_s=duration_s))
+    step([connection], 1, 1000)
+    return connection, client, clock
+
+
+def test_unresponsive_defaults_bad_values_and_clear():
+    robot = Robot("robot_01")
+    assert robot.handle_command_payload(command("UNRESPONSIVE")) == "unresponsive for 10 s"
+    for params in ({"duration_s": 0}, {"duration_s": 301}, {"duration_s": True}, {"duration_s": 1.5}, {"mode": "x"}):
+        other = Robot("robot_02")
+        assert other.handle_command_payload(command("UNRESPONSIVE", **params)).startswith("ignored")
+        assert other.unresponsive_requested is None
+    assert robot.handle_command_payload(command("UNRESPONSIVE", "clear")).startswith("ignored clear")
+
+
+def test_unresponsive_publishes_nothing_but_keeps_the_connection_and_the_robot_moving():
+    connection, client, clock = start_unresponsive()
+    robot = connection.robot
+    client.calls.clear()
+    client.published.clear()
+    x = robot.x
+
+    for tick in range(2, 22):
+        step([connection], tick, 1)  # periodic every tick
+
+    assert client.published == [] and client.calls == []  # no state, no connection change, no reconnect
+    assert robot.x > x and robot.mission_status == MOVING
+    assert not connection.away
+
+
+def test_unresponsive_drops_orders_and_instant_actions_and_counts_them():
+    connection, client, clock = start_unresponsive()
+    robot = connection.robot
+    order_id = robot.order_id
+    errors = list(robot.errors)
+    connection.inbox.put(
+        (connection.order_topic, json.dumps(make_order(order_id="other", points=((0, 0), (5, 0)))).encode())
+    )
+    connection.inbox.put((connection.instant_topic, b"{}"))
+    step([connection], 2, 1000)
+
+    assert robot.order_id == order_id and robot.errors == errors
+    assert connection._ignored == 2
+
+
+def test_unresponsive_still_takes_injection_commands_and_ignores_a_second_one():
+    connection, client, clock = start_unresponsive()
+    robot = connection.robot
+    for failure in ("UNRESPONSIVE", "DISCONNECT"):
+        connection.inbox.put((connection.inject_topic, command(failure, duration_s=50)))
+    step([connection], 2, 1000)
+    assert connection._ignored == 0  # commands, not orders: not counted
+    assert robot.unresponsive_requested is None and robot.disconnect_requested is None
+    assert robot.handle_command_payload(command("UNRESPONSIVE")) == "ignored UNRESPONSIVE: already unresponsive"
+    assert robot.handle_command_payload(command("DISCONNECT")) == "ignored DISCONNECT: already unresponsive"
+    clock.now += 5.1
+    step([connection], 3, 1000)
+    assert not robot.unresponsive  # the second injection did not extend the window
+
+
+def test_unresponsive_ends_with_an_immediate_state_and_continuing_header_ids_and_applies_commands_again(caplog):
+    connection, client, clock = start_unresponsive()
+    robot = connection.robot
+    step([connection], 2, 1)  # a periodic tick while silent
+    # the state topic's last headerId before the window
+    last = robot._header_ids["state"]
+    client.published.clear()
+    connection.inbox.put((connection.instant_topic, b"{}"))
+    step([connection], 3, 1000)
+    clock.now += 5.1
+    with caplog.at_level("WARNING"):
+        step([connection], 4, 1000)  # not periodic: the end itself triggers the state
+
+    assert [t for t, *_ in client.published] == [connection.state_topic]
+    assert json.loads(client.published[0][1])["headerId"] == last + 1
+    assert "responsive again; ignored 1 command(s)" in caplog.text
+    client.published.clear()
+    request = {"actions": [{"actionType": "stateRequest", "actionId": "s1", "blockingType": "HARD"}]}
+    connection.inbox.put((connection.instant_topic, json.dumps(request).encode()))
+    step([connection], 5, 1000)  # applied again: the stateRequest is answered with a state
+    assert json.loads(client.published[0][1])["headerId"] == last + 2
+
+
+def test_unresponsive_is_ignored_while_disconnected_and_disconnect_while_unresponsive():
+    robot = Robot("robot_01")
+    robot.link_down = True
+    assert robot.handle_command_payload(command("UNRESPONSIVE")) == "ignored UNRESPONSIVE: already disconnected"
 
 
 # --- Connect handling (S-8): paho's thread only flags, the simulation thread publishes ----------------------------

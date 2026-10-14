@@ -42,7 +42,7 @@ MISSION_STATUSES = ("IDLE", "ACCEPTED", "MOVING", "BLOCKED", "WAITING", "COMPLET
 MissionStatus = Literal["IDLE", "ACCEPTED", "MOVING", "BLOCKED", "WAITING", "COMPLETED", "FAILED", "CANCELLED"]
 # 2.x spells it CONNECTIONBROKEN, 3.0 CONNECTION_BROKEN; either is accepted and matches both.
 Connection = Literal["ONLINE", "OFFLINE", "CONNECTIONBROKEN", "CONNECTION_BROKEN"]
-Failure = Literal["BLOCKED_PATH", "LOW_BATTERY", "DISCONNECT", "INVALID_PAYLOAD"]
+Failure = Literal["BLOCKED_PATH", "LOW_BATTERY", "DISCONNECT", "INVALID_PAYLOAD", "UNRESPONSIVE"]
 ClearableFailure = Literal["BLOCKED_PATH", "LOW_BATTERY"]
 ErrorLevel = Literal["WARNING", "URGENT", "CRITICAL", "FATAL"]
 
@@ -159,12 +159,18 @@ class _Conditions(_Strict):
     no_error: str | None = Field(default=None, min_length=1, max_length=200)
     connection: Connection | None = None
     validation: ValidationCheck | None = None
-    message: MessageCheck | None = None
+    # One message check, or a list meaning "any of these" (D-48): cancel, reroute or pause all answer a block.
+    message: list[MessageCheck] | None = Field(default=None, min_length=1, max_length=20)
 
     @field_validator("status", mode="before")
     @classmethod
     def _one_or_many(cls, value):
         return [value] if isinstance(value, str) else value
+
+    @field_validator("message", mode="before")
+    @classmethod
+    def _message_one_or_many(cls, value):
+        return [value] if isinstance(value, dict) else value
 
     @field_validator("error", mode="before")
     @classmethod
@@ -202,7 +208,7 @@ class _Conditions(_Strict):
         if self.validation:
             parts.append(self.validation.describe())
         if self.message:
-            parts.append(self.message.describe())
+            parts.append(" or ".join(check.describe() for check in self.message))
         return "; ".join(parts)
 
 

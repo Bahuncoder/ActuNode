@@ -38,6 +38,10 @@ class DisconnectParams(_Params):
     mode: Literal["broken", "offline"] = "broken"
 
 
+class UnresponsiveParams(_Params):
+    duration_s: int = Field(10, ge=1, le=300)
+
+
 class InvalidPayloadParams(_Params):
     kind: Literal["not-json", "schema", "wrong-serial", "wrong-version"] = "schema"
     count: int = Field(1, ge=1, le=10)
@@ -48,17 +52,19 @@ PARAMS = {
     "LOW_BATTERY": LowBatteryParams,
     "DISCONNECT": DisconnectParams,
     "INVALID_PAYLOAD": InvalidPayloadParams,
+    "UNRESPONSIVE": UnresponsiveParams,
 }
 # Failures that end by themselves cannot be cleared: why.
 NO_CLEAR = {
     "DISCONNECT": "DISCONNECT ends by itself after duration_s",
     "INVALID_PAYLOAD": "INVALID_PAYLOAD is a one-off burst and ends by itself",
+    "UNRESPONSIVE": "UNRESPONSIVE ends by itself after duration_s",
 }
 
 
 class FailureRequest(BaseModel):
     robot_id: str = Field(pattern=r"^[A-Za-z0-9_-]{1,64}$", examples=["robot_01"])
-    failure: Literal["BLOCKED_PATH", "LOW_BATTERY", "DISCONNECT", "INVALID_PAYLOAD"] = "BLOCKED_PATH"
+    failure: Literal["BLOCKED_PATH", "LOW_BATTERY", "DISCONNECT", "INVALID_PAYLOAD", "UNRESPONSIVE"] = "BLOCKED_PATH"
     action: Literal["inject", "clear"] = "inject"
     params: dict = Field(default_factory=dict)
 

@@ -14,7 +14,7 @@ the status line, the schedule table, the session log, and the open issues.
 |---|---|
 | **Calendar** | Week 1 of 8 by date (Fri 9 Oct – Thu 15 Oct 2026); dates no longer gate the work (D-30) |
 | **Last updated** | Wed 14 Oct 2026 |
-| **Status** | **Phase 1 (weeks 1–8) complete; v0.1.0 released 13 Oct 2026** (D-43). Phase 2 (weeks 9–16, D-44) under way: **Weeks 9 and 10 done** (D-45, D-46: `actunode test`, timing and message expectations, every run recorded, five sample scenarios). **Decision point** (D-44): the founder's first user conversations decide the order of weeks 11–16; without new input, Week 11 is next. **Product audit 14 Oct (D-47):** outside fleet managers can now connect (Week 11's prerequisite); security headers added; three product gaps open for the decision point (below). No open issues. |
+| **Status** | **Phase 1 (weeks 1–8) complete; v0.1.0 released 13 Oct 2026** (D-43). Phase 2 (weeks 9–16, D-44) under way: **Weeks 9 and 10 done** (D-45, D-46: `actunode test`, timing and message expectations, every run recorded, five sample scenarios). **Decision point** (D-44): the founder's first user conversations decide the order of weeks 11–16; without new input, Week 11 is next. **Product audit 14 Oct (D-47):** outside fleet managers can now connect; security headers added. **Week 11 done (D-48):** the plan's demo question runs as a scenario against a fleet manager; `UNRESPONSIVE`; replay with current time. Next: Week 12 (scenarios in CI) plus the capture import (audit recommendation), unless user conversations reorder. No open issues. |
 | **Working rule** | A week is done when its work is fully done (D-30): features, then a quality gate (independent bug and security review, scans, a test for every fix, all suites and e2e green, docs). Then the next week starts, whatever the date. |
 
 ## Schedule
@@ -33,7 +33,7 @@ Week 1 started on Friday 9 October 2026 (Day 1). Each week runs Friday to Thursd
 | 8 | 27 Nov – 3 Dec | Demo + README + 3-minute video | GitHub repo + pitch demo | ✅ Completed 13 Oct (D-43): Apache-2.0, README, demo recorder; voice-over by the founder | ✅ Quality gate passed 13 Oct: docs accuracy review, fresh-clone quick start; v0.1.0 |
 | 9 | 4–10 Dec | Scenario format + `actunode test` runner | P-1042 passes as a scenario; JUnit output | ✅ Built 13 Oct (D-45) | ✅ Quality gate passed 13 Oct: review of the scenario input, HTTP and cleanup paths |
 | 10 | 11–17 Dec | Expectations + five sample scenarios | `scenarios/`; decision point | ✅ Built 13 Oct (D-46) | ✅ Quality gate passed 13 Oct; decision point open |
-| 11 | 18–24 Dec | Testing an external master control | "cancel, reroute or escalate?" as a scenario | ⬜ | ⬜ |
+| 11 | 18–24 Dec | Testing an external master control | "cancel, reroute or escalate?" as a scenario | ✅ Built 14 Oct (D-47, D-48) | ✅ Quality gate passed 14 Oct |
 | 12 | 25–31 Dec | Scenarios in CI | Docker runner + GitHub Actions example | ⬜ | ⬜ |
 | 13 | 1–7 Jan | ROS 2 robot stack, part 1 | Nav2 robot behind the VDA 5050 connector, optional profile | ⬜ | ⬜ |
 | 14 | 8–14 Jan | ROS 2 robot stack, part 2 | Scenarios against it; conformance report; connect-your-robot guide | ⬜ | ⬜ |
@@ -57,6 +57,28 @@ the 8-week plan; the 8-week plan is the full roadmap. All of Days 1–7 were bui
 | Day 5 | `BLOCKED_PATH` failure | Week 6 (1 of 4 failures) |
 | Days 6–7 | Record to JSONL, replay | Week 7 |
 | 10 Oct | 10 robots; validator, schemas, VDA 5050 notes | Weeks 4, 5, 1 (rest) |
+
+## Week 11: testing a fleet manager (14 Oct, D-48)
+
+Built: `examples/fleet_manager/` (an example fleet manager over VDA 5050/MQTT with its own `master@` login, and a
+choice of reaction to a blocked path) and `blocked_path_reaction.yaml`, the plan's demo question as a test:
+cancel, reroute and escalate pass, ignore fails. Folded in from the audit: the `UNRESPONSIVE` failure (online
+but silent, commands ignored: the plan's "timeouts") and replay with **Current time**. Scenarios: `message`
+lists mean "any of"; `never` counts messages from its own start; sixth sample scenario `unresponsive_robot.yaml`.
+UNRESPONSIVE and the replay tests were built by delegated workers from a written spec, then reviewed and run here.
+
+| Found | Fix |
+|---|---|
+| The blocked-path check polled the robot's status: a quick fleet manager cleared the block before the poll, failing a good fleet manager | Detect the block from the robot's state message (no message is missed) |
+| `never` counted messages from the previous step: a state caused before the never began counted "during" it | `never` counts from its own start (D-48) |
+| Cleanup reported "could not clear" for a block a fleet manager had already ended by cancelling | Reports "already over" |
+| Example fleet manager: an order sent twice before the robot confirmed the first; order ids reused after a restart (the robot took them as updates of a cancelled order); escalation paused the robot and never resumed it; a callback error would silently stop the MQTT thread | All fixed in the example. The first three are classic fleet-manager bugs, listed in D-48 as things to test customers' systems for |
+| e2e only (full suite): the ignore case started while robot_03 finished the previous fleet manager's order; the block landed as that leg ended, so no pathBlocked | The test starts from an idle robot; the scenario requires MOVING for 2 s before blocking |
+| Gate run 1: one configuration could not build images (Docker Hub DNS timeout on this machine) | Re-run |
+
+Verified (unit): backend 463, simulator 397, runner 135, frontend 99 (lint, build); ruff clean. e2e (43 tests): 39 passed + 4 login-only skipped on VDA 2.1 and on 3.0, 42 passed + 1 skipped on 2.1 with login and TLS. Live, on the
+local lab: the four policies against the scenario (cancel, reroute with its detour order valid, escalate with
+resume: pass; ignore: fails at the reaction step); the unresponsive scenario.
 
 ## Product audit after Week 10 (14 Oct, D-47)
 
@@ -448,6 +470,7 @@ exercised by hand with a real browser and MQTT traffic.
 ## Open issues and technical debt
 
 Open from the product audit (D-47), checked 14 Oct, with the recommended order:
+(Items 1 and 2 done in Week 11, D-48.)
 1. **Replay against a fleet manager**: checked, it works (simulator stopped, as replay requires; a
    `master@` client received all 105 robot messages of the recorded P-1042 incident, pathBlocked included, no
    commands). Two limits: timestamps are the original ones (a fleet manager checking freshness may drop them),
@@ -471,6 +494,10 @@ Numbered so they can be referenced from commits. Remove an item only when it is 
 ## Session log
 
 Newest first. One entry per work session: what was done, what was learned, what is next.
+
+### Wed 14 Oct 2026 (later): Week 11 (D-48)
+- Example fleet manager and the blocked-path reaction scenario; `UNRESPONSIVE`; replay with current time;
+  any-of message checks; `never` window. Four policies checked live; races found and fixed (see Week 11).
 
 ### Wed 14 Oct 2026: product audit (D-47)
 - Checked the product against the company plan, hands-on: AMR-vendor path works; an outside fleet manager could

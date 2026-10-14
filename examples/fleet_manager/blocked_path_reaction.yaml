@@ -1,0 +1,32 @@
+# The plan's demo question, asked of YOUR fleet manager: when an aisle is blocked, does it cancel, reroute or
+# escalate? ActuNode blocks the robot your fleet manager is driving and watches what it sends back.
+#
+#   1. your fleet manager drives robot_03 (its own master control login: README, "Connecting your fleet manager")
+#   2. actunode test examples/fleet_manager/blocked_path_reaction.yaml
+#
+# With the example fleet manager in this folder: --policy cancel, reroute or escalate pass; ignore fails.
+name: The fleet manager reacts to a blocked path within 10 s
+description: >
+  robot_03 is on an order from the fleet manager under test. ActuNode blocks its path; the robot stops and
+  reports pathBlocked. Within 10 s the fleet manager must react on the wire: cancel the order (cancelOrder),
+  reroute (a new order) or escalate (startPause, holding the robot for an operator).
+
+steps:
+  # The fleet manager under test gives robot_03 a job (any order: not one this scenario sent). Still moving 2 s
+  # later: a leg about to end would finish before the block lands, and a robot with no route cannot be blocked.
+  - expect: {robot: robot_03, status: MOVING, within: 60, for: 2}
+
+  - inject: {robot: robot_03, failure: BLOCKED_PATH}
+  # The robot reports it. A message check, not a status poll: a quick fleet manager may clear the block within
+  # a fraction of a second, faster than the runner polls the robot's status.
+  - expect:
+      message: {topic: uagv/+/+/robot_03/state, match: {errors: [{errorType: pathBlocked}]}}
+      within: 5
+
+  # The question. Any one of these counts; silence for 10 s is the failure.
+  - expect:
+      message:
+        - {topic: uagv/+/+/robot_03/instantActions, match: {actions: [{actionType: cancelOrder}]}}
+        - {topic: uagv/+/+/robot_03/order}
+        - {topic: uagv/+/+/robot_03/instantActions, match: {actions: [{actionType: startPause}]}}
+      within: 10

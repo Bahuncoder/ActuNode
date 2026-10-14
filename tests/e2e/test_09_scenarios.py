@@ -31,13 +31,13 @@ def test_the_sample_scenarios_pass_and_each_run_is_recorded(stack, tmp_path):
     junit = tmp_path / "junit.xml"
     result = actunode_test(stack, tmp_path, ROOT / "scenarios", junit=junit)
     assert result.returncode == 0, result.stdout
-    assert "5 scenario(s): 5 passed, 0 failed, 0 could not run" in result.stdout
+    assert "6 scenario(s): 6 passed, 0 failed, 0 could not run" in result.stdout
     root = ET.parse(junit).getroot()
     suite = root.find("testsuite")
-    assert (suite.get("tests"), suite.get("failures"), suite.get("errors")) == ("5", "0", "0")
+    assert (suite.get("tests"), suite.get("failures"), suite.get("errors")) == ("6", "0", "0")
     # D-46: every run is a session in the lab, named after its file.
     recorded = [p.get("value") for p in root.iter("property") if p.get("name") == "actunode.session"]
-    assert len(recorded) == 5
+    assert len(recorded) == 6
     sessions = {s["sessionId"] for s in stack.api.get("/sessions").json()}
     assert set(recorded) <= sessions
     assert any(name.endswith("_p1042_blocked_path") for name in recorded)

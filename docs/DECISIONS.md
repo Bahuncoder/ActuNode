@@ -836,3 +836,25 @@ in all three configurations). Open, for the decision point: recording a site's o
 capture import), injecting "timeouts" and "duplicate missions" (named in the plan, not built), and replaying
 an incident against a connected fleet manager (possible, untested).
 
+## D-48 · Week 11: testing a fleet manager (example, scenario), UNRESPONSIVE, replay with current time
+14 Oct 2026 · Accepted (founder: "go ahead" on the audit recommendations)
+
+**Context.** Week 11: a scenario that answers the plan's question "after a blocked path, does the system
+cancel, reroute or escalate?" about an outside fleet manager (D-47 gave it a login). The audit follow-up
+recommended folding in two gaps: the plan's "timeouts" failure, and replayed messages carrying old timestamps.
+**Decision.** (1) `examples/fleet_manager/`: a minimal fleet manager (VDA 5050 over MQTT only, its own
+`master@` login) whose reaction to `pathBlocked` is a choice (`cancel`, `reroute`, `escalate`, `ignore`), and
+`blocked_path_reaction.yaml`, which blocks the robot it drives and expects, within 10 s, a cancelOrder, a new
+order or a startPause. A `message` condition may be a list meaning "any of these". The block is detected
+from the robot's state message, not a status poll: a quick fleet manager clears it faster than the runner
+polls. A `never` counts messages from its own start ("during the next N s"); an `expect` still from the
+previous step's start. Cleanup does not "clear" a block that is already over. (2) `UNRESPONSIVE`
+(`duration_s`): the robot stays connected (no last will) but sends no state and drops orders and instant
+actions, while it keeps driving; it ends by itself. (3) Replay `current_time`: each message's `timestamp`
+is set when it is sent again; payloads that are not JSON objects are replayed unchanged.
+**Consequences.** With the example: cancel, reroute and escalate pass, ignore fails, on the real stack (e2e
+in three configurations). Building the example found three classic fleet-manager bugs worth testing
+customers for: sending an order twice before the robot confirms the first, reusing order ids after a
+restart (the robot takes them as updates of an old order), and pausing a robot without ever resuming it.
+Escalation by e-mail or dashboard is invisible to ActuNode; the scenario documents that.
+

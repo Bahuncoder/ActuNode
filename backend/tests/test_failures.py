@@ -141,6 +141,8 @@ def test_malformed_state_is_refused_not_a_server_error(client, published, state)
         ("LOW_BATTERY", {"level": 7}, {"level": 7}),
         ("DISCONNECT", None, {"duration_s": 10, "mode": "broken"}),
         ("DISCONNECT", {"duration_s": 300, "mode": "offline"}, {"duration_s": 300, "mode": "offline"}),
+        ("UNRESPONSIVE", None, {"duration_s": 10}),
+        ("UNRESPONSIVE", {"duration_s": 300}, {"duration_s": 300}),
         ("INVALID_PAYLOAD", None, {"kind": "schema", "count": 1}),
         ("INVALID_PAYLOAD", {"kind": "not-json", "count": 10}, {"kind": "not-json", "count": 10}),
     ],
@@ -174,6 +176,12 @@ def test_blocked_path_command_carries_empty_params(client, published):
         ("DISCONNECT", {"duration_s": 0}),
         ("DISCONNECT", {"duration_s": 301}),
         ("DISCONNECT", {"mode": "sleep"}),
+        ("UNRESPONSIVE", {"duration_s": 0}),
+        ("UNRESPONSIVE", {"duration_s": 301}),
+        ("UNRESPONSIVE", {"duration_s": 5.0}),
+        ("UNRESPONSIVE", {"duration_s": "5"}),
+        ("UNRESPONSIVE", {"duration_s": True}),
+        ("UNRESPONSIVE", {"mode": "broken"}),
         ("INVALID_PAYLOAD", {"kind": "bogus"}),
         ("INVALID_PAYLOAD", {"count": 11}),
         ("INVALID_PAYLOAD", {"count": 0}),
@@ -217,7 +225,7 @@ def test_low_battery_clear_needs_an_injected_low_battery_when_the_robot_reports_
         assert published == []
 
 
-@pytest.mark.parametrize("failure", ["DISCONNECT", "INVALID_PAYLOAD"])
+@pytest.mark.parametrize("failure", ["DISCONNECT", "INVALID_PAYLOAD", "UNRESPONSIVE"])
 def test_clear_is_refused_for_failures_that_end_by_themselves(client, published, failure):
     report("fail_13", "MOVING")
     response = client.post("/api/failures", json={"robot_id": "fail_13", "failure": failure, "action": "clear"})
@@ -269,6 +277,7 @@ def test_commands_match_the_shared_contract_fixture_and_the_schema(client, publi
         {"failure": "LOW_BATTERY", "action": "clear"},
         {"failure": "BLOCKED_PATH", "action": "clear"},
         {"failure": "DISCONNECT", "params": {"duration_s": 4, "mode": "offline"}},
+        {"failure": "UNRESPONSIVE", "params": {"duration_s": 5}},
     ]
     for request in requests:
         if request == {"failure": "BLOCKED_PATH", "action": "clear"}:

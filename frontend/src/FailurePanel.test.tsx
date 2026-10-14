@@ -40,10 +40,10 @@ function setValue(label: string, value: string) {
 const inject = () => fireEvent.click(screen.getByRole('button', { name: 'Inject' }))
 
 describe('FailurePanel', () => {
-  it('offers the four failure types', () => {
+  it('offers the failure types', () => {
     render(<FailurePanel robots={[robot('IDLE')]} failures={[]} />)
     const labels = [...(screen.getByLabelText('Failure type') as HTMLSelectElement).options].map((o) => o.text)
-    expect(labels).toEqual(['Blocked path', 'Low battery', 'Disconnect', 'Invalid payload'])
+    expect(labels).toEqual(['Blocked path', 'Low battery', 'Disconnect', 'Invalid payload', 'Unresponsive'])
   })
 
   it('sends BLOCKED_PATH with no params', async () => {
@@ -159,6 +159,24 @@ describe('FailurePanel', () => {
     choose('INVALID_PAYLOAD')
     setValue('Count', '0')
     expect(screen.getByText('Enter a number between 1 and 10')).toBeTruthy()
+  })
+
+  it('sends UNRESPONSIVE with a duration only, and has no Clear', async () => {
+    const fetchMock = stubFetch()
+    render(<FailurePanel robots={[robot('IDLE')]} failures={[]} />)
+    choose('UNRESPONSIVE')
+    expect(screen.queryByRole('button', { name: 'Clear' })).toBeNull()
+    expect(screen.queryByLabelText('Mode')).toBeNull()
+    inject()
+    await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(1))
+    expect(sent(fetchMock).params).toEqual({ duration_s: 10 })
+
+    setValue('Duration (s)', '301')
+    expect(injectButton().disabled).toBe(true)
+    setValue('Duration (s)', '20')
+    inject()
+    await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(2))
+    expect(JSON.parse(fetchMock.mock.calls[1][1].body).params).toEqual({ duration_s: 20 })
   })
 
   it('renders params in the log', () => {

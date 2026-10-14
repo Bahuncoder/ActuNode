@@ -9,6 +9,7 @@ const TYPES = [
   { value: 'LOW_BATTERY', label: FAILURE_LABELS.LOW_BATTERY, clearable: true },
   { value: 'DISCONNECT', label: FAILURE_LABELS.DISCONNECT, clearable: false },
   { value: 'INVALID_PAYLOAD', label: FAILURE_LABELS.INVALID_PAYLOAD, clearable: false },
+  { value: 'UNRESPONSIVE', label: FAILURE_LABELS.UNRESPONSIVE, clearable: false },
 ]
 const KINDS = ['not-json', 'schema', 'wrong-serial', 'wrong-version']
 
@@ -51,8 +52,9 @@ export default function FailurePanel({ robots, failures }: { robots: Robot[]; fa
   const range: [string, number, number] | undefined = { LOW_BATTERY: [level, 1, 99] as [string, number, number],
     DISCONNECT: [duration, 1, 300] as [string, number, number],
     INVALID_PAYLOAD: [count, 1, 10] as [string, number, number],
+    UNRESPONSIVE: [duration, 1, 300] as [string, number, number],
   }[
-    failure as 'LOW_BATTERY' | 'DISCONNECT' | 'INVALID_PAYLOAD'
+    failure as 'LOW_BATTERY' | 'DISCONNECT' | 'INVALID_PAYLOAD' | 'UNRESPONSIVE'
   ]
   const invalid = range !== undefined && !(range[0].trim() !== '' && Number(range[0]) >= range[1] && Number(range[0]) <= range[2])
   const clearBlocked = needsRoute
@@ -62,6 +64,7 @@ export default function FailurePanel({ robots, failures }: { robots: Robot[]; fa
   function currentParams(): Record<string, unknown> {
     if (failure === 'LOW_BATTERY') return { level: Number(level) }
     if (failure === 'DISCONNECT') return { duration_s: Number(duration), mode }
+    if (failure === 'UNRESPONSIVE') return { duration_s: Number(duration) }
     if (failure === 'INVALID_PAYLOAD') return { kind, count: Number(count) }
     return {}
   }
@@ -123,6 +126,12 @@ export default function FailurePanel({ robots, failures }: { robots: Robot[]; fa
             </label>
           </>
         )}
+        {failure === 'UNRESPONSIVE' && (
+          <label>
+            Duration (s)
+            <input type="number" min={1} max={300} value={duration} onChange={(e) => setDuration(e.target.value)} />
+          </label>
+        )}
         {failure === 'INVALID_PAYLOAD' && (
           <>
             <label>
@@ -159,6 +168,9 @@ export default function FailurePanel({ robots, failures }: { robots: Robot[]; fa
         )}
       </div>
 
+      {failure === 'UNRESPONSIVE' && (
+        <p className="muted">The robot stays connected but stops answering: no state, orders and commands ignored, while it keeps driving.</p>
+      )}
       {invalid && <p className="muted">Enter a number between {range[1]} and {range[2]}</p>}
       {injected && injected.length > 0 && (
         <p className="muted">Injected: {injected.map((name) => TYPES.find((t) => t.value === name)?.label ?? name).join(', ')}</p>

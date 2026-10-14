@@ -51,8 +51,8 @@ so you can replay them** against the system under test, with no physical fleet.
 
 ### Failure injection
 
-Four failures, from the Failure injection panel or `POST /api/failures`, on simulated robots
-([D-42](docs/DECISIONS.md)):
+Five failures, from the Failure injection panel or `POST /api/failures`, on simulated robots
+([D-42](docs/DECISIONS.md), [D-48](docs/DECISIONS.md)):
 
 | Failure | What the robot does | Parameters (default) | Clear |
 |---|---|---|---|
@@ -60,6 +60,7 @@ Four failures, from the Failure injection panel or `POST /api/failures`, on simu
 | `LOW_BATTERY` | Battery set to `level`; `batteryLow` below 20 % (2.1 WARNING, 3.0 URGENT) | `level` 1–99 (15) | yes, level restored |
 | `DISCONNECT` | `broken`: drops the connection so the broker publishes the last will `CONNECTIONBROKEN` (3.0: `CONNECTION_BROKEN`); `offline`: clean `OFFLINE`. Reconnects after `duration_s` | `duration_s` 1–300 (10), `mode` (broken) | no, ends by itself |
 | `INVALID_PAYLOAD` | Publishes malformed messages on its state topic | `kind` `not-json` / `schema` / `wrong-serial` / `wrong-version` (schema), `count` 1–10 (1) | no |
+| `UNRESPONSIVE` | Stays connected (`ONLINE`, no last will) but sends no state and ignores `order` and `instantActions` for `duration_s`, while it keeps driving its current order; then answers again (`headerId`s continue). A fleet manager must notice stale state (the plan's "timeouts" failure) | `duration_s` 1–300 (10) | no, ends by itself |
 
 ![Failure injection panel with the disconnect parameters](docs/images/failures.png)
 
@@ -77,7 +78,7 @@ recordings, and a line is drawn between them on the map. Simulated robots drive 
   a JSONL session file in `./sessions`. A recording stops itself at 200 MB (`ACTUNODE_MAX_SESSION_MB`).
 - **Replay** republishes a session with its original timing (1×–10× in the UI, 0.1×–20× via the API), so the UI or any system
   listening on the broker sees the incident again. Robot-side traffic only by default; refused while
-  robots with the same ids are live ([D-7](docs/DECISIONS.md), [D-36](docs/DECISIONS.md)).
+  robots with the same ids are live ([D-7](docs/DECISIONS.md), [D-36](docs/DECISIONS.md)). Option `current_time` (UI checkbox **Current time**): each replayed message gets the time it is sent again in its `timestamp`, for a fleet manager that drops stale state; the gaps between messages stay as recorded, and payloads that are not JSON objects are replayed unchanged ([D-48](docs/DECISIONS.md)). A replay to a connected fleet manager needs the simulator stopped (`docker compose stop simulator`).
 - **Validate offline**: run a saved session through the same validator as the live feed, from the UI,
   the API or a CLI that exits non-zero for CI ([D-40](docs/DECISIONS.md)).
 - **Upload** a session file someone sent you; it is checked as untrusted input, then validated and
@@ -104,11 +105,11 @@ recordings, and a line is drawn between them on the map. Simulated robots drive 
 
 | Suite | Count | Where |
 |---|---|---|
-| Backend (pytest) | 438 | CI |
-| Simulator (pytest, incl. conformance against the official 2.1.0 and 3.0.0 schemas) | 391 | CI |
-| Frontend (Vitest: unit, component, shared backend contract fixtures) | 96 | CI |
-| Scenario runner `actunode test` (pytest) | 128 | CI |
-| End to end against the real Docker stack, incl. Chromium via Playwright, `actunode test` and an outside fleet manager | 41 | CI, three configurations: VDA 2.1, VDA 3.0, VDA 2.1 with login |
+| Backend (pytest) | 463 | CI |
+| Simulator (pytest, incl. conformance against the official 2.1.0 and 3.0.0 schemas) | 397 | CI |
+| Frontend (Vitest: unit, component, shared backend contract fixtures) | 99 | CI |
+| Scenario runner `actunode test` (pytest) | 135 | CI |
+| End to end against the real Docker stack, incl. Chromium via Playwright, `actunode test` and an outside fleet manager | 43 | CI, three configurations: VDA 2.1, VDA 3.0, VDA 2.1 with login |
 | Load test, 10 / 25 / 50 robots with missions, 18 thresholds | 18/18 passed at each size | Weekly in CI ([load.yml](.github/workflows/load.yml)) |
 
 Plus ruff, oxlint, `tsc`, and weekly security scans (pip-audit, npm audit, Trivy). Load figures were
@@ -255,6 +256,7 @@ docker compose up -d --force-recreate mqtt-init mosquitto        # apply the new
   reactions with scenario `message` expectations ([cli/README.md](cli/README.md)).
 - VDA 5050 assumes one master per robot. If ActuNode's mission sender and your fleet manager both send orders
   to the same robot, the validator warns about `headerId` restarting: two senders on one topic.
+- A ready example, and the scenario that asks whether it cancels, reroutes or escalates: [examples/fleet_manager/](examples/fleet_manager/README.md).
 
 Who uses ActuNode for what, and what works today: [docs/USE_CASES.md](docs/USE_CASES.md).
 
@@ -290,7 +292,7 @@ Interactive OpenAPI docs: **http://localhost:8080/api/docs**. Full table:
 | Validation | `GET /api/validation`, `POST /api/validation/reset` |
 | Recording | `GET /api/recording`, `POST /api/recording/start`, `POST /api/recording/stop` |
 | Sessions | `GET /api/sessions`, `GET /api/sessions/storage`, `POST /api/sessions/upload`, `POST /api/sessions/{id}/validate`, `GET /api/sessions/{id}/download`, `DELETE /api/sessions/{id}` |
-| Replay | `POST /api/sessions/{id}/replay` (`speed`, `include_commands`), `GET /api/replay`, `POST /api/replay/stop` |
+| Replay | `POST /api/sessions/{id}/replay` (`speed`, `include_commands`, `current_time`), `GET /api/replay`, `POST /api/replay/stop` |
 | Login | `GET /api/session`, `POST /api/login`, `POST /api/logout` |
 
 MQTT topics, WebSocket events and the session file format are in
@@ -401,6 +403,7 @@ Offline playground with no MQTT at all (one mission through the robot state mach
 | `frontend/` | React + TypeScript lab UI (nginx in Docker) |
 | `simulator/` | Python AMR simulator, VDA 5050 2.1 and 3.0 |
 | `mosquitto/`, `tls/` | Broker config, login and ACL generation, local CA |
+| `examples/` | An example fleet manager and the scenario that tests it |
 | `cli/`, `scenarios/` | `actunode test`, the scenario runner; scenario files |
 | `contracts/` | Shared fixtures that tie backend and frontend (and simulator) message shapes |
 | `tests/e2e`, `tests/load`, `tests/demo` | End-to-end tests, load test, demo recorder |

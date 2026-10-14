@@ -327,7 +327,17 @@ class Runner:
                 return ["validation errors: " + ", ".join(f"{rule} x{count}" for rule, count in errors.items())], ""
         return [], f"new validation issues: {fired}"
 
-    def _message_mismatches(self, check: MessageCheck) -> tuple[list[str], str]:
+    def _message_mismatches(self, checks: list[MessageCheck]) -> tuple[list[str], str]:
+        """Holds when any one of the checks finds its message."""
+        wrong = []
+        for check in checks:
+            found, evidence = self._one_message_mismatches(check)
+            if not found:
+                return [], evidence
+            wrong += found
+        return ([wrong[0]] if len(wrong) == 1 else ["none of: " + "; ".join(wrong)]), ""
+
+    def _one_message_mismatches(self, check: MessageCheck) -> tuple[list[str], str]:
         on_topic = [m for m in self.feed.since(self.window_start) if topic_matches(check.topic, m["topic"])]
         for message in on_topic:
             if check.match is None or contains(check.match, message.get("payload")):
@@ -376,6 +386,8 @@ class Runner:
 
     def _never(self, never: Never) -> None:
         start = self.clock()
+        # "Never during the next N s": its messages count from its own start, not from the previous step's (D-48).
+        self.window_start = start
         deadline = start + never.for_
         while True:
             wrong, seen = self._check(never)
@@ -407,6 +419,12 @@ class Runner:
         done = []
         for robot, failure in sorted(self.injected):
             try:
+                if failure == "BLOCKED_PATH":
+                    # Over by itself when the order ended (cancelled, say by a fleet manager): nothing to clear.
+                    seen = self._observe(robot)
+                    if seen.status != "BLOCKED":
+                        done.append(f"{failure} on {robot} already over ({robot} is {seen.status})")
+                        continue
                 self.stack.failure(robot, failure, "clear")
                 done.append(f"cleared {failure} on {robot}")
             except (RequestFailed, StackError) as error:

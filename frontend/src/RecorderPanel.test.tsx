@@ -185,3 +185,27 @@ describe('sessions: validate, upload, storage (D-40, D-41)', () => {
     expect(await screen.findByText('Storage: 1.0 MB · no size limit · kept forever')).toBeTruthy()
   })
 })
+
+describe('replay: current time option', () => {
+  beforeEach(() => {
+    vi.mocked(api.fetchSessions).mockResolvedValue([summary('s1')])
+    vi.mocked(api.fetchSessionStorage).mockResolvedValue(storage)
+    vi.mocked(api.startReplay).mockReset()
+    vi.mocked(api.startReplay).mockResolvedValue(undefined as never)
+  })
+
+  it('passes currentTime true when the box is ticked', async () => {
+    render(panel(null))
+    fireEvent.click(await screen.findByLabelText('Current time'))
+    fireEvent.click(screen.getByRole('button', { name: /Replay/ }))
+    await waitFor(() => expect(api.startReplay).toHaveBeenCalledWith('s1', expect.any(Number), false, true))
+  })
+
+  it('passes currentTime false by default', async () => {
+    render(panel(null))
+    await screen.findByText('s1')
+    expect((screen.getByLabelText('Current time') as HTMLInputElement).checked).toBe(false)
+    fireEvent.click(screen.getByRole('button', { name: /Replay/ }))
+    await waitFor(() => expect(api.startReplay).toHaveBeenCalledWith('s1', expect.any(Number), false, false))
+  })
+})

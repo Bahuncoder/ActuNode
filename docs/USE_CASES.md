@@ -40,9 +40,9 @@ its login could not read other robots' traffic, publish as another robot, or inj
 | Give the fleet manager a login | `docker compose run --rm mqtt-init add-master wms_fleet` (default: commands ActuNode's simulated robots), then recreate `mqtt-init` and `mosquitto` | ✅ new (D-47) |
 | Point it at the simulated robots | Broker `localhost:1883` (or TLS 8883), interface `uagv`, manufacturer `ActuNode`, serials `robot_01` … | ✅ works |
 | It sends orders and instant actions | Robots accept, drive, report; the inspector validates every order it sends | ✅ works |
-| Make the robots misbehave | Failure panel or `POST /api/failures`: blocked path, low battery, disconnect, invalid payload | ✅ works |
-| Check what the fleet manager did | Scenario `message` expectations on its `order` / `instantActions` topics, `within` / `never` timing | ✅ works (D-46); Week 11 ships a ready scenario |
-| Reproduce an incident against it | Replay a recorded session: by default only the robots' recorded messages are published again (`include_commands: false`), so the connected fleet manager reacts to them | ⚠️ possible now, not yet tested end to end |
+| Make the robots misbehave | Failure panel or `POST /api/failures`: blocked path, low battery, disconnect, invalid payload, unresponsive (online but silent) | ✅ works (unresponsive: D-48) |
+| Check what the fleet manager did | Scenario `message` expectations on its `order` / `instantActions` topics, `within` / `never` timing; any-of lists | ✅ works; ready scenario and example fleet manager in [examples/fleet_manager/](../examples/fleet_manager/README.md) (D-48) |
+| Reproduce an incident against it | Replay a recorded session: by default only the robots' recorded messages are published again (`include_commands: false`), so the connected fleet manager reacts to them; tick **Current time** if it drops stale state; stop the simulator first | ✅ checked 14 Oct; open-loop: replayed robots cannot react to its commands |
 
 Checked 14 Oct: an outside client logged in as `master@wms_fleet` sent robot_02 an order it drove (the inspector
 found it valid) and a cancelOrder; its login could not command another manufacturer's robots, publish robot
@@ -79,6 +79,6 @@ use case 2, with their fleet manager connected.
 ## Open questions for user conversations
 
 - Would integrators record a **site's** broker (bridge into ActuNode) or bring a capture file? Which format?
-- Which failures do fleet managers mishandle most? The plan also names **duplicate missions** and **timeouts**
-  (a robot that stays connected but stops answering), which ActuNode cannot inject yet.
+- Which failures do fleet managers mishandle most? "Timeouts" can be injected now (`UNRESPONSIVE`, D-48);
+  **duplicate missions** (also named in the plan) are not detected yet: how do they show up on site?
 - Is the simulated robots' manufacturer name (`ActuNode`) a problem for fleet managers configured per vendor?

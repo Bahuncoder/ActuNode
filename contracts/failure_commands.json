@@ -65,5 +65,15 @@
     },
     "robotId": "fail_20",
     "timestamp": "2026-01-01T00:00:00.000Z"
+  },
+  {
+    "action": "inject",
+    "failure": "UNRESPONSIVE",
+    "injectionId": "inj-00000000",
+    "params": {
+      "duration_s": 5
+    },
+    "robotId": "fail_20",
+    "timestamp": "2026-01-01T00:00:00.000Z"
   }
 ]

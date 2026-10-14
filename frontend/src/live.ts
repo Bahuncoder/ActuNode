@@ -130,6 +130,7 @@ export type ReplayStatus = {
   state: 'running' | 'finished' | 'stopped' | 'failed'
   speed: number
   includeCommands: boolean
+  currentTime?: boolean
   sent: number
   total: number
   position: number
@@ -422,6 +423,7 @@ export const FAILURE_LABELS: Record<string, string> = {
   LOW_BATTERY: 'Low battery',
   DISCONNECT: 'Disconnect',
   INVALID_PAYLOAD: 'Invalid payload',
+  UNRESPONSIVE: 'Unresponsive',
 }
 
 export function failureLabel(code: unknown): string {

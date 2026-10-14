@@ -81,6 +81,7 @@ BLOCKED_PATH = "BLOCKED_PATH"
 LOW_BATTERY = "LOW_BATTERY"
 DISCONNECT = "DISCONNECT"
 INVALID_PAYLOAD = "INVALID_PAYLOAD"
+UNRESPONSIVE = "UNRESPONSIVE"
 # Below this (and above 0) the state carries a batteryLow error (D-42); the robot keeps driving.
 LOW_BATTERY_THRESHOLD = 20
 DEFAULT_LOW_BATTERY_LEVEL = 15
@@ -95,6 +96,7 @@ FAILURE_PARAMS = {
     LOW_BATTERY: ("level",),
     DISCONNECT: ("duration_s", "mode"),
     INVALID_PAYLOAD: ("kind", "count"),
+    UNRESPONSIVE: ("duration_s",),
 }
 MAX_PENDING_MALFORMED = 10  # per robot; further requests are dropped (S-1)
 
@@ -134,6 +136,9 @@ class Robot(OrderBook, InstantActions):
         self.state_requested = False
         # DISCONNECT and INVALID_PAYLOAD only record their request here; the publisher acts on it from step().
         self.disconnect_requested: tuple[int, str] | None = None  # (duration_s, mode)
+        # UNRESPONSIVE: duration_s requested here; the publisher starts it from step() and sets `unresponsive`.
+        self.unresponsive_requested: int | None = None
+        self.unresponsive = False
         self.malformed_requests: list[str] = []  # kinds, one malformed state published per tick
         # Set by the publisher while the link is down (or coming back): a DISCONNECT then makes no sense.
         self.link_down = False
@@ -293,12 +298,14 @@ class Robot(OrderBook, InstantActions):
             return "path cleared" if self.clear_blocked_path() else "ignored clear: not blocked"
         if failure == LOW_BATTERY:
             return self._low_battery(action, params)
-        if failure in (DISCONNECT, INVALID_PAYLOAD) and action == "clear":
+        if failure in (DISCONNECT, INVALID_PAYLOAD, UNRESPONSIVE) and action == "clear":
             return f"ignored clear: {failure} cannot be cleared"
         if failure == DISCONNECT:
             return self._request_disconnect(params)
         if failure == INVALID_PAYLOAD:
             return self._request_malformed(params)
+        if failure == UNRESPONSIVE:
+            return self._request_unresponsive(params)
         return f"ignored unknown failure {failure!r}"
 
     @staticmethod
@@ -338,10 +345,23 @@ class Robot(OrderBook, InstantActions):
         mode = params.get("mode", "broken")
         if self.link_down or self.disconnect_requested is not None:
             return "ignored DISCONNECT: already disconnected"
+        if self.unresponsive or self.unresponsive_requested is not None:
+            return "ignored DISCONNECT: already unresponsive"
         if duration is None or mode not in DISCONNECT_MODES:
             return f"ignored DISCONNECT: duration_s 1-{MAX_DISCONNECT_S}, mode one of {list(DISCONNECT_MODES)}"
         self.disconnect_requested = (duration, mode)
         return f"disconnect for {duration} s ({mode})"
+
+    def _request_unresponsive(self, params: dict) -> str:
+        duration = self._int_param(params, "duration_s", DEFAULT_DISCONNECT_S, 1, MAX_DISCONNECT_S)
+        if self.unresponsive or self.unresponsive_requested is not None:
+            return "ignored UNRESPONSIVE: already unresponsive"
+        if self.link_down or self.disconnect_requested is not None:
+            return "ignored UNRESPONSIVE: already disconnected"
+        if duration is None:
+            return f"ignored UNRESPONSIVE: duration_s 1-{MAX_DISCONNECT_S}"
+        self.unresponsive_requested = duration
+        return f"unresponsive for {duration} s"
 
     def _request_malformed(self, params: dict) -> str:
         kind = params.get("kind")

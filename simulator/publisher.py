@@ -31,6 +31,9 @@ class RobotConnection:
         self._clock = clock
         # DISCONNECT injection: while set, we are away until this clock time (and publish nothing).
         self._reconnect_at: float | None = None
+        # UNRESPONSIVE injection: connected but silent until this clock time; orders and instantActions are dropped.
+        self._responsive_at: float | None = None
+        self._ignored = 0
         # Blocking paho calls (loop_stop, reconnect) run in one short-lived helper thread, never on the sim thread.
         self._helper: threading.Thread | None = None
         self._rejoin_ok: bool | None = None  # outcome of the reconnect helper; None: no reconnect running
@@ -96,6 +99,9 @@ class RobotConnection:
     def away(self) -> bool:
         return self._reconnect_at is not None
 
+    def can_publish(self) -> bool:
+        return not self.away and not self.robot.unresponsive and self._client.is_connected()
+
     def _run_helper(self, target, *args) -> None:
         self._helper = threading.Thread(target=target, args=args, daemon=True, name=f"link-{self.robot.robot_id}")
         self._helper.start()
@@ -109,11 +115,26 @@ class RobotConnection:
         if self._connected_pending and not self.away and self._helper is None and self._client.is_connected():
             self._connected_pending = False
             self._announce()
+        self._update_unresponsive()
         request, self.robot.disconnect_requested = self.robot.disconnect_requested, None
         if request and not self.away:
             self._go_away(*request)
         elif self.away and self._helper is None and self._clock() >= self._reconnect_at:
             self._come_back()
+
+    def _update_unresponsive(self) -> None:
+        """Start a requested UNRESPONSIVE window; end it when the time is up (state then goes out at once)."""
+        duration_s, self.robot.unresponsive_requested = self.robot.unresponsive_requested, None
+        if duration_s is not None and not self.robot.unresponsive:
+            self.robot.unresponsive = True
+            self._responsive_at = self._clock() + duration_s
+            self._ignored = 0
+            log.warning("%s: failure injection: unresponsive for %s s", self.robot.robot_id, duration_s)
+        elif self.robot.unresponsive and self._clock() >= self._responsive_at:
+            self.robot.unresponsive = False
+            self._responsive_at = None
+            self.robot.state_requested = True
+            log.warning("%s: responsive again; ignored %d command(s)", self.robot.robot_id, self._ignored)
 
     def _announce(self) -> None:
         """ONLINE, the will for the next connect, the factsheet and the current state (2.1 section 6.14: the
@@ -179,7 +200,7 @@ class RobotConnection:
 
     def publish_malformed(self) -> None:
         """One queued INVALID_PAYLOAD message on the state topic (raw bytes: some are not JSON)."""
-        if self.robot.malformed_requests and not self.away and self._client.is_connected():
+        if self.robot.malformed_requests and self.can_publish():
             kind = self.robot.malformed_requests.pop(0)
             self._client.publish(self.state_topic, malformed_payload(self.robot, kind), qos=0)
 
@@ -200,6 +221,8 @@ class RobotConnection:
     def _apply(self, topic_name: str, payload: bytes) -> None:
         if topic_name == self.inject_topic:
             log.warning("%s: failure injection: %s", self.robot.robot_id, self.robot.handle_command_payload(payload))
+        elif self.robot.unresponsive:
+            self._ignored += 1  # order or instantActions: dropped without a trace in the state
         elif topic_name == self.instant_topic:
             if not self.robot.handle_instant_actions_payload(payload):
                 # Malformed: neither 2.1 nor 3.0 names an error for it, so it is only logged.
@@ -210,13 +233,13 @@ class RobotConnection:
             log.warning("%s: rejected order: %s", self.robot.robot_id, self.robot.errors[-1]["errorDescription"])
 
     def publish_state(self) -> None:
-        if not self.away and self._client.is_connected():
+        if self.can_publish():
             self._publish(self.state_topic, self.robot.state_message())
 
     def publish_factsheet(self) -> None:
         # The factsheet is mandatory: retained (a master that connects later still gets it), QoS 0 like every
         # topic except connection (2.1 §6.15 and §6.4, 3.0 §6.10).
-        if not self.away and self._client.is_connected():
+        if self.can_publish():
             self._publish(self.factsheet_topic, self.robot.factsheet_message(), qos=0, retain=True)
 
     def _publish(self, topic_name: str, message: dict, qos: int = 0, retain: bool = False):
