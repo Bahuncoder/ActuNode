@@ -9,7 +9,7 @@ description = "Scenario tests for VDA 5050 / MQTT robot integrations, run agains
 readme = "README.md"
 license = "Apache-2.0"
 requires-python = ">=3.12"
-dependencies = ["httpx>=0.27,<1", "pydantic>=2.7,<3", "PyYAML>=6.0.1,<7", "websockets>=13,<16"]
+dependencies = ["httpx>=0.27,<1", "pydantic>=2.7,<3", "PyYAML>=6.0.1,<7", "websockets>=13,<18"]
 
 [project.scripts]
 actunode = "actunode.cli:main"
