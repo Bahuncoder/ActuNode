@@ -1,6 +1,7 @@
 """Week 10 (D-46): `for` and `never` timing, message expectations, every run recorded as a session."""
 
 import json
+import ssl
 import threading
 from pathlib import Path
 
@@ -312,9 +313,35 @@ def test_the_feed_collects_message_events(lab_ws):
     assert "cookie" not in {k.lower() for k in sent["headers"]}
 
 
-def test_an_unreachable_feed_is_a_stack_error():
+def test_an_unreachable_feed_is_a_stack_error(monkeypatch):
+    monkeypatch.setattr(client, "FEED_RETRY_PAUSE_S", 0)
     with pytest.raises(StackError, match="cannot open the live feed"):
         Stack("http://127.0.0.1:1").open_feed()
+
+
+def test_the_feed_forwards_the_session_cookie(lab_ws):
+    sent, url = lab_ws
+    stack = Stack(url)
+    stack._http.cookies.set("actunode_session", "abc123")  # as after a login
+    stack.open_feed().close()
+    assert {k.lower(): v for k, v in sent["headers"].items()}["cookie"] == "actunode_session=abc123"
+
+
+@pytest.mark.parametrize(("url", "wss"), [("https://lab", True), ("http://lab", False)])
+def test_the_ca_context_reaches_a_wss_feed_only(monkeypatch, url, wss):
+    seen = {}
+
+    def refuse(address, **kwargs):
+        seen.update(address=address, **kwargs)
+        raise InvalidHandshake("stop here")
+
+    monkeypatch.setattr(client, "ws_connect", refuse)
+    stack = Stack(url)
+    context = stack._verify = ssl.create_default_context()  # what ca_file produces
+    with pytest.raises(StackError):
+        stack.open_feed()
+    assert seen["address"].startswith("wss://" if wss else "ws://")
+    assert seen.get("ssl") is (context if wss else None)
 
 
 def test_a_feed_without_a_snapshot_is_refused(lab_ws):

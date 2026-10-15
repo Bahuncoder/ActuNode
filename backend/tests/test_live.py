@@ -424,21 +424,31 @@ def test_small_state_is_stored_unchanged():
     assert event["robot"]["stateFromMessage"] is True
 
 
-def test_stored_state_memory_is_bounded_under_a_flood():
+def test_stored_state_memory_is_bounded_under_a_flood(monkeypatch):
+    """Measured with tracemalloc, not by JSON length (a parsed value costs ~75 bytes whatever its text size):
+    a robot flood of states made of thousands of tiny objects must not be stored whole."""
+    import tracemalloc
+
     from app import live as live_module
-    from app.jsonsafe import MAX_PAYLOAD_BYTES
+    from app.jsonsafe import MAX_PAYLOAD_BYTES, count_values
 
+    monkeypatch.setattr(
+        live_module, "MAX_ROBOTS", 100
+    )  # tracemalloc is slow: a tenth of the fleet, a tenth of the bound
     live = LiveHub()
-    pad = "x" * 100_000  # a scalar field alone is big: the flood must not get this stored whole
-    body = {"serialNumber": "r", "nodeStates": [{"a": 1}] * 10_000, "pad": pad}
+    body = {"serialNumber": "r", "pad": [{}] * 5000, "nodeStates": [{"a": 1}] * 2000}
     raw = json.dumps(body).encode()
-    assert len(raw) <= MAX_PAYLOAD_BYTES
-    for i in range(live_module.MAX_ROBOTS):  # straight to the store: validating 1000 huge states is slow
-        live._update_robot(f"uagv/v2/ActuNode/r{i}/state", json.loads(raw), "now", len(raw))
+    values = count_values(body)
+    assert len(raw) <= MAX_PAYLOAD_BYTES and values > live_module.DISPLAY_VALUES
 
-    total = sum(len(json.dumps(r["state"])) for r in live.snapshot()["robots"])
+    tracemalloc.start()
+    for i in range(live_module.MAX_ROBOTS):  # straight to the store: validating 1000 huge states is slow
+        live._update_robot(f"uagv/v2/ActuNode/r{i}/state", json.loads(raw), "now", len(raw), values)
+    held, _ = tracemalloc.get_traced_memory()
+    tracemalloc.stop()
+
     assert len(live.snapshot()["robots"]) == live_module.MAX_ROBOTS
-    assert total <= live_module.MAX_ROBOTS * live_module.MAX_STORED_STATE_BYTES
+    assert held < 15_000_000, f"{held / 1e6:.0f} MB held for {live_module.MAX_ROBOTS} robots"
 
 
 def test_validation_epoch_increments_on_reset():

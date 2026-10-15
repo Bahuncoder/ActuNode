@@ -14,6 +14,11 @@ from simulator.topics import control_topic, topic
 log = logging.getLogger(__name__)
 
 RECONNECT_RETRY_S = 2.0
+# One sim thread serves every robot, so a robot's inbox is bounded and a tick applies only so much of it (S1).
+INBOX_MAX = 100
+MAX_MESSAGES_PER_TICK = 5
+MAX_MESSAGE_TIME_S = 0.02
+LOG_EVERY_S = 10.0
 
 
 class RobotConnection:
@@ -47,7 +52,13 @@ class RobotConnection:
         self.order_topic = topic(MANUFACTURER, robot.robot_id, "order", robot.vda_major)
         self.instant_topic = topic(MANUFACTURER, robot.robot_id, "instantActions", robot.vda_major)
         self.inject_topic = control_topic(robot.robot_id, "inject")
-        self.inbox: queue.Queue[tuple[str, bytes]] = queue.Queue()
+        # Orders in one queue, instantActions and injection commands in another that is served first: a cancelOrder
+        # must not wait behind orders. A full queue drops the new message (counted, logged now and then).
+        self.inbox: queue.Queue[tuple[str, bytes]] = queue.Queue(INBOX_MAX)
+        self.instant_inbox: queue.Queue[tuple[str, bytes]] = queue.Queue(INBOX_MAX)
+        self.dropped = 0
+        self._dropped_logged = 0
+        self._dropped_logged_at = float("-inf")
 
         self._client = mqtt.Client(
             callback_api_version=mqtt.CallbackAPIVersion.VERSION2,
@@ -78,6 +89,10 @@ class RobotConnection:
         even when the broker is already gone (e.g. both containers stopping together)."""
         if self._helper is not None:
             self._helper.join(5)
+            if not self._helper.is_alive():
+                self._helper = None
+                self._finish_rejoin()  # a rejoin that finished meanwhile: we are back, so say OFFLINE
+                self._wait_connected()
         if self._reconnect_at is not None:
             self._client.loop_stop()  # away on purpose (DISCONNECT injection): already disconnected, nothing to say
             return
@@ -87,6 +102,12 @@ class RobotConnection:
             log.warning("%s: not connected at shutdown; OFFLINE not sent", self.robot.robot_id)
         self._client.disconnect()
         self._client.loop_stop()
+
+    def _wait_connected(self, timeout_s: float = 2.0) -> None:
+        """After a rejoin the CONNACK may still be on its way: give it a moment."""
+        deadline = time.monotonic() + timeout_s
+        while self._reconnect_at is None and not self._client.is_connected() and time.monotonic() < deadline:
+            time.sleep(0.05)
 
     def _publish_offline(self, message: dict) -> None:
         info = self._publish(self.connection_topic, message, qos=1, retain=True)
@@ -205,18 +226,22 @@ class RobotConnection:
             self._client.publish(self.state_topic, malformed_payload(self.robot, kind), qos=0)
 
     def apply_pending_messages(self) -> bool:
-        """Apply queued orders and commands. Returns True if any were processed."""
-        processed = False
-        while True:
-            try:
-                topic_name, payload = self.inbox.get_nowait()
-            except queue.Empty:
-                return processed
-            processed = True
-            try:
-                self._apply(topic_name, payload)
-            except Exception:  # no single message may stop the simulation loop
-                log.exception("%s: failed to apply message on %s", self.robot.robot_id, topic_name)
+        """Apply queued commands and orders, instantActions first, at most MAX_MESSAGES_PER_TICK messages and
+        MAX_MESSAGE_TIME_S seconds per call: the rest waits for the next tick. True if any were processed."""
+        started = time.perf_counter()
+        processed = 0
+        for inbox in (self.instant_inbox, self.inbox):
+            while processed < MAX_MESSAGES_PER_TICK and time.perf_counter() - started < MAX_MESSAGE_TIME_S:
+                try:
+                    topic_name, payload = inbox.get_nowait()
+                except queue.Empty:
+                    break
+                processed += 1
+                try:
+                    self._apply(topic_name, payload)
+                except Exception:  # no single message may stop the simulation loop
+                    log.exception("%s: failed to apply message on %s", self.robot.robot_id, topic_name)
+        return processed > 0
 
     def _apply(self, topic_name: str, payload: bytes) -> None:
         if topic_name == self.inject_topic:
@@ -234,7 +259,7 @@ class RobotConnection:
 
     def publish_state(self) -> None:
         if self.can_publish():
-            self._publish(self.state_topic, self.robot.state_message())
+            self._client.publish(self.state_topic, self.robot.state_payload(), qos=0)
 
     def publish_factsheet(self) -> None:
         # The factsheet is mandatory: retained (a master that connects later still gets it), QoS 0 like every
@@ -262,4 +287,20 @@ class RobotConnection:
         if message.topic not in (self.order_topic, self.instant_topic, self.inject_topic):
             log.warning("%s: ignoring message on %s", self.robot.robot_id, message.topic)
             return
-        self.inbox.put((message.topic, message.payload))
+        inbox = self.inbox if message.topic == self.order_topic else self.instant_inbox
+        try:
+            inbox.put_nowait((message.topic, message.payload))
+        except queue.Full:
+            self._count_dropped()
+
+    def _count_dropped(self) -> None:
+        self.dropped += 1
+        now = self._clock()
+        if now - self._dropped_logged_at >= LOG_EVERY_S:
+            log.warning(
+                "%s: inbox full; dropped %d message(s) so far (%d since the last note)",
+                self.robot.robot_id,
+                self.dropped,
+                self.dropped - self._dropped_logged,
+            )
+            self._dropped_logged, self._dropped_logged_at = self.dropped, now

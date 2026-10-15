@@ -65,6 +65,18 @@ duplicate, or replay?"), not an error.
 - Actions (`pick`, `drop`, …) have `blockingType` NONE / SOFT / HARD (3.0 adds SINGLE).
 - `instantActions` act immediately: `cancelOrder`, `startPause`/`stopPause`, `stateRequest`,
   `factsheetRequest` (3.0 also `clearInstantActions`). 3.0 makes cancel and pause mandatory.
+- The simulator validates the graph and rejects a bad order (2.1 `validationError`, 3.0 `VALIDATION_FAILURE`): nodes at
+  even sequenceIds in steps of 2 (from 0 for a new order, from the decision point for an update), exactly one edge at
+  the odd id between neighbours (2.1: `startNodeId`/`endNodeId` name them), `released` present on every node and edge,
+  released items before unreleased ones, the first node of a new order released, an `actionId` not reused by an
+  update, header `version` major and `manufacturer` matching the robot, a known `mapId` (`warehouse`). `pick`/`drop`
+  on an edge is an invalid order action (the factsheet lists `actionScopes` NODE only).
+- Limits advertised in the factsheet (`maxArrayLens` 2.1 / `maximumArrayLengths` 3.0) and enforced: 300 nodes, 300
+  edges, 50 instant actions per message. The **300 actions cap covers the whole order** (finished actions stay in
+  `actionStates` until a new order), so a very long-running order eventually refuses further updates.
+- Load control: a robot's inbox holds 100 orders and 100 instant actions/commands (more are dropped and counted);
+  each tick applies at most 5 messages or 20 ms, instant actions first. A malformed action in an `instantActions`
+  message is skipped on its own (neither version names an error for it) so a valid `cancelOrder` beside it still runs.
 - Known limits of the simulator: `blockingType` has no effect (its actions are instant), no retriable
   actions, no corridors, zones or maps management.
 

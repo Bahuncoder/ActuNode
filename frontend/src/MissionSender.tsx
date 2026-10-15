@@ -1,4 +1,4 @@
-import { useState, type FormEvent } from 'react'
+import { memo, useState, type FormEvent } from 'react'
 import { sendMission, type Location } from './api'
 import { identitiesOf, type Robot } from './live'
 
@@ -21,7 +21,7 @@ function describe(identity: Identity): string {
 }
 
 // Defaults are the demo scenario: pallet P-1042, Receiving Door 2 -> Storage A17.
-export default function MissionSender({
+function MissionSender({
   robots,
   locations,
 }: {
@@ -130,7 +130,7 @@ export default function MissionSender({
         </label>
         <label>
           Load
-          <input value={loadId} onChange={(e) => setLoadId(e.target.value)} placeholder="P-1042" />
+          <input value={loadId} onChange={(e) => setLoadId(e.target.value)} placeholder="P-1042" maxLength={64} />
         </label>
         <button type="submit" disabled={sending || names.length === 0}>
           {sending ? 'Sending…' : 'Send mission'}
@@ -143,3 +143,5 @@ export default function MissionSender({
     </section>
   )
 }
+
+export default memo(MissionSender)

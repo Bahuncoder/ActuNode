@@ -879,3 +879,31 @@ bridge: offline, read-only, nobody needs access to the customer's network.
 can be validated and replayed (also to a fleet manager) from a capture. The upload assigns its own session
 id; the one the import writes is only a default. A live bridge stays open until a user asks for it.
 
+## D-50 · Full audit of weeks 0–12: every component validates its own inputs; limits everywhere
+14 Oct 2026 · Accepted (founder: review every line as system, frontend, backend, security, attacker, DevOps
+and architecture engineers)
+
+**Context.** Six independent reviews, every line in scope, each finding reproduced or traced
+(docs/AUDIT_2026-10-14.md): about 95 findings, 13 High. Most Highs were one pattern: untrusted content valid
+at one layer and trusted at the next (overflowing numbers, control characters in topics, wrong value kinds
+in robot state, malformed order graphs) and floods with no bound (broker retained messages, simulator inbox,
+WebSocket feeds, parsed-object memory).
+**Decision.** Every component validates at its own boundary, whatever the previous one did, and every queue,
+buffer and file has a bound. Concretely: strict JSON numbers everywhere (no NaN, Infinity or overflowing
+integers in, `allow_nan=False` out); a cap of 10,000 values per message (rule `too-many-values`) and text
+previews above 2,000; snapshot lines of session files at most 8 MB, robots checked one by one; topics from
+files published only when every level is a valid identity (one pattern module, `fullmatch`); replay reads
+off the event loop and yields every 10 ms; at most 50 live feeds of 8 MB queue each; the simulator's inbox
+bounded, its work per tick budgeted, order graphs validated; the broker with memory, queue and connection
+limits and explicit version levels in the ACL; containers without capabilities, read-only, with memory and
+process limits; a name-constrained CA; login removal, rotation, backup and restore with a live reload
+(SIGHUP); the network listener without internal logins; AEAD-only TLS; strict CSP and typed readers in the
+UI; CI actions pinned to commits with least privilege and Dependabot. API docs pinned and off in shared mode.
+**Consequences.** Each fix has a test that fails on the old code (backend 463 → 576, simulator 397 → 465,
+runner 148 → 220, frontend 99 → 137). Behaviour changes users may notice: 2.1 orders need edge
+`startNodeId`/`endNodeId` and `released` (the schema always required them); pick/drop on edges and orders
+for an unknown map are refused; uploads need line 2 to be the snapshot; `/api/health` without a session in
+login mode says only whether the lab is up; adding a robot or fleet manager login is applied with
+`docker compose kill -s HUP mosquitto` (no disconnects). Open: per-user identity and an audit trail
+(A3), metrics (A6), versioned scenario format and API, published images (A5, A7).
+

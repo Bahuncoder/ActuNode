@@ -28,6 +28,10 @@ ROBOTS_READY_S = 15
 # Orders in these states are still running; cleanup cancels the ones the scenario sent.
 RUNNING = ("ACCEPTED", "MOVING", "BLOCKED", "WAITING")
 CLEARABLE = ("BLOCKED_PATH", "LOW_BATTERY")
+TIMED = ("DISCONNECT", "UNRESPONSIVE")  # end by themselves after params.duration_s (up to 300 s)
+DEFAULT_DURATION_S = 10  # the stack's default for duration_s
+# Cleanup waits this long for a timed failure to end before it reports the failure as still active.
+CLEANUP_WAIT_S = 30
 EVIDENCE_CHARS = 300
 
 PASSED, FAILED, ERROR, SKIPPED = "passed", "failed", "error", "skipped"
@@ -52,6 +56,7 @@ class ScenarioResult:
     cleanup: list[str] = field(default_factory=list)
     session: str | None = None  # the recording of this run, replayable in the lab (D-46)
     recording: str = ""  # why there is no recording, or what went wrong with it
+    cleanup_complete: bool = True  # False when cleanup was cut short (a second Ctrl-C, an unexpected error)
 
 
 class _Failed(Exception):
@@ -67,14 +72,17 @@ def recording_name(scenario: Scenario) -> str:
     return re.sub(r"[^A-Za-z0-9_-]+", "-", scenario.path.stem).strip("-")[:40] or "scenario"
 
 
-def pick_robot(records: list[dict], robot: str, vda_version: str | None) -> dict | None:
-    """The record for this serial number, of the scenario's VDA version if it names one; the most recently
-    heard if there are several (one robot id can exist per version and manufacturer)."""
+def pick_robot(
+    records: list[dict], robot: str, vda_version: str | None, manufacturer: str | None = None
+) -> dict | None:
+    """The record for this serial number, of the scenario's VDA version and manufacturer if it names them; the
+    most recently heard if there are several (one robot id can exist per version and manufacturer)."""
     found = [
         r
         for r in records
         if isinstance(r, dict)
         and r.get("robotId") == robot
+        and (manufacturer is None or r.get("manufacturer") == manufacturer)
         and (vda_version is None or r.get("vdaMajor") == f"v{vda_version}")  # the API says "v2" / "v3"
     ]
     return max(found, key=lambda r: str(r.get("lastSeen") or "")) if found else None
@@ -168,10 +176,11 @@ class Runner:
     def run(self, scenario: Scenario) -> ScenarioResult:
         self.vda = self.vda_override or scenario.vda_version
         self.orders: dict[str, str] = {}  # `as` name -> order id
-        self.sent: dict[str, str] = {}  # robot -> last order id sent by this scenario
+        self.sent: dict[tuple[str, str | None], str] = {}  # (robot, manufacturer) -> last order id sent
         self.injected: set[tuple[str, str]] = set()  # (robot, failure) injected and not cleared
+        self.timed: dict[tuple[str, str], float] = {}  # (robot, failure) -> when it ends by itself
         self.feed = None
-        result = ScenarioResult(scenario)
+        result = self.current = ScenarioResult(scenario)
         started = self.clock()
         try:
             try:
@@ -180,7 +189,7 @@ class Runner:
                     self.feed = self.stack.open_feed(self.clock)
                 self._baseline()
                 self._robots_ready(scenario.robots)
-            except (StackError, _Failed) as error:
+            except (StackError, RequestFailed, _Failed) as error:
                 result.outcome, result.message = ERROR, f"could not start: {error}"
                 result.steps = [StepResult(n, step.describe(), SKIPPED) for n, step in enumerate(scenario.steps, 1)]
                 return result
@@ -213,17 +222,28 @@ class Runner:
         finally:
             # Also on Ctrl-C: leave the robots as the scenario found them, for the next scenario and for people;
             # then stop the recording, so it contains the cleanup too.
-            if self.do_cleanup:
-                result.cleanup = self._cleanup()  # nothing to undo if the scenario never started
-            self._stop_recording(result)
-            if self.feed is not None:
-                self.feed.close()
-            result.seconds = self.clock() - started
+            # Nested, so that a second Ctrl-C or an error in one part never skips the parts after it.
+            try:
+                if self.do_cleanup:
+                    result.cleanup_complete = False
+                    self._cleanup(result.cleanup)  # nothing to undo if the scenario never started
+                    result.cleanup_complete = True
+            finally:
+                try:
+                    self._stop_recording(result)
+                finally:
+                    try:
+                        if self.feed is not None:
+                            self.feed.close()
+                    finally:
+                        result.seconds = self.clock() - started
         return result
 
     def _step(self, step: Step) -> None:
         if isinstance(step, SendMission):
             body = {"robot_id": step.robot, "destination": step.destination}
+            if step.manufacturer:
+                body["manufacturer"] = step.manufacturer
             if step.source:
                 body["source"] = step.source
             if step.load:
@@ -231,18 +251,21 @@ class Runner:
             if self.vda:
                 body["vda_version"] = self.vda
             order_id = self.stack.send_mission(body)["order_id"]
-            self.sent[step.robot] = order_id
+            self.sent[step.robot, step.manufacturer] = order_id
             if step.as_:
                 self.orders[step.as_] = order_id
         elif isinstance(step, Inject):
             self.stack.failure(step.robot, step.failure, "inject", dict(step.params))
             if step.failure in CLEARABLE:
                 self.injected.add((step.robot, step.failure))
+            elif step.failure in TIMED:
+                duration = step.params.get("duration_s", DEFAULT_DURATION_S)
+                self.timed[step.robot, step.failure] = self.clock() + (duration if isinstance(duration, int) else 0)
         elif isinstance(step, Clear):
             self.stack.failure(step.robot, step.failure, "clear")
             self.injected.discard((step.robot, step.failure))
         elif isinstance(step, CancelMission):
-            self.stack.cancel_mission(step.robot, self.vda)
+            self.stack.cancel_mission(step.robot, self.vda, step.manufacturer)
         elif isinstance(step, Wait):
             self.sleep(step.seconds)
         elif isinstance(step, Expect):
@@ -275,8 +298,8 @@ class Runner:
 
     # --- expectations ---------------------------------------------------------------
 
-    def _observe(self, robot: str) -> Observation:
-        return Observation.of(pick_robot(self.stack.robots(), robot, self.vda))
+    def _observe(self, robot: str, manufacturer: str | None = None) -> Observation:
+        return Observation.of(pick_robot(self.stack.robots(), robot, self.vda, manufacturer))
 
     def _robot_mismatches(self, check: _Conditions, seen: Observation) -> list[str]:
         if not seen.known:
@@ -351,7 +374,7 @@ class Runner:
         """What does not hold, and (when everything holds) what was seen, for a failed `never`."""
         wrong, seen = [], []
         if check.robot:
-            observed = self._observe(check.robot)
+            observed = self._observe(check.robot, check.manufacturer)
             wrong += self._robot_mismatches(check, observed)
             seen.append(f"{check.robot} {observed.describe()}")
         for sub, part in ((check.validation, self._validation_mismatches), (check.message, self._message_mismatches)):
@@ -386,6 +409,15 @@ class Runner:
 
     def _never(self, never: Never) -> None:
         start = self.clock()
+        saved = self.validation_epoch, self.validation_base
+        if never.validation is not None:
+            self._baseline()  # issues count from this step's own start, like its messages
+        try:
+            self._never_loop(never, start)
+        finally:
+            self.validation_epoch, self.validation_base = saved
+
+    def _never_loop(self, never: Never, start: float) -> None:
         # "Never during the next N s": its messages count from its own start, not from the previous step's (D-48).
         self.window_start = start
         deadline = start + never.for_
@@ -397,14 +429,14 @@ class Runner:
                 return
             self._pause(deadline)
 
-    def _robots_ready(self, robots: tuple[str, ...]) -> None:
+    def _robots_ready(self, robots: tuple[tuple[str, str | None], ...]) -> None:
         deadline = self.clock() + ROBOTS_READY_S
         while True:
             records = self.stack.robots()
             missing = [
-                robot
-                for robot in robots
-                if _normal((pick_robot(records, robot, self.vda) or {}).get("connection")) != "ONLINE"
+                robot + (f" ({maker})" if maker else "")
+                for robot, maker in robots
+                if _normal((pick_robot(records, robot, self.vda, maker) or {}).get("connection")) != "ONLINE"
             ]
             if not missing:
                 return
@@ -415,8 +447,8 @@ class Runner:
 
     # --- leaving the robots as they were ------------------------------------------------
 
-    def _cleanup(self) -> list[str]:
-        done = []
+    def _cleanup(self, done: list[str]) -> None:
+        """Undo what the scenario left; `done` is filled as it goes, so an interrupted cleanup still reports."""
         for robot, failure in sorted(self.injected):
             try:
                 if failure == "BLOCKED_PATH":
@@ -429,12 +461,23 @@ class Runner:
                 done.append(f"cleared {failure} on {robot}")
             except (RequestFailed, StackError) as error:
                 done.append(f"could not clear {failure} on {robot}: {error}")
-        for robot, order_id in sorted(self.sent.items()):
+        self._wait_for_timed_failures(done)
+        for (robot, manufacturer), order_id in sorted(self.sent.items(), key=str):
             try:
-                seen = self._observe(robot)
+                seen = self._observe(robot, manufacturer)
                 if seen.order_id == order_id and seen.status in RUNNING:
-                    self.stack.cancel_mission(robot, self.vda)
+                    self.stack.cancel_mission(robot, self.vda, manufacturer)
                     done.append(f"cancelled {order_id} on {robot} (was {seen.status})")
             except (RequestFailed, StackError) as error:
                 done.append(f"could not cancel {order_id} on {robot}: {error}")
-        return done
+
+    def _wait_for_timed_failures(self, done: list[str]) -> None:
+        """DISCONNECT and UNRESPONSIVE end by themselves, up to 300 s later; the next scenario would start into
+        them. Wait (bounded) for them to end, else say which are still active."""
+        left = {key: end - self.clock() for key, end in self.timed.items() if end > self.clock()}
+        if not left:
+            return
+        self.sleep(min(max(left.values()), CLEANUP_WAIT_S))
+        for (robot, failure), end in sorted(self.timed.items()):
+            if end > self.clock():
+                done.append(f"{failure} on {robot} still active for {end - self.clock():.0f} s")

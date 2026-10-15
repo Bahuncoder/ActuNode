@@ -4,9 +4,8 @@ import os
 import subprocess
 import sys
 import threading
-import time
 
-from conftest import ROOT, STATE_TOPIC
+from conftest import PROJECT, ROOT, STATE_TOPIC
 from test_06_orders import wait_idle
 from test_07_sessions import NDJSON
 from test_08_failures import inject
@@ -18,20 +17,33 @@ def test_a_capture_from_the_broker_becomes_a_session_the_lab_validates(stack, tm
     # mosquitto_sub runs inside the broker container, on its plain listener, with the read-only login.
     command = ["exec", "-T", "mosquitto", "mosquitto_sub", "-h", "localhost", "-p", "1883", "-u", "tools"]
     command += ["-P", stack.tools_password, "-t", "uagv/#", "-F", "%U %t %p", "-W", "5"]
-    captured: dict = {}
+    # Streamed: inject only once the first captured line shows mosquitto_sub is subscribed (no sleeping and hoping).
+    process = subprocess.Popen(
+        ["docker", "compose", "-p", PROJECT, *command],
+        cwd=ROOT,
+        env=stack.env,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.STDOUT,
+        text=True,
+    )
+    captured: list[str] = []
+    first_line = threading.Event()
 
-    def capture():
-        try:
-            captured["text"] = stack.compose(*command)
-        except RuntimeError as error:  # -W ends with a timeout exit code once the time is up
-            captured["text"] = str(error)
+    def read():
+        for line in process.stdout:
+            captured.append(line)
+            first_line.set()
 
-    thread = threading.Thread(target=capture)
-    thread.start()
-    time.sleep(1.5)
-    assert inject(stack, robot_id, "INVALID_PAYLOAD", kind="not-json", count=1).status_code == 202
-    thread.join(30)
-    text = captured["text"]
+    reader = threading.Thread(target=read, daemon=True)
+    reader.start()
+    try:
+        assert first_line.wait(30), "mosquitto_sub captured nothing"
+        assert inject(stack, robot_id, "INVALID_PAYLOAD", kind="not-json", count=3).status_code == 202
+        process.wait(30)  # -W ends it with a timeout exit code once the time is up
+    finally:
+        process.kill()
+        reader.join(10)
+    text = "".join(captured)
     capture_file = tmp_path / "capture.txt"
     lines = [line for line in text.splitlines() if line.partition(" ")[0].replace(".", "").isdigit()]
     assert len(lines) > 5, text[:500]

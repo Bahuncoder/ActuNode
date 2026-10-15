@@ -9,21 +9,25 @@ HttpOnly, SameSite=Strict cookie. Sessions live in memory (a restart logs everyo
 """
 
 import hmac
+import logging
 import secrets
 import socket
 import threading
 import time
 from collections import deque
-from http.cookies import SimpleCookie
 from ipaddress import ip_address
 from pathlib import Path
 
 from fastapi import APIRouter, HTTPException, Request, Response
 from pydantic import BaseModel, Field
+from starlette.requests import cookie_parser
 from starlette.responses import PlainTextResponse
 from starlette.types import ASGIApp, Receive, Scope, Send
 
 from app.config import settings
+from app.security import LogThrottle
+
+log = logging.getLogger("actunode.auth")
 
 COOKIE = "actunode_session"
 # Reachable without a session: liveness, and what the login screen itself needs.
@@ -34,6 +38,8 @@ MAX_FAILURES = 5
 # Clients with recent failed logins remembered at most (each entry is tiny; the cap stops address rotation
 # from growing memory without bound).
 MAX_FAILURE_CLIENTS = 10_000
+_failed_login_log = LogThrottle()
+_limited_login_log = LogThrottle()
 
 
 def check_sharing(bind_address: str, login_required: bool) -> None:
@@ -89,6 +95,9 @@ class Sessions:
                 return None
             self._failures.pop(client, None)
             if len(self._sessions) >= MAX_SESSIONS:
+                for old in [s for s, expiry in self._sessions.items() if expiry < now]:
+                    del self._sessions[old]  # expired ones first: they are of no use to anyone
+            if len(self._sessions) >= MAX_SESSIONS:
                 del self._sessions[min(self._sessions, key=self._sessions.get)]
             session_id = secrets.token_urlsafe(32)
             self._sessions[session_id] = now + self.lifetime
@@ -131,15 +140,9 @@ sessions.configure(settings.require_login, settings.api_token_file)
 
 
 def session_from_cookie_header(header: str | None) -> str | None:
-    if not header:
-        return None
-    jar = SimpleCookie()
-    try:
-        jar.load(header)
-    except Exception:
-        return None
-    morsel = jar.get(COOKIE)
-    return morsel.value if morsel else None
+    """The session cookie from a Cookie header, parsed the way Starlette's `request.cookies` does (W2): a
+    foreign cookie with a quoted or JSON value must not hide ours."""
+    return cookie_parser(header).get(COOKIE) if header else None
 
 
 class SessionGuard:
@@ -175,11 +178,15 @@ class TrustedProxies:
     for), so a request never blocks on DNS and a restarted proxy with a new address is picked up."""
 
     REFRESH_S = 60
+    # A lookup that finds no match refreshes at once (waiting for DNS), at most this often: right after nginx
+    # starts or moves, the first logins would otherwise be counted under nginx's own address (W6).
+    MISS_REFRESH_S = 5
 
     def __init__(self, names):
         self._names = frozenset(names)
         self._addresses: frozenset[str] = frozenset()
         self._last = -self.REFRESH_S  # monotonic seconds of the last refresh start
+        self._last_miss_refresh = -self.MISS_REFRESH_S
         self._lock = threading.Lock()
 
     def refresh(self) -> None:
@@ -199,6 +206,13 @@ class TrustedProxies:
             if stale:
                 self._last = now
             trusted = host in self._names or host in self._addresses
+            retry = not trusted and now - self._last_miss_refresh >= self.MISS_REFRESH_S
+            if retry:
+                self._last_miss_refresh = self._last = now
+        if retry:
+            self.refresh()
+            with self._lock:
+                return host in self._names or host in self._addresses
         if stale:
             threading.Thread(target=self.refresh, daemon=True).start()
         return trusted
@@ -214,6 +228,10 @@ def _client(request: Request) -> str:
     return (trusted_proxies.contains(peer) and request.headers.get("x-real-ip")) or peer
 
 
+def _more(suppressed: int) -> str:
+    return f" ({suppressed} more not logged)" if suppressed else ""
+
+
 @router.get("/session")
 def session_status(request: Request) -> dict:
     return {"loginRequired": sessions.required, "loggedIn": sessions.valid(request.cookies.get(COOKIE))}
@@ -226,8 +244,12 @@ def login(body: LoginRequest, request: Request, response: Response) -> dict:
     try:
         session_id = sessions.login(_client(request), body.token)
     except RateLimited:
+        if (suppressed := _limited_login_log.allow()) is not None:
+            log.warning("Login refused for %.100s: too many failed logins%s", _client(request), _more(suppressed))
         raise HTTPException(429, "Too many failed logins; wait a minute") from None
     if session_id is None:
+        if (suppressed := _failed_login_log.allow()) is not None:
+            log.warning("Failed login from %.100s%s", _client(request), _more(suppressed))
         raise HTTPException(401, "Wrong token")
     secure = request.url.scheme == "https" or request.headers.get("x-forwarded-proto") == "https"
     response.set_cookie(

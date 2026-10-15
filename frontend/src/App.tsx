@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import {
   fetchHealth,
   fetchLocations,
@@ -7,7 +7,6 @@ import {
   logout,
   type Health,
   type Location,
-  type MapInfo,
   type SessionStatus,
 } from './api'
 import FailurePanel from './FailurePanel'
@@ -23,6 +22,39 @@ import RobotTable from './RobotTable'
 import WarehouseMap from './WarehouseMap'
 
 const POLL_MS = 3000
+const RETRY_MS = 3000
+const NO_LOCATIONS: Record<string, Location> = {}
+
+/** Fetches once the API is up; a failure is shown and retried on a timer until it works. */
+function useRetryingFetch<T>(fetcher: () => Promise<T>, enabled: boolean): { data: T | undefined; error: string | null } {
+  const [data, setData] = useState<T | undefined>()
+  const [error, setError] = useState<string | null>(null)
+  const [attempt, setAttempt] = useState(0)
+  const loaded = data !== undefined
+  useEffect(() => {
+    if (loaded || !enabled) return
+    let cancelled = false
+    let timer: ReturnType<typeof setTimeout> | undefined
+    fetcher()
+      .then((result) => {
+        if (cancelled) return
+        setData(result)
+        setError(null)
+      })
+      .catch((err: unknown) => {
+        if (cancelled) return
+        setError(err instanceof Error ? err.message : 'request failed')
+        timer = setTimeout(() => setAttempt((count) => count + 1), RETRY_MS)
+      })
+    return () => {
+      cancelled = true
+      clearTimeout(timer)
+    }
+    // fetcher is a module-level function; only the flags and the retry counter restart the effect.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [enabled, loaded, attempt])
+  return { data, error }
+}
 
 function StatusPill({ label, ok }: { label: string; ok: boolean | null }) {
   const state = ok === null ? '' : ok ? 'ok' : 'down'
@@ -36,12 +68,10 @@ function StatusPill({ label, ok }: { label: string; ok: boolean | null }) {
 }
 
 /** The lab itself; mounted only once the session allows it, so the live feed never opens without one. */
-function Lab({ onLogout }: { onLogout?: () => void }) {
+function Lab({ onLogout, onSessionEnded }: { onLogout?: () => void; onSessionEnded: () => void }) {
   const [health, setHealth] = useState<Health | null>(null)
   const [apiUp, setApiUp] = useState<boolean | null>(null)
-  const [locations, setLocations] = useState<Record<string, Location>>({})
-  const [map, setMap] = useState<MapInfo | undefined>()
-  const feed = useLiveFeed()
+  const feed = useLiveFeed(onSessionEnded)
 
   useEffect(() => {
     let cancelled = false
@@ -69,23 +99,22 @@ function Lab({ onLogout }: { onLogout?: () => void }) {
     }
   }, [])
 
-  useEffect(() => {
-    // Retry until the API is up; the map and mission form both need locations.
-    if (Object.keys(locations).length > 0 || !apiUp) return
-    fetchLocations().then(setLocations).catch(() => {})
-  }, [apiUp, locations])
+  // The map and mission form both need locations; until the map loads the map draws its built-in floor.
+  const locationsFetch = useRetryingFetch(fetchLocations, apiUp === true)
+  const mapFetch = useRetryingFetch(fetchMap, apiUp === true)
+  const locations = locationsFetch.data ?? NO_LOCATIONS
+  const map = mapFetch.data
+  const loadError = locationsFetch.error ?? mapFetch.error
 
-  useEffect(() => {
-    // Once is enough; until it loads (or if it fails) the map draws its built-in floor.
-    if (map || !apiUp) return
-    fetchMap().then(setMap).catch(() => {})
-  }, [apiUp, map])
-
-  const mqttUp = apiUp === null ? null : (health?.mqtt.connected ?? false)
-  const robots = Object.values(feed.robots).sort((a, b) => a.robotId.localeCompare(b.robotId) || a.key.localeCompare(b.key))
+  const mqttUp = apiUp === null ? null : (health?.mqtt?.connected ?? false)
+  const robots = useMemo(
+    () => Object.values(feed.robots).sort((a, b) => a.robotId.localeCompare(b.robotId) || a.key.localeCompare(b.key)),
+    [feed.robots],
+  )
 
   return (
     <div className="app">
+      <PanelBoundary title="Header" resetKey={health}>
       <header className="header">
         <img src="/logo.png" alt="" />
         <div>
@@ -96,7 +125,7 @@ function Lab({ onLogout }: { onLogout?: () => void }) {
           <StatusPill label="API" ok={apiUp} />
           <StatusPill label="MQTT" ok={mqttUp} />
           <StatusPill label="Live" ok={apiUp === null ? null : feed.connected} />
-          {health && <span className="pill mono">v{health.version}</span>}
+          {health && typeof health.version === 'string' && <span className="pill mono">v{health.version}</span>}
           {onLogout && (
             <button type="button" className="pill logout" onClick={onLogout}>
               Log out
@@ -104,40 +133,49 @@ function Lab({ onLogout }: { onLogout?: () => void }) {
           )}
         </div>
       </header>
+      </PanelBoundary>
 
-      <ReplayBanner replay={feed.replay} />
+      {loadError && (
+        <p className="result error" role="alert">
+          Could not load the map or locations ({loadError}); retrying.
+        </p>
+      )}
+
+      <PanelBoundary title="Replay" resetKey={feed.replay}>
+        <ReplayBanner replay={feed.replay} />
+      </PanelBoundary>
 
       <main className="grid">
-        <PanelBoundary title="Warehouse">
+        <PanelBoundary title="Warehouse" resetKey={feed.robots}>
           <section className="panel panel-wide">
             <h2>Warehouse</h2>
             <WarehouseMap robots={robots} locations={locations} proximity={feed.proximity} map={map} />
           </section>
         </PanelBoundary>
 
-        <PanelBoundary title="Robots">
+        <PanelBoundary title="Robots" resetKey={feed.robots}>
           <section className="panel panel-wide">
             <h2>Robots</h2>
             <RobotTable robots={robots} />
           </section>
         </PanelBoundary>
 
-        <PanelBoundary title="Missions and failures">
+        <PanelBoundary title="Missions and failures" resetKey={feed.robots}>
           <div className="split">
             <MissionSender robots={robots} locations={locations} />
             <FailurePanel robots={robots} failures={feed.failures} />
           </div>
         </PanelBoundary>
 
-        <PanelBoundary title="Sessions">
+        <PanelBoundary title="Sessions" resetKey={feed.recording}>
           <RecorderPanel recording={feed.recording} recordingStopped={feed.recordingStopped} replay={feed.replay} sessionsVersion={feed.sessionsVersion} />
         </PanelBoundary>
 
-        <PanelBoundary title="Validation">
+        <PanelBoundary title="Validation" resetKey={feed.validation}>
           <ValidationPanel validation={feed.validation} />
         </PanelBoundary>
 
-        <PanelBoundary title="Message stream">
+        <PanelBoundary title="Message stream" resetKey={feed.messages}>
           <section className="panel panel-wide">
             <h2>Message stream</h2>
             <MessageStream messages={feed.messages} />
@@ -153,12 +191,17 @@ function Lab({ onLogout }: { onLogout?: () => void }) {
 export default function App() {
   // 'checking' until the first answer: nothing that needs a session may start before it (issue 6).
   const [session, setSession] = useState<SessionStatus | 'checking' | 'unreachable'>('checking')
+  const [logoutError, setLogoutError] = useState<string | null>(null)
+  // Whether the backend ever said a login is required: while it is unreachable, stay where the person is.
+  const [loginRequired, setLoginRequired] = useState(false)
 
   const latest = useRef(0) // an older answer must not overwrite a newer one
   const refresh = useCallback(() => {
     const sequence = ++latest.current
     const apply = (next: SessionStatus | 'unreachable') => {
-      if (sequence >= latest.current) setSession(next)
+      if (sequence < latest.current) return
+      if (next !== 'unreachable') setLoginRequired(next.loginRequired)
+      setSession(next)
     }
     fetchSession()
       .then(apply)
@@ -174,9 +217,26 @@ export default function App() {
   if (session === 'checking') {
     return <p className="muted connecting">Connecting to ActuNode…</p>
   }
-  if (session !== 'unreachable' && session.loginRequired && !session.loggedIn) {
+  if (session === 'unreachable' ? loginRequired : session.loginRequired && !session.loggedIn) {
     return <Login onLoggedIn={refresh} />
   }
-  const onLogout = session !== 'unreachable' && session.loginRequired ? () => logout().finally(refresh) : undefined
-  return <Lab onLogout={onLogout} />
+  const onLogout =
+    session !== 'unreachable' && session.loginRequired
+      ? () => {
+          setLogoutError(null)
+          logout()
+            .catch((err: unknown) => setLogoutError(`Log out failed: ${err instanceof Error ? err.message : 'request failed'}`))
+            .finally(refresh)
+        }
+      : undefined
+  return (
+    <>
+      {logoutError && (
+        <p className="result error" role="alert">
+          {logoutError}
+        </p>
+      )}
+      <Lab onLogout={onLogout} onSessionEnded={refresh} />
+    </>
+  )
 }

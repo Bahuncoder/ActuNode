@@ -1,4 +1,5 @@
 import logging
+from types import SimpleNamespace
 
 import pytest
 
@@ -45,7 +46,7 @@ def test_default_client_id_is_suffixed_per_process(monkeypatch):
 def test_publish_refuses_a_payload_over_the_limit_measured_in_utf8_bytes():
     b = MqttBridge("localhost", 1883, "t", max_payload_bytes=10)
     sent = []
-    b._client.publish = lambda topic, payload, qos=0: sent.append(payload)
+    b._client.publish = lambda topic, payload, qos=0: sent.append(payload) or SimpleNamespace(rc=0)
 
     b.publish("t", "x" * 10)
     with pytest.raises(PayloadTooLarge):

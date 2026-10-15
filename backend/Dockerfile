@@ -15,4 +15,5 @@ USER actunode
 EXPOSE 8000
 # Graceful-shutdown limit below Docker's 10 s stop timeout, so the app's own shutdown
 # (closing a recording with its end record, MQTT disconnect) always runs before a SIGKILL.
-CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000", "--timeout-graceful-shutdown", "5"]
+# --ws-max-size: the live feed accepts no client data (audit W5).
+CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000", "--timeout-graceful-shutdown", "5", "--ws-max-size", "4096"]

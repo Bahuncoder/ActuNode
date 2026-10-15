@@ -26,7 +26,13 @@ from collections.abc import Callable
 from datetime import UTC, datetime
 from pathlib import Path
 
-from app.session_records import MESSAGE_LINE_BYTES, iter_records, parse_line
+from app.session_records import (
+    MESSAGE_LINE_BYTES,
+    SNAPSHOT_LINE_BYTES,
+    SNAPSHOT_ROBOT_BYTES,
+    iter_records,
+    parse_line,
+)
 
 log = logging.getLogger("actunode.recorder")
 
@@ -36,6 +42,22 @@ DEFAULT_MAX_BYTES = 200 * 1024 * 1024
 TAIL_BYTES = 64 * 1024
 MAX_FIELD_CHARS = 200
 SESSION_ID = re.compile(r"^[0-9]{8}-[0-9]{6}(_[A-Za-z0-9_-]{1,40})?$")
+
+
+def fit_snapshot(robots: list[dict]) -> list[dict]:
+    """The robots that fit the snapshot line (SNAPSHOT_LINE_BYTES, each at most SNAPSHOT_ROBOT_BYTES): a reader
+    parses that line whole, so what is written must stay within what is read (D2)."""
+    fitted, used = [], 1024
+    for robot in robots:
+        size = len(json.dumps(robot, separators=(",", ":"), allow_nan=False)) + 1
+        if size > SNAPSHOT_ROBOT_BYTES or used + size > SNAPSHOT_LINE_BYTES:
+            log.warning(
+                "Snapshot: leaving out robot %.100r (%d bytes; the snapshot line is full)", robot.get("key"), size
+            )
+            continue
+        fitted.append(robot)
+        used += size
+    return fitted
 
 
 def _now() -> str:
@@ -82,7 +104,7 @@ class SessionRecorder:
                 "messageCount": 0,
             }
             self._write({"type": "session", "formatVersion": FORMAT_VERSION, **self._session_fields()})
-            self._write({"type": "snapshot", "robots": robots})
+            self._write({"type": "snapshot", "robots": fit_snapshot(robots)})
             return self._status()
 
     def _create(self, stamp: str, name: str | None):
@@ -141,7 +163,7 @@ class SessionRecorder:
                 line["rejected"] = message["rejected"]
             if message.get("issues"):
                 line["issues"] = message["issues"]
-            encoded = json.dumps(line, separators=(",", ":")) + "\n"
+            encoded = json.dumps(line, separators=(",", ":"), allow_nan=False) + "\n"
             if self._bytes + len(encoded.encode()) > self.max_bytes:
                 reason = "sizeLimit"
                 log.warning("Recording %s reached %d bytes; stopping", self._current["sessionId"], self.max_bytes)
@@ -176,7 +198,7 @@ class SessionRecorder:
         return {key: self._current[key] for key in ("sessionId", "name", "startedAt")}
 
     def _write(self, record: dict) -> None:
-        self._write_encoded(json.dumps(record, separators=(",", ":")) + "\n")
+        self._write_encoded(json.dumps(record, separators=(",", ":"), allow_nan=False) + "\n")
 
     def _write_encoded(self, line: str) -> None:
         self._file.write(line)
@@ -186,7 +208,7 @@ class SessionRecorder:
     # --- Stored sessions -------------------------------------------------------
 
     def path_for(self, session_id: str) -> Path | None:
-        if not SESSION_ID.match(session_id):
+        if not SESSION_ID.fullmatch(session_id):
             return None
         path = self.directory / f"{session_id}.jsonl"
         return path if path.is_file() else None
@@ -197,12 +219,15 @@ class SessionRecorder:
         current = self.status()
         sessions = []
         for path in sorted(self.directory.glob("*.jsonl"), reverse=True):
-            if not SESSION_ID.match(path.stem):
+            if not SESSION_ID.fullmatch(path.stem):
                 continue
-            if current and current["sessionId"] == path.stem:
-                sessions.append({**current, "sizeBytes": path.stat().st_size})
-            else:
-                sessions.append(summarize(path))
+            try:
+                if current and current["sessionId"] == path.stem:
+                    sessions.append({**current, "sizeBytes": path.stat().st_size})
+                else:
+                    sessions.append(summarize(path))
+            except FileNotFoundError:
+                pass  # deleted since the directory was read
         return sessions
 
 

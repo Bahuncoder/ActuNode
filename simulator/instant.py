@@ -58,9 +58,15 @@ class InstantActions:
                 len(actions) - len(kept),
                 MAX_ID_LENGTH,
             )
-        # actionParameters are checked per action later: a bad one fails that action, not the message.
-        if check_actions(kept, "actions", parameters=False):
+        # A malformed action is skipped on its own: it must not take a valid cancelOrder of the same message with
+        # it (neither version names an error for it, so it is only logged). actionParameters are checked per
+        # action later: a bad one fails that action.
+        valid = [a for a in kept if not check_actions([a], "actions", parameters=False)]
+        if len(valid) < len(kept):
+            log.warning("%s: skipped %d malformed instant actions", self.robot_id, len(kept) - len(valid))
+        if kept and not valid:
             return None
+        kept = valid
         if len(kept) > MAX_INSTANT_ACTIONS_PER_MESSAGE:
             # Neither spec names an error for this: the extra actions are dropped and only logged.
             log.warning(

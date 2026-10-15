@@ -24,8 +24,6 @@ import time
 from datetime import UTC, datetime
 from pathlib import Path
 
-import paho.mqtt.client as mqtt
-
 log = logging.getLogger("example-fleet-manager")
 
 # The demo warehouse (backend/app/warehouse.py), in metres: this fleet manager's own map.
@@ -47,7 +45,7 @@ def now() -> str:
 
 
 class FleetManager:
-    def __init__(self, client: mqtt.Client, vda: str, manufacturer: str, robot: str, route: list[str], policy: str):
+    def __init__(self, client, vda: str, manufacturer: str, robot: str, route: list[str], policy: str):
         self.client = client
         self.version = "2.1.0" if vda == "2" else "3.0.0"
         self.manufacturer, self.robot = manufacturer, robot
@@ -62,7 +60,8 @@ class FleetManager:
         self.paused_by_us = False
         self.order_id: str | None = None
         self.destination: str | None = None
-        self.reacted_to: str | None = None  # the order whose block was already handled
+        self.block_handled = False  # the current block episode was reacted to; ends when the block clears
+        self.warned_no_position = False
         self.reroute_pending = False
         self.state: dict | None = None
         self.sent_at: float | None = None  # an order sent and not yet confirmed in the robot's state
@@ -81,9 +80,16 @@ class FleetManager:
         }
         self.client.publish(f"{self.prefix}/{topic}", json.dumps(message), qos=1)
 
+    def position(self) -> tuple[float, float, str] | None:
+        """Where the robot says it is (2.1: agvPosition, 3.0: mobileRobotPosition); None before it says."""
+        position = (self.state or {}).get("agvPosition") or (self.state or {}).get("mobileRobotPosition") or {}
+        x, y = position.get("x"), position.get("y")
+        if any(isinstance(v, bool) or not isinstance(v, int | float) for v in (x, y)):
+            return None
+        return x, y, position.get("mapId", "warehouse")
+
     def send_order(self, destination: str, detour: bool = False) -> None:
-        position = self.state.get("agvPosition") or self.state.get("mobileRobotPosition") or {}
-        x, y, map_id = position.get("x"), position.get("y"), position.get("mapId", "warehouse")
+        x, y, map_id = self.position()
         self.jobs += 1
         self.order_id = f"example-{self.robot}-{self.run}-{self.jobs}"
         self.destination = destination
@@ -131,14 +137,16 @@ class FleetManager:
     def on_state(self, state: dict) -> None:
         self.state = state
         blocked = any(e.get("errorType") == "pathBlocked" for e in state.get("errors") or [])
+        if not blocked:
+            self.block_handled = False
         idle = not state.get("nodeStates") and not state.get("edgeStates") and not state.get("driving")
         if self.paused_by_us and not blocked:
             # The operator cleared the aisle: let the robot go on with its order.
             self.paused_by_us = False
             self.instant("stopPause")
             log.info("%s: aisle clear, resuming", self.robot)
-        elif blocked and self.reacted_to != state.get("orderId"):
-            self.reacted_to = state.get("orderId")
+        elif blocked and not self.block_handled:
+            self.block_handled = True
             self.react_to_block(state.get("orderId"))
         elif self.sent_at is not None and state.get("orderId") != self.order_id:
             # Not taken yet: a state from before the order arrived still looks idle. Do not send it twice.
@@ -147,6 +155,11 @@ class FleetManager:
                 log.error("order %s was not taken by %s: %s", self.order_id, self.robot, errors or "no answer")
                 self.sent_at = None
         elif idle and not state.get("paused"):
+            if self.position() is None:  # an order needs a start position: wait until the robot reports one
+                if not self.warned_no_position:
+                    self.warned_no_position = True
+                    log.warning("%s reports no position yet; no order sent", self.robot)
+                return
             self.sent_at = None
             if self.reroute_pending:
                 self.reroute_pending = False
@@ -178,6 +191,8 @@ class FleetManager:
 
 
 def main() -> None:
+    import paho.mqtt.client as mqtt  # only needed to run it, not to test it
+
     parser = argparse.ArgumentParser(description="A minimal VDA 5050 fleet manager for testing with ActuNode.")
     parser.add_argument("--host", default="localhost")
     parser.add_argument("--port", type=int, default=1883)

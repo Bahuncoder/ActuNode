@@ -97,6 +97,7 @@ class VersionProfile:
     path_blocked_level: str
     battery_low_level: str
     deviation_is_ellipse: bool  # allowedDeviationXY: 3.0 {a, b, theta}, 2.1 a radius in meters
+    edges_have_endpoints: bool  # 2.1 edges carry startNodeId and endNodeId; 3.0 edges do not
     cancel_has_order_param: bool  # 3.0 cancelOrder may name the order to cancel
     # 3.0 reports SAME_ORDER_UPDATE_ID for a reused orderUpdateId with other content; 2.1 ignores any such message.
     strict_same_update_id: bool
@@ -144,7 +145,7 @@ _ERRORS_V3 = {
     # mode allows for new orders"). 2.1 has orderUpdateError for any failed update.
     R.UNAVAILABLE: "MOBILE_ROBOT_NOT_AVAILABLE",
     R.STITCH: "VALIDATION_FAILURE",
-    R.OTHER: "orderError",  # e.g. empty battery: neither version names an error
+    R.OTHER: "MOBILE_ROBOT_NOT_AVAILABLE",  # an empty battery on a new order: the closest 3.0 name
 }
 
 _FACTSHEET_V2 = {
@@ -199,6 +200,7 @@ PROFILES = {
         path_blocked_level="WARNING",
         battery_low_level="WARNING",
         deviation_is_ellipse=False,
+        edges_have_endpoints=True,
         cancel_has_order_param=False,
         strict_same_update_id=False,
         cancel_checked_before_same_id=False,
@@ -227,6 +229,7 @@ PROFILES = {
         path_blocked_level="CRITICAL",
         battery_low_level="URGENT",
         deviation_is_ellipse=True,
+        edges_have_endpoints=False,
         cancel_has_order_param=True,
         strict_same_update_id=True,
         cancel_checked_before_same_id=True,

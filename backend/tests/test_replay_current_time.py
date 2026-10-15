@@ -1,4 +1,5 @@
 import json
+from collections import OrderedDict
 from datetime import UTC, datetime
 
 import pytest
@@ -81,6 +82,7 @@ def payloads(monkeypatch, tmp_path):
     monkeypatch.setattr(mqtt_bridge, "publish", lambda topic, payload, qos=0: messages.append(payload))
     monkeypatch.setattr(sessions.recorder, "directory", tmp_path)
     monkeypatch.setattr(sessions.replayer, "ended_at", None)
+    monkeypatch.setattr(sessions.replayer, "last_published", OrderedDict())
     return messages
 
 

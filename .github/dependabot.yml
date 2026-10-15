@@ -1,0 +1,43 @@
+# Weekly update pull requests: GitHub Actions (pinned to commit SHAs), Python, npm and base images.
+version: 2
+updates:
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+  - package-ecosystem: pip
+    directory: /backend
+    schedule:
+      interval: weekly
+  - package-ecosystem: pip
+    directory: /simulator
+    schedule:
+      interval: weekly
+  - package-ecosystem: pip
+    directory: /cli
+    schedule:
+      interval: weekly
+  - package-ecosystem: pip
+    directory: /tests/e2e
+    schedule:
+      interval: weekly
+  - package-ecosystem: npm
+    directory: /frontend
+    schedule:
+      interval: weekly
+  - package-ecosystem: docker
+    directory: /backend
+    schedule:
+      interval: weekly
+  - package-ecosystem: docker
+    directory: /simulator
+    schedule:
+      interval: weekly
+  - package-ecosystem: docker
+    directory: /cli
+    schedule:
+      interval: weekly
+  - package-ecosystem: docker
+    directory: /frontend
+    schedule:
+      interval: weekly

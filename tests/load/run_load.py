@@ -433,7 +433,9 @@ def browser_probe(seconds: float, robots: int, out: dict) -> None:
     try:
         with sync_playwright() as playwright:
             browser = playwright.chromium.launch(headless=True)
-            page = browser.new_page(viewport={"width": 1440, "height": 900})
+            # The UI's CSP forbids eval (D-47); Playwright evaluates string predicates with it. This measures the UI,
+            # not its CSP (the e2e browser tests run under the real policy), so the measuring tool may bypass it.
+            page = browser.new_page(viewport={"width": 1440, "height": 900}, bypass_csp=True)
             page.on("console", lambda m: m.type == "error" and errors.append(f"console: {m.text}"))
             page.on("pageerror", lambda e: errors.append(f"pageerror: {e}"))
             loaded = time.monotonic()
@@ -760,7 +762,8 @@ def evaluate(result: dict) -> list[dict]:
     for key, label, op, limit in THRESHOLDS:
         value = values.get(key)
         if value is None:
-            outcome = "n/a"
+            # A metric that was not measured is a failure, except the browser's under --no-browser.
+            outcome = "n/a" if key.startswith("ui_") and result.get("browser") is None else "FAIL"
         else:
             outcome = "pass" if (value <= limit if op == "<=" else value >= limit) else "FAIL"
         checks.append({"key": key, "label": label, "value": value, "op": op, "limit": limit, "result": outcome})

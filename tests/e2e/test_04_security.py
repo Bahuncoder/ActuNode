@@ -8,15 +8,32 @@ from conftest import HOST, LOCAL_HOST, LOGIN, MQTT_PORT, SHARED, UI_PORT, VDA, w
 from websockets.exceptions import InvalidStatus
 
 
-def connect(stack, username, password):
-    """Connect and return (client, result of the login)."""
+def connect(stack, username, password, plain=False):
+    """Connect and return (client, result of the login). plain: the 127.0.0.1 port without TLS (internal logins:
+    the simulated robots, the backend and the health check are refused on the TLS port, I7)."""
     done, result = threading.Event(), {}
-    client = stack.mqtt_client(username, password)
+    client = stack.mqtt_client(username, password, plain=plain)
     client.on_connect = lambda c, u, f, reason_code, p: (result.update(rc=str(reason_code)), done.set())
-    client.connect(HOST, stack.mqtt_port, 10)
+    client.connect(HOST, MQTT_PORT if plain else stack.mqtt_port, 10)
     client.loop_start()
     done.wait(10)
     return client, result.get("rc")
+
+
+def test_internal_logins_are_refused_on_the_network_port(stack):
+    """The TLS listener lacks the backend, health check and simulated robots logins (I7)."""
+    if not SHARED:
+        return  # plain mode has no TLS port to compare
+    for username, password in [
+        ("ActuNode.robot_01", stack.secret("simulator/password")),
+        ("healthcheck", stack.secret("broker/healthcheck.password")),
+    ]:
+        client, rc = connect(stack, username, password)
+        client.loop_stop()
+        assert rc == "Not authorized", (username, rc)
+        client, rc = connect(stack, username, password, plain=True)
+        client.loop_stop()
+        assert rc == "Success", (username, rc)
 
 
 def test_anonymous_and_wrong_password_logins_are_refused(stack):
@@ -37,7 +54,7 @@ def test_a_robot_can_publish_only_as_itself(stack):
     """robot_01's login cannot publish robot_02's state, order robot_02, inject failures, or publish its
     own serial under another manufacturer (D-28)."""
     robot_password = stack.secret("simulator/password")
-    client, rc = connect(stack, "ActuNode.robot_01", robot_password)
+    client, rc = connect(stack, "ActuNode.robot_01", robot_password, plain=True)
     assert rc == "Success"
 
     attempts = {
@@ -67,10 +84,23 @@ def test_tools_login_reads_but_cannot_publish(stack):
     assert rc == "Success"
     client.publish(f"uagv/v{VDA}/ActuNode/robot_03/state", json.dumps({"SPOOF": "tools"}), qos=1).wait_for_publish(5)
     client.loop_stop()
-    time.sleep(1.5)
+    # Positive control, published after it: robot_01's own (permitted) message. Once that is in the lab, the
+    # tools message before it has had its chance to arrive too.
+    robot, rc = connect(stack, "ActuNode.robot_01", stack.secret("simulator/password"), plain=True)
+    assert rc == "Success"
+    robot.publish(f"uagv/v{VDA}/ActuNode/robot_01/state", json.dumps({"SPOOF": "control"}), qos=1).wait_for_publish(5)
+    robot.loop_stop()
 
-    messages = stack.api.get("/messages").json()
-    assert not any(isinstance(m["payload"], dict) and m["payload"].get("SPOOF") == "tools" for m in messages)
+    def spoof_tags() -> set:
+        return {
+            m["payload"]["SPOOF"]
+            for m in stack.api.get("/messages").json()
+            if isinstance(m["payload"], dict) and m["payload"].get("SPOOF")
+        }
+
+    wait_for(lambda: "control" in spoof_tags(), 10, "the permitted control message to arrive")
+    time.sleep(1)
+    assert "tools" not in spoof_tags()
 
 
 def test_other_web_pages_cannot_use_the_api_through_nginx(stack):

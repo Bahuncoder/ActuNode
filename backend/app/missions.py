@@ -1,4 +1,3 @@
-import re
 from typing import Literal
 from uuid import uuid4
 
@@ -7,7 +6,7 @@ from pydantic import BaseModel, Field
 
 from app import vda5050
 from app.live import hub
-from app.mqtt import PayloadTooLarge
+from app.mqtt import PayloadTooLarge, PublishFailed
 from app.mqtt_state import mqtt_bridge
 from app.proximity import state_position
 from app.sent_orders import sent_orders
@@ -16,8 +15,6 @@ from app.warehouse import LOCATIONS, MAP_SIZE, RACKS, ZONES
 router = APIRouter(prefix="/api")
 
 
-ROBOT_ID_PATTERN = r"^[A-Za-z0-9_-]{1,64}$"
-MAP_ID_PATTERN = re.compile(r"^[A-Za-z0-9_.-]{1,64}$")
 MAX_COORDINATE = 1e6
 # An update sent less than this long ago may still be on its way to the robot (QoS 0, no acknowledgement).
 UPDATE_IN_FLIGHT_S = 5
@@ -26,13 +23,13 @@ UPDATE_IN_FLIGHT_S = 5
 class Address(BaseModel):
     # Optional explicit addressing (default: ACTUNODE_VDA_MAJOR_VERSION and ActuNode). Restricted so it
     # can never inject MQTT topic levels or wildcards.
-    manufacturer: str | None = Field(default=None, pattern=r"^[A-Za-z0-9_.-]{1,64}$", examples=["ActuNode"])
+    manufacturer: str | None = Field(default=None, pattern=vda5050.LEVEL_FIELD, examples=["ActuNode"])
     vda_version: Literal["2", "3"] | None = None
 
 
 class MissionRequest(Address):
     # Restricted so a robot id can never inject MQTT topic levels or wildcards.
-    robot_id: str = Field(pattern=ROBOT_ID_PATTERN, examples=["robot_01"])
+    robot_id: str = Field(pattern=vda5050.ROBOT_ID_FIELD, examples=["robot_01"])
     destination: str = Field(examples=["STORAGE_A17"])
     source: str | None = Field(default=None, examples=["RECEIVING_DOOR_2"])
     load_id: str | None = Field(default=None, max_length=64, examples=["P-1042"])
@@ -98,7 +95,7 @@ def send_mission(mission: MissionRequest) -> dict:
 
 
 @router.post("/missions/{robot_id}/cancel", status_code=202)
-def cancel_mission(robot_id: str = Path(pattern=ROBOT_ID_PATTERN), target: Address | None = None) -> dict:
+def cancel_mission(robot_id: str = Path(pattern=vda5050.ROBOT_ID_FIELD), target: Address | None = None) -> dict:
     major, manufacturer = _address(target or Address())
     _require_broker()
     action_id = f"cancel-{uuid4().hex[:8]}"
@@ -109,7 +106,7 @@ def cancel_mission(robot_id: str = Path(pattern=ROBOT_ID_PATTERN), target: Addre
 
 
 @router.post("/missions/{robot_id}/extend", status_code=202)
-def extend_mission(request: ExtendRequest, robot_id: str = Path(pattern=ROBOT_ID_PATTERN)) -> dict:
+def extend_mission(request: ExtendRequest, robot_id: str = Path(pattern=vda5050.ROBOT_ID_FIELD)) -> dict:
     if request.to_location not in LOCATIONS:
         raise HTTPException(422, f"Unknown location: {request.to_location}")
     _require_broker()
@@ -121,7 +118,7 @@ def extend_mission(request: ExtendRequest, robot_id: str = Path(pattern=ROBOT_ID
         state = _reported_state(robot_id, key)
         if state is None:
             raise HTTPException(409, f"no state from {robot_id} yet; cannot tell what it is running")
-        if (state.get("actunode") or {}).get("missionStatus") == "CANCELLED":
+        if _mission_status(state) == "CANCELLED":
             raise HTTPException(409, "order was cancelled; send a new mission")
         order_id = state.get("orderId")
         sent = sent_orders.get(key, order_id) if isinstance(order_id, str) and order_id else None
@@ -160,6 +157,12 @@ def extend_mission(request: ExtendRequest, robot_id: str = Path(pattern=ROBOT_ID
     return result
 
 
+def _mission_status(state: dict):
+    """The robot's own `actunode.missionStatus`; a robot may send that field as anything."""
+    extra = state.get("actunode")
+    return extra.get("missionStatus") if isinstance(extra, dict) else None
+
+
 def _require_broker() -> None:
     if not mqtt_bridge.connected:
         raise HTTPException(503, "MQTT broker is not connected")
@@ -171,6 +174,8 @@ def _publish(topic: str, message: dict) -> None:
         mqtt_bridge.publish(topic, vda5050.dumps(message), qos=0)
     except PayloadTooLarge as error:
         raise HTTPException(422, "message too large for the broker") from error
+    except PublishFailed as error:
+        raise HTTPException(503, f"MQTT message not sent: {error}") from error
 
 
 def _is_int(value) -> bool:
@@ -206,7 +211,7 @@ def _reported_position(robot_id: str, major: str, manufacturer: str):
     state = _reported_state(robot_id, _key(robot_id, major, manufacturer))
     position = state_position(state) if state else None
     # The map id is robot-controlled and goes into the order we publish: only accept a plain one.
-    if position and MAP_ID_PATTERN.match(position[3]) and all(abs(v) <= MAX_COORDINATE for v in position[1:3]):
+    if position and vda5050.LEVEL_RE.fullmatch(position[3]) and all(abs(v) <= MAX_COORDINATE for v in position[1:3]):
         return position
     return None
 

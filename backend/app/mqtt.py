@@ -14,6 +14,10 @@ class PayloadTooLarge(Exception):
     """The message is bigger than the broker accepts; it would drop our connection."""
 
 
+class PublishFailed(Exception):
+    """The client did not accept the message (not connected, queue full): it was not sent."""
+
+
 class MqttBridge:
     """Background MQTT connection shared by the API.
 
@@ -63,7 +67,9 @@ class MqttBridge:
         size = len(payload.encode("utf-8"))
         if self.max_payload_bytes is not None and size > self.max_payload_bytes:
             raise PayloadTooLarge(f"{size} bytes exceeds {self.max_payload_bytes}")
-        self._client.publish(topic, payload, qos=qos)
+        info = self._client.publish(topic, payload, qos=qos)
+        if info.rc != mqtt.MQTT_ERR_SUCCESS:
+            raise PublishFailed(f"{mqtt.error_string(info.rc)} (rc {info.rc})")
 
     def _on_connect(self, client, userdata, flags, reason_code, properties):
         self.connected = not reason_code.is_failure

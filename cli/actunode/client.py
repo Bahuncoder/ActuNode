@@ -28,7 +28,8 @@ class StackError(Exception):
 
 
 class RequestFailed(Exception):
-    """The stack refused a step (e.g. 409: a robot not on a route cannot be blocked): the scenario failed."""
+    """The stack refused a step (a 4xx such as 409: a robot not on a route cannot be blocked): the scenario failed.
+    A 5xx or 429 is not this: the stack is unwell, so the scenario could not run (StackError)."""
 
     def __init__(self, status: int, detail: str):
         super().__init__(f"{status}: {detail}")
@@ -88,9 +89,15 @@ class Stack:
             except (OSError, ssl.SSLError) as error:
                 raise StackError(f"cannot use CA file {ca_file}: {error}") from None
         self._verify = verify
+        self._logged_in = False
         self._http = httpx.Client(base_url=f"{url}/api", timeout=TIMEOUT_S, verify=verify, transport=transport)
 
     def close(self) -> None:
+        if self._logged_in:  # end the session this run opened; a failure here must not hide the run's result
+            try:
+                self._http.post("/logout")
+            except httpx.HTTPError:
+                pass
         self._http.close()
 
     def _call(self, method: str, path: str, body: dict | None = None):
@@ -104,6 +111,8 @@ class Stack:
             raise StackError("the stack requires login: pass --token-file or set ACTUNODE_TOKEN")
         if response.status_code == 503:
             raise StackError(f"the stack is not ready: {_detail(response)}")
+        if response.status_code >= 500 or response.status_code == 429:
+            raise StackError(f"{method} {path}: the stack answered {response.status_code}: {_detail(response)}")
         if response.status_code >= 400:
             raise RequestFailed(response.status_code, _detail(response))
         try:
@@ -113,6 +122,12 @@ class Stack:
 
     def connect(self) -> dict:
         """Log in if the stack asks for it, and check the backend reaches the MQTT broker. Returns /api/health."""
+        try:
+            return self._connect()
+        except RequestFailed as error:  # e.g. 404 from something that is not an ActuNode stack
+            raise StackError(f"the stack refused the connection check ({error})") from None
+
+    def _connect(self) -> dict:
         session = self._call("GET", "/session")
         if not isinstance(session, dict):
             raise StackError(f"unexpected answer from {self.url}/api/session (is it an ActuNode stack?)")
@@ -123,6 +138,7 @@ class Stack:
                 self._call("POST", "/login", {"token": self._token})
             except RequestFailed as error:
                 raise StackError(f"login refused: {error.detail}") from None
+            self._logged_in = True
         health = self._shaped(self._call("GET", "/health"), dict, "/api/health")
         if not (health.get("mqtt") or {}).get("connected"):
             raise StackError("the backend is not connected to the MQTT broker")
@@ -160,8 +176,9 @@ class Stack:
             raise StackError("the stack sent a mission but named no order id")
         return sent
 
-    def cancel_mission(self, robot: str, vda_version: str | None) -> dict:
-        return self._call("POST", f"/missions/{robot}/cancel", {"vda_version": vda_version} if vda_version else None)
+    def cancel_mission(self, robot: str, vda_version: str | None, manufacturer: str | None = None) -> dict:
+        body = {k: v for k, v in (("vda_version", vda_version), ("manufacturer", manufacturer)) if v}
+        return self._call("POST", f"/missions/{robot}/cancel", body or None)
 
     def failure(self, robot: str, failure: str, action: str, params: dict | None = None) -> dict:
         return self._call(

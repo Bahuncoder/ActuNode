@@ -8,9 +8,18 @@ from collections.abc import Callable
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
-from app.jsonsafe import MAX_DEPTH, REJECTED_RULES, too_deep
+from app import vda5050
+from app.jsonsafe import MAX_DEPTH, MAX_VALUES, REJECTED_RULES, loads, shape_rule
+from app.live import MAX_ROBOTS
 from app.recorder import FORMAT_VERSION, SESSION_ID
-from app.session_records import MESSAGE_LINE_BYTES, RecordError, parse_line, scan_records
+from app.session_records import (
+    MAX_T,
+    MESSAGE_LINE_BYTES,
+    SNAPSHOT_ROBOT_BYTES,
+    RecordError,
+    parse_line,
+    scan_records,
+)
 
 log = logging.getLogger("actunode.retention")
 
@@ -30,13 +39,24 @@ def _started(path: Path) -> datetime:
     try:
         return datetime.strptime(path.stem[:15], "%Y%m%d-%H%M%S").replace(tzinfo=UTC)
     except ValueError:
-        return datetime.fromtimestamp(path.stat().st_mtime, UTC)
+        return datetime.fromtimestamp(path.stat().st_mtime, UTC)  # may raise FileNotFoundError: callers skip
 
 
 def session_files(directory: Path) -> list[Path]:
     if not directory.is_dir():
         return []
-    return [p for p in directory.glob("*.jsonl") if SESSION_ID.match(p.stem) and p.is_file()]
+    return [p for p in directory.glob("*.jsonl") if SESSION_ID.fullmatch(p.stem) and p.is_file()]
+
+
+def _stats(directory: Path) -> dict[Path, os.stat_result]:
+    """Size and times of each session file; one deleted meanwhile (another request, retention) is left out."""
+    stats = {}
+    for path in session_files(directory):
+        try:
+            stats[path] = path.stat()
+        except FileNotFoundError:
+            pass
+    return stats
 
 
 def enforce_retention(
@@ -45,7 +65,7 @@ def enforce_retention(
     """Delete sessions older than `keep_days`, then the oldest until the total is within `max_total_mb`
     (0 disables a rule). Sessions in `protected` stay. Returns the ids deleted."""
     now = now or datetime.now(UTC)
-    stats = {p: p.stat() for p in session_files(directory)}
+    stats = _stats(directory)
     # Ids only have whole seconds: the file's mtime breaks ties, so "oldest first" is well defined.
     files = sorted(((_started(p), p) for p in stats), key=lambda item: (item[0], stats[item[1]].st_mtime, item[1].name))
     sizes = {p: st.st_size for p, st in stats.items()}
@@ -55,7 +75,7 @@ def enforce_retention(
     def delete(path: Path, why: str) -> None:
         nonlocal total
         try:
-            path.unlink()
+            path.unlink(missing_ok=True)
         except OSError as error:
             log.warning("Retention could not delete %s: %s", path.name, error)
             return
@@ -80,8 +100,8 @@ def enforce_retention(
 
 def storage_used(directory: Path) -> tuple[int, int]:
     """(bytes used, number of sessions)."""
-    files = session_files(directory)
-    return sum(p.stat().st_size for p in files), len(files)
+    stats = _stats(directory)
+    return sum(st.st_size for st in stats.values()), len(stats)
 
 
 def remove_upload_temps(directory: Path) -> None:
@@ -138,8 +158,8 @@ def check_upload(path: Path) -> dict:
                 raise _bad(number, f"unknown record type {kind!r}")
             if kind == "session":
                 raise _bad(number, "a second session header")
-            if kind == "snapshot" and not isinstance(record.get("robots"), list):
-                raise _bad(number, "snapshot without a robots list")
+            if kind == "snapshot":
+                _check_snapshot(number, record)
             if kind == "message":
                 _check_message(number, record)
                 messages += 1
@@ -157,6 +177,19 @@ def check_upload(path: Path) -> dict:
     return {"header": header, "ended": ended, "messages": messages, "lastReceivedAt": last_received, "torn": torn}
 
 
+def _check_snapshot(number: int, record: dict) -> None:
+    robots = record.get("robots")
+    if not isinstance(robots, list):
+        raise _bad(number, "snapshot without a robots list")
+    if len(robots) > MAX_ROBOTS:
+        raise _bad(number, f"snapshot with more than {MAX_ROBOTS} robots")
+    for robot in robots:
+        if not isinstance(robot, dict):
+            raise _bad(number, "snapshot robots must be objects")
+        if len(json.dumps(robot)) > SNAPSHOT_ROBOT_BYTES:  # ASCII-escaped: cannot fail on a lone surrogate
+            raise _bad(number, f"a snapshot robot is larger than {SNAPSHOT_ROBOT_BYTES} bytes")
+
+
 def _check_end(number: int, record: dict) -> None:
     _optional_text(number, record, "endedAt")
     _optional_text(number, record, "reason")
@@ -166,17 +199,25 @@ def _check_end(number: int, record: dict) -> None:
 
 
 def _check_message(number: int, record: dict) -> None:
-    if not isinstance(record.get("topic"), str):
+    topic = record.get("topic")
+    if not isinstance(topic, str):
         raise _bad(number, "message without a topic")
+    if len(topic) > vda5050.MAX_TOPIC_CHARS or vda5050.UNSAFE_TOPIC_CHARS.search(topic):
+        raise _bad(number, f"topic longer than {vda5050.MAX_TOPIC_CHARS} characters or with control characters")
     t = record.get("t")
     if isinstance(t, bool) or not isinstance(t, int | float):
         raise _bad(number, "message without a numeric t")
+    if not 0 <= t <= MAX_T:
+        raise _bad(number, f"t must be between 0 and {MAX_T:g} seconds")
     rejected = record.get("rejected")
     if "rejected" in record and not (isinstance(rejected, str) and rejected in REJECTED_RULES):
         raise _bad(number, f"unknown rejected rule {record['rejected']!r}")
     if "payload" in record:
-        if too_deep(record["payload"]):
+        rule = shape_rule(record["payload"])
+        if rule == "too-deep":
             raise _bad(number, f"payload nested deeper than {MAX_DEPTH} levels")
+        if rule:
+            raise _bad(number, f"payload with more than {MAX_VALUES} values")
     elif not isinstance(record.get("payloadRaw"), str):
         raise _bad(number, "message with neither payload nor payloadRaw")
 
@@ -211,19 +252,20 @@ class UploadWriter:
             return
         self._held += chunk
         if b"\n" in self._held or len(self._held) > MESSAGE_LINE_BYTES:
-            self._release_first_line()
+            self._release_first_line(complete=False)
 
     def close(self) -> None:
         try:
             if self._held is not None:
-                self._release_first_line()
+                self._release_first_line(complete=True)
         finally:
             self._file.close()
 
-    def _release_first_line(self) -> None:
+    def _release_first_line(self, complete: bool) -> None:
+        """`complete`: the upload ended, so a first line without a newline is the whole file (D11)."""
         data, self._held = bytes(self._held), None
         line, newline, rest = data.partition(b"\n")
-        header = parse_line(line)[0] if newline else None
+        header = parse_line(line)[0] if newline or complete else None
         if header is not None and header.get("type") == "session":
             self.name = self._choose_name(header)
             self.session_id, self.attempt = new_session_id(self._directory, self.name, self._clock)
@@ -278,7 +320,7 @@ def finish_upload(
 
 def _rewrite_header(source: Path, target: Path, session_id: str) -> None:
     with source.open("rb") as src, target.open("wb") as dst:
-        header = json.loads(src.readline())
+        header = loads(src.readline())
         dst.write(json.dumps({**header, "sessionId": session_id}, separators=(",", ":")).encode() + b"\n")
         while chunk := src.read(1024 * 1024):
             dst.write(chunk)

@@ -13,7 +13,7 @@ from pathlib import Path
 
 from actunode import __version__
 from actunode.capture import MAX_SESSION_BYTES, ImportError_, convert
-from actunode.client import DEFAULT_URL, Stack, StackError, read_token
+from actunode.client import DEFAULT_URL, RequestFailed, Stack, StackError, read_token
 from actunode.report import Console, junit, safe
 from actunode.runner import ERROR, FAILED, Runner
 from actunode.scenario import ScenarioError, find, load
@@ -148,11 +148,13 @@ def main(argv: list[str] | None = None, out=None, stack_factory=Stack, stdin=Non
         return EXIT_ERROR
 
     results = []
+    runner = None
+    interrupted = False
     try:
         try:
             health = stack.connect()
             console.line(f"ActuNode {safe(health.get('version', '?'))} at {args.url}\n")
-        except StackError as error:
+        except (StackError, RequestFailed) as error:
             console.line(f"error: {error}")
             return EXIT_ERROR
         runner = Runner(
@@ -168,20 +170,30 @@ def main(argv: list[str] | None = None, out=None, stack_factory=Stack, stdin=Non
             console.scenario_finished(result)
             results.append(result)
     except KeyboardInterrupt:
-        cleaned = "left as they were" if args.no_cleanup else "cleaned up"
+        interrupted = True
+        current = runner.current if runner else None
+        if args.no_cleanup:
+            cleaned = "left as they were"
+        elif current is not None and not current.cleanup_complete:
+            cleaned = "NOT fully cleaned up: check the robots in the lab"
+        else:
+            cleaned = "cleaned up"
         console.line(f"\ninterrupted (injected failures and running missions were {cleaned})")
-        return EXIT_INTERRUPTED
     finally:
         stack.close()
 
     seconds = time.monotonic() - started
-    console.summary(results, seconds)
-    if args.junit:
+    if not interrupted:
+        console.summary(results, seconds)
+    code = EXIT_INTERRUPTED if interrupted else EXIT_PASSED
+    if args.junit:  # also after Ctrl-C: for the scenarios that finished
         try:
             _write(args.junit, junit(results, seconds))
         except StackError as error:
             console.line(f"error: {error}")
             return EXIT_ERROR
+    if interrupted:
+        return code
     if any(r.outcome == ERROR for r in results):
         return EXIT_ERROR
     if any(r.outcome == FAILED for r in results):

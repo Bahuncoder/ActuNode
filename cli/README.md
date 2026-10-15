@@ -59,10 +59,15 @@ broke" (1) from "the test environment broke" (3).
 3. Afterwards the runner **cleans up** what the scenario left: it clears injected `BLOCKED_PATH` and
    `LOW_BATTERY` failures it did not clear itself, and cancels orders it sent that are still running. The
    robots are left as the scenario found them, for the next scenario and for anyone using the lab. This
-   also happens on Ctrl-C. Then the recording stops, so it contains the cleanup too.
+   also happens on Ctrl-C, and the JUnit report is still written for the scenarios that finished; the runner
+   says whether the cleanup completed. `DISCONNECT` and `UNRESPONSIVE` end by themselves (up to 300 s): cleanup
+   waits up to 30 s for them, else reports "DISCONNECT on robot_03 still active for N s". Then the recording
+   stops, so it contains the cleanup too.
 
 A step the lab refuses (for example `inject BLOCKED_PATH` on a robot that is not driving: HTTP 409) fails
-the scenario with the lab's reason.
+the scenario with the lab's reason. A lab that is unwell (HTTP 5xx, 429, for example a 502 while the backend
+restarts) or refuses a setup request means the scenario **could not run** (exit 3), not that it failed. The
+runner logs in on each run and logs out at the end.
 
 ## File format
 
@@ -70,6 +75,7 @@ the scenario with the lab's reason.
 name: P-1042 blocked on the way to storage     # required
 description: free text                         # optional
 vda_version: "2"                               # optional: "2" or "3"; default: what the lab runs
+manufacturer: Acme                             # optional: the robots' manufacturer; default: ActuNode
 steps:                                         # required, at least one
   - send_mission: {robot: robot_01, source: RECEIVING_DOOR_2, destination: STORAGE_A17, load: P-1042, as: p1042}
   - expect: {robot: robot_01, order: p1042, status: MOVING, within: 15}
@@ -78,6 +84,12 @@ steps:                                         # required, at least one
 Every key is checked. An unknown key, a key given twice or a misspelt value is an error that names its
 place (`steps[3].expect.staus: unknown field`), so a typo never silently weakens a test. Every error in a
 file is reported at once. YAML anchors and aliases (`&name`, `*name`) are not supported.
+
+`manufacturer` is the default for every step that names a robot; a step can give its own (`send_mission`,
+`cancel_mission`, `expect`, `never`). The runner then sends it with the mission and the cancel, and reads
+the robot of that manufacturer (one serial can exist for several). `inject` and `clear` work only on
+ActuNode's simulated robots: a scenario that asks for them on another manufacturer is invalid (give
+`manufacturer: ActuNode` on those steps).
 
 ### Steps
 
@@ -159,6 +171,11 @@ It writes a session file like a recording: upload it in the lab (Sessions, **Upl
 that cannot be read are skipped and listed (`--strict` stops at the first). Nothing connects anywhere: the
 customer sends a file, nobody needs access to their network. The capture has no retained flag, and times
 are kept to the millisecond.
+
+The session is written to a temporary file next to the output and renamed when done: an error never leaves a
+partial file, and `--force` keeps the old file if the import fails. The output may not be the capture itself.
+The format `%U %t %p` cannot represent a topic containing a space, or a payload spanning several lines
+(each line is one message; a continuation line is skipped as unreadable). An empty payload (legitimate MQTT) is imported.
 
 ## Sample scenarios
 

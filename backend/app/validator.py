@@ -6,6 +6,7 @@ suspicious in sequence (a restarted sender, a skipped state, ...).
 """
 
 import json
+import re
 from collections import OrderedDict
 from datetime import datetime
 from pathlib import Path
@@ -32,20 +33,22 @@ ALLOWED_TRANSITIONS = {
     "WAITING": {"MOVING", "BLOCKED", "COMPLETED", "FAILED", "CANCELLED"},
     "BLOCKED": {"MOVING", "CANCELLED"},
     "COMPLETED": {"ACCEPTED", "WAITING"},
-    "FAILED": {"ACCEPTED", "MOVING", "CANCELLED"},  # keeps its order until cancelled; an update resumes it (D-35)
+    # keeps its order until cancelled; an update resumes it (D-35); the simulator also goes on to WAITING / COMPLETED
+    "FAILED": {"ACCEPTED", "MOVING", "WAITING", "COMPLETED", "CANCELLED"},
     "CANCELLED": {"ACCEPTED"},
 }
 
 RULES = {
     "invalid-json": "Payload is not valid JSON",
     "payload-too-large": "Payload is larger than the 256 KiB ActuNode accepts (not parsed)",
-    "non-finite-number": "Payload contains NaN or Infinity, which JSON does not allow",
+    "non-finite-number": "Payload contains NaN, Infinity or a number too large for a double or 64-bit integer",
     "too-deep": "Payload is nested deeper than 32 levels (rejected)",
+    "too-many-values": "Payload holds more than 10,000 JSON values (rejected; a limit on memory, not on the protocol)",
     "validator-error": "ActuNode's own validator failed on this message (a bug to report; message kept)",
     "schema": "Payload does not match the message schema",
     "topic-mismatch": "serialNumber/manufacturer differ from the topic",
     "version-mismatch": "Protocol version does not match the topic's major version",
-    "timestamp": "Timestamp is not ISO 8601 with a time zone",
+    "timestamp": "Timestamp is not ISO 8601 in UTC (YYYY-MM-DDThh:mm:ss.fffZ, as VDA 5050 requires)",
     "header-id": "headerId did not increase on this topic",
     "order-sequence": "Order nodes/edges are not a valid alternating sequence",
     "mission-transition": "Mission status changed in a way the state machine does not allow",
@@ -74,8 +77,18 @@ def _own(name: str) -> Draft202012Validator:
     return Draft202012Validator(json.loads((SCHEMA_DIR / f"{name}.schema.json").read_text()))
 
 
+MAX_ISSUE_TEXT = 300
+# VDA 5050 timestamps: ISO 8601, UTC, with the Z (the spec's example: 2017-04-15T11:40:03.12Z).
+_UTC_TIMESTAMP = re.compile(r"\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(\.\d+)?Z")
+
+
 def issue(severity: str, rule: str, message: str, path: str = "") -> dict:
-    return {"severity": severity, "rule": rule, "message": message, "path": path}
+    """Texts are cut: they carry values from the message, which can be as long as the message."""
+    return {"severity": severity, "rule": rule, "message": message[:MAX_ISSUE_TEXT], "path": path[:MAX_ISSUE_TEXT]}
+
+
+def _short(value) -> str:
+    return repr(value)[:100]
 
 
 def _dict(value) -> dict:
@@ -158,7 +171,7 @@ class Validator:
                 issue(
                     "error",
                     "topic-mismatch",
-                    f"serialNumber {payload['serialNumber']!r} on topic for {serial_number!r}",
+                    f"serialNumber {_short(payload['serialNumber'])} on topic for {_short(serial_number)}",
                     "/serialNumber",
                 )
             )
@@ -167,7 +180,7 @@ class Validator:
                 issue(
                     "error",
                     "topic-mismatch",
-                    f"manufacturer {payload['manufacturer']!r} on topic for {manufacturer!r}",
+                    f"manufacturer {_short(payload['manufacturer'])} on topic for {_short(manufacturer)}",
                     "/manufacturer",
                 )
             )
@@ -177,8 +190,8 @@ class Validator:
             issues.append(issue("error", "version-mismatch", f"version {version} on a {major} topic", "/version"))
 
         timestamp = payload.get("timestamp")
-        if isinstance(timestamp, str) and not _is_iso_with_zone(timestamp):
-            issues.append(issue("error", "timestamp", f"{timestamp!r} is not ISO 8601 with a time zone", "/timestamp"))
+        if isinstance(timestamp, str) and not _is_utc_timestamp(timestamp):
+            issues.append(issue("error", "timestamp", f"{_short(timestamp)} is not ISO 8601 in UTC (…Z)", "/timestamp"))
 
         header_id = payload.get("headerId")
         # The broker-published last will carries an outdated headerId by design (VDA 5050 2.1 6.14).
@@ -231,7 +244,7 @@ class Validator:
                     f"edge {edge.get('edgeId')} connects {edge.get('startNodeId')}->{edge.get('endNodeId')}, "
                     f"expected {before.get('nodeId')}->{after.get('nodeId')}"
                 )
-        return [issue("error", "order-sequence", problem, "/nodes") for problem in problems]
+        return [issue("error", "order-sequence", problem, "/nodes") for problem in problems[:MAX_SCHEMA_ISSUES]]
 
     # --- Sequence checks on state ----------------------------------------------
 
@@ -291,8 +304,11 @@ class Validator:
         return issues
 
 
-def _is_iso_with_zone(value: str) -> bool:
+def _is_utc_timestamp(value: str) -> bool:
+    if not _UTC_TIMESTAMP.fullmatch(value):
+        return False
     try:
-        return datetime.fromisoformat(value).tzinfo is not None
+        datetime.fromisoformat(value)  # a real date and time, not month 13
     except ValueError:
         return False
+    return True

@@ -24,9 +24,12 @@ steps:
       within: 5
 
   # The question. Any one of these counts; silence for 10 s is the failure.
+  # A reroute counts only as a NEW order (orderUpdateId 0): an update of the blocked order (orderUpdateId above 0)
+  # does not move the robot out of the block. Trade-off: a fleet manager that reroutes by extending the order is
+  # not recognised; change the `orderUpdateId` match (or drop it) if that is what yours does.
   - expect:
       message:
         - {topic: uagv/+/+/robot_03/instantActions, match: {actions: [{actionType: cancelOrder}]}}
-        - {topic: uagv/+/+/robot_03/order}
+        - {topic: uagv/+/+/robot_03/order, match: {orderUpdateId: 0}}
         - {topic: uagv/+/+/robot_03/instantActions, match: {actions: [{actionType: startPause}]}}
       within: 10

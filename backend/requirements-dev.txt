@@ -1,4 +1,4 @@
 -r requirements.txt
-pytest>=8
-httpx2
+pytest>=8,<10
+httpx2>=2.13,<3  # Starlette 1.7 TestClient imports httpx2 (the pydantic/httpx2 package), not httpx
 ruff==0.17.0

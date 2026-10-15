@@ -70,7 +70,7 @@ def horizon_order(order_id="h-1", update_id=0, released=2, drop=True):
             "sequenceId": i * 2,
             "released": i < released,
             "nodePosition": {"x": x, "y": y, "mapId": "warehouse"},
-            "actions": [{"actionId": f"act-{name}", "actionType": "drop", "blockingType": "HARD"}]
+            "actions": [{"actionId": f"act-{name}", "actionType": "pick", "blockingType": "HARD"}]
             if drop and i == 1
             else [],
         }
@@ -83,7 +83,7 @@ def horizon_order(order_id="h-1", update_id=0, released=2, drop=True):
             "released": i < released,
             "startNodeId": points[i - 1][0],
             "endNodeId": points[i][0],
-            "actions": [{"actionId": f"e-{i}", "actionType": "pick", "blockingType": "HARD"}] if i == 1 else [],
+            "actions": [],
         }
         for i in range(1, len(points))
     ]

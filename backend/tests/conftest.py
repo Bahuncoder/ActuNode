@@ -14,3 +14,11 @@ def _clear_sent_orders():
     sent_orders.clear()
     yield
     sent_orders.clear()
+
+
+@pytest.fixture(autouse=True)
+def _no_dns_for_trusted_proxies(monkeypatch):
+    """A lookup of the real proxy name ("frontend") waits for DNS, which can take seconds; a miss now waits for it."""
+    from app import auth
+
+    monkeypatch.setattr(auth.trusted_proxies, "refresh", lambda: None)

@@ -1,7 +1,16 @@
-import { useEffect, useReducer } from 'react'
+import { useEffect, useReducer, useRef } from 'react'
 
 const MAX_MESSAGES = 500
 const RECONNECT_MS = 2000
+const MAX_RECONNECT_MS = 30_000
+// A connection that lasted this long was a good one: backoff and the fast-retry budget start over.
+const GOOD_CONNECTION_MS = 10_000
+const MAX_FAST_RETRIES = 5
+// Hidden tabs do not run animation frames: flush on a timer, and never queue more than this.
+const HIDDEN_FLUSH_MS = 500
+const MAX_QUEUE = 5000
+// Close code 1008: the server ended our session (logout, expiry); the app must re-check it, not retry.
+const SESSION_ENDED_CLOSE = 1008
 // Close code 1013: the server dropped us for lagging; a fresh snapshot is one reconnect away.
 const LAGGING_CLOSE = 1013
 const LAGGING_RECONNECT_MS = 250
@@ -10,38 +19,9 @@ const FRAME_FALLBACK_MS = 50
 const MAX_ROBOTS = 1000
 const MAX_FAILURES = 200
 
-export type NodeState = {
-  nodeId: string
-  sequenceId: number
-  nodePosition?: { x: number; y: number }
-}
-
-export type RobotError = {
-  errorType: string
-  errorLevel: string
-  errorDescription?: string
-}
-
-export type RobotState = {
-  orderId: string
-  lastNodeId: string
-  driving: boolean
-  // VDA 5050 startPause/stopPause; persists across orders until stopPause.
-  paused?: boolean
-  // Set by the backend when it stored a trimmed copy of a very large state (issue 21).
-  _truncated?: { bytes?: number; lists?: Record<string, number>; dropped?: string[] }
-  version?: string
-  // VDA 5050 2.x names ...
-  agvPosition?: { x: number; y: number; theta: number }
-  batteryState?: { batteryCharge: number; charging: boolean }
-  // ... and their 3.0 replacements (docs/research/VDA5050_3_0.md)
-  mobileRobotPosition?: { x: number; y: number; theta: number }
-  powerSupply?: { stateOfCharge: number; charging: boolean }
-  nodeStates: NodeState[]
-  errors: RobotError[]
-  loads?: { loadId: string }[]
-  actunode?: { missionStatus: string; injectedFailures?: string[] }
-}
+// Robot state is whatever an MQTT client published (that is what ActuNode is for): every field is unknown and
+// is read only through get(), num(), point(), text(), stringList() and display() below.
+export type RobotState = Record<string, unknown>
 
 export type Robot = {
   // "v2/ActuNode/robot_01": one robot is one (vdaMajor, manufacturer, serial); robotId is the serial.
@@ -198,6 +178,8 @@ function applyEvent(feed: Feed, event: LiveEvent): Feed {
       replay: event.replay,
       validation: event.validation,
       proximity: event.proximity ?? [],
+      // Session events missed while disconnected: make the list refetch.
+      sessionsVersion: feed.sessionsVersion + 1,
     }
   }
   if (event.type === 'proximity') {
@@ -284,7 +266,7 @@ function countIssues(validation: ValidationSummary | null, message: MqttMessage)
 }
 
 /** Live robots and MQTT messages from the backend WebSocket, reconnecting on drop. */
-export function useLiveFeed(): Feed {
+export function useLiveFeed(onSessionEnded?: () => void): Feed {
   const [feed, dispatch] = useReducer(reducer, {
     connected: false,
     robots: {},
@@ -296,6 +278,11 @@ export function useLiveFeed(): Feed {
     validation: null,
     proximity: [],
     sessionsVersion: 0,
+  })
+
+  const sessionEnded = useRef(onSessionEnded)
+  useEffect(() => {
+    sessionEnded.current = onSessionEnded
   })
 
   useEffect(() => {
@@ -316,32 +303,80 @@ export function useLiveFeed(): Feed {
 
     function schedule() {
       if (frame) return
-      if (typeof requestAnimationFrame === 'function') {
-        const id = requestAnimationFrame(flush)
-        frame = { cancel: () => cancelAnimationFrame(id) }
-      } else {
-        const id = setTimeout(flush, FRAME_FALLBACK_MS)
-        frame = { cancel: () => clearTimeout(id) }
+      const cancels: (() => void)[] = []
+      const run = () => {
+        cancels.forEach((cancel) => cancel())
+        flush()
       }
+      if (typeof requestAnimationFrame === 'function') {
+        const id = requestAnimationFrame(run)
+        cancels.push(() => cancelAnimationFrame(id))
+        // A hidden tab never runs the frame: the timer flushes instead.
+        const timer = setTimeout(run, HIDDEN_FLUSH_MS)
+        cancels.push(() => clearTimeout(timer))
+      } else {
+        const timer = setTimeout(run, FRAME_FALLBACK_MS)
+        cancels.push(() => clearTimeout(timer))
+      }
+      frame = { cancel: () => cancels.forEach((cancel) => cancel()) }
     }
+
+    let attempts = 0 // consecutive failed connections, for the backoff
+    let fastRetries = 0 // consecutive quick reconnects after 1013 / queue overflow
 
     function connect() {
       const protocol = window.location.protocol === 'https:' ? 'wss' : 'ws'
-      socket = new WebSocket(`${protocol}://${window.location.host}/api/ws`)
-      socket.onopen = () => dispatch({ type: 'connected' })
-      socket.onmessage = (message) => {
+      const current = new WebSocket(`${protocol}://${window.location.host}/api/ws`)
+      socket = current
+      let openedAt = 0
+      let overflow = false
+      current.onopen = () => {
+        openedAt = Date.now()
+        dispatch({ type: 'connected' })
+      }
+      current.onmessage = (message) => {
+        if (overflow) return
+        attempts = 0 // the server answered: the next failure starts the backoff again
         try {
           queue.push(JSON.parse(message.data))
-          schedule()
         } catch {
           console.warn('ActuNode: ignored a live frame the browser could not parse')
+          return
         }
+        if (queue.length > MAX_QUEUE) {
+          // Nothing is draining the queue (hidden tab, stalled page): drop it and resync from a fresh snapshot.
+          overflow = true
+          queue = []
+          frame?.cancel()
+          frame = null
+          current.close()
+          return
+        }
+        schedule()
       }
-      socket.onclose = (event) => {
+      current.onclose = (event) => {
         frame?.cancel()
         flush() // events that arrived before the drop come before 'disconnected'
         dispatch({ type: 'disconnected' })
-        if (!closed) retry = setTimeout(connect, event.code === LAGGING_CLOSE ? LAGGING_RECONNECT_MS : RECONNECT_MS)
+        if (closed) return
+        if (event.code === SESSION_ENDED_CLOSE) {
+          sessionEnded.current?.()
+          return
+        }
+        if (openedAt && Date.now() - openedAt >= GOOD_CONNECTION_MS) {
+          attempts = 0
+          fastRetries = 0
+        }
+        let delay: number
+        if ((event.code === LAGGING_CLOSE || overflow) && fastRetries < MAX_FAST_RETRIES) {
+          fastRetries += 1
+          delay = LAGGING_RECONNECT_MS
+        } else {
+          // Exponential backoff with jitter, so a restarted backend is not hit by every tab at once.
+          delay = Math.min(MAX_RECONNECT_MS, RECONNECT_MS * 2 ** attempts) * (0.5 + Math.random() / 2)
+          attempts += 1
+        }
+        retry = setTimeout(connect, delay)
       }
     }
 
@@ -364,41 +399,74 @@ export function num(value: unknown): number | undefined {
   return typeof value === 'number' && Number.isFinite(value) ? value : undefined
 }
 
+/** A property of something that may not be an object; never throws, even for a throwing getter. */
+export function get(value: unknown, key: string): unknown {
+  try {
+    return value !== null && typeof value === 'object' ? (value as Record<string, unknown>)[key] : undefined
+  } catch {
+    return undefined
+  }
+}
+
+/** The strings of a list; anything that is not a list gives an empty one. */
+export function stringList(value: unknown): string[] {
+  return Array.isArray(value) ? value.filter((item): item is string => typeof item === 'string') : []
+}
+
+/** Any wire value as text; never throws (String() does for {"toString":0}). */
+export function display(value: unknown): string {
+  if (typeof value === 'string') return value
+  if (typeof value === 'number') return Number.isFinite(value) ? String(value) : 'null'
+  if (typeof value === 'boolean') return String(value)
+  try {
+    return JSON.stringify(value) ?? String(typeof value)
+  } catch {
+    return '[unprintable]'
+  }
+}
+
 export function point(value: unknown): { x: number; y: number } | undefined {
-  const candidate = value as { x?: unknown; y?: unknown } | null
-  const x = num(candidate?.x)
-  const y = num(candidate?.y)
+  const x = num(get(value, 'x'))
+  const y = num(get(value, 'y'))
   return x === undefined || y === undefined ? undefined : { x, y }
 }
 
 export function robotPose(robot: Robot): { x: number; y: number; theta: number; mapId?: string } | undefined {
   // 2.x or 3.0; the first that is well formed, like the backend (proximity.py state_position).
-  for (const raw of [robot.state?.agvPosition, robot.state?.mobileRobotPosition]) {
+  for (const raw of [get(robot.state, 'agvPosition'), get(robot.state, 'mobileRobotPosition')]) {
     const position = point(raw)
     if (position) {
-      const mapId = (raw as { mapId?: unknown }).mapId
-      return { ...position, theta: num(raw?.theta) ?? 0, ...(typeof mapId === 'string' && { mapId }) }
+      const mapId = get(raw, 'mapId')
+      return { ...position, theta: num(get(raw, 'theta')) ?? 0, ...(typeof mapId === 'string' && { mapId }) }
     }
   }
   return undefined
 }
 
 export function batteryCharge(robot: Robot): number | undefined {
-  return num(robot.state?.batteryState?.batteryCharge) ?? num(robot.state?.powerSupply?.stateOfCharge) // 2.x or 3.0
+  // 2.x or 3.0
+  return num(get(get(robot.state, 'batteryState'), 'batteryCharge')) ?? num(get(get(robot.state, 'powerSupply'), 'stateOfCharge'))
 }
 
 export function routePoints(robot: Robot): { x: number; y: number }[] {
-  const nodes = robot.state?.nodeStates
-  return Array.isArray(nodes) ? nodes.flatMap((node) => point(node?.nodePosition) ?? []) : []
+  const nodes = get(robot.state, 'nodeStates')
+  return Array.isArray(nodes) ? nodes.flatMap((node) => point(get(node, 'nodePosition')) ?? []) : []
 }
 
 export function robotErrors(robot: Robot): string[] {
-  const errors = robot.state?.errors
+  const errors = get(robot.state, 'errors')
   if (!Array.isArray(errors)) return []
   return errors.map((error) => {
-    const message = String(error?.errorDescription ?? error?.errorType ?? 'error')
-    return typeof error?.errorLevel === 'string' && error.errorLevel ? `${message} (${error.errorLevel})` : message
+    const message = display(get(error, 'errorDescription') ?? get(error, 'errorType') ?? 'error')
+    const level = get(error, 'errorLevel')
+    return typeof level === 'string' && level ? `${message} (${level})` : message
   })
+}
+
+/** Failures the simulator reports as active on this robot; undefined when it does not report any (older simulators). */
+export function injectedFailures(robot: Robot | undefined): string[] | undefined {
+  const injected = get(get(robot?.state, 'actunode'), 'injectedFailures')
+  return injected === undefined ? undefined : stringList(injected)
 }
 
 export function text(value: unknown): string {
@@ -406,8 +474,16 @@ export function text(value: unknown): string {
 }
 
 export function missionStatus(robot: Robot): string {
-  const status = robot.state?.actunode?.missionStatus
+  const status = get(get(robot.state, 'actunode'), 'missionStatus')
   return typeof status === 'string' ? status : 'UNKNOWN'
+}
+
+const KNOWN_STATUSES = ['idle', 'accepted', 'moving', 'waiting', 'blocked', 'failed', 'completed', 'cancelled', 'paused', 'unknown']
+
+/** CSS class for a mission status. The status is robot text, so only known values reach a class name (F8). */
+export function statusClass(status: string): string {
+  const lower = status.toLowerCase()
+  return `status-${KNOWN_STATUSES.includes(lower) ? lower : 'unknown'}`
 }
 
 // FAILED keeps its order (VDA 5050 3.0 §6.6.5.1: errors never clear an order), so it can be cancelled too.

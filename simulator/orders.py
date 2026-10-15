@@ -64,7 +64,9 @@ class OrderBook:
         # Everything after the decision point is horizon: the update's base and horizon replace it.
         # The stitch node's actions are not run again.
         edges = [edge for edge in order.get("edges", []) if edge["sequenceId"] > sequence_id]
-        problem = self._size_after_update(sequence_id, nodes[1:], edges)
+        problem = self._reused_action_id(sequence_id, nodes[1:]) or self._size_after_update(
+            sequence_id, nodes[1:], edges
+        )
         if problem:
             self._reject(order["orderId"], *problem)
             return False
@@ -90,16 +92,35 @@ class OrderBook:
         """Problem if what stays up to the decision point plus the update's nodes and edges outgrows the limits."""
         kept_nodes = sum(1 for node in self.node_states if node["sequenceId"] <= sequence_id)
         kept_edges = sum(1 for edge in self.edge_states if edge["sequenceId"] <= sequence_id)
-        kept_actions = sum(
-            len(ids)
-            for actions in (self._node_actions, self._edge_actions)
-            for s, ids in actions.items()
-            if s <= sequence_id
-        )
+        kept_actions = len(self.action_states) - len(self._horizon_action_ids(sequence_id))
         pair = check_size(
             kept_nodes + len(nodes), kept_edges + len(edges), kept_actions + count_actions(nodes) + count_actions(edges)
         )
         return Problem(*pair) if pair else None
+
+    def _horizon_action_ids(self, sequence_id: int) -> set[str]:
+        """The actions of the nodes and edges after `sequence_id`: what an update replaces."""
+        return {
+            action_id
+            for actions in (self._node_actions, self._edge_actions)
+            for s, ids in actions.items()
+            if s > sequence_id
+            for action_id in ids
+        }
+
+    def _reused_action_id(self, sequence_id: int, nodes: list[dict]) -> Problem | None:
+        """An update may not give an action the id of one the order keeps (it would run twice, at the first node
+        that names it). The replaced horizon's ids may come again."""
+        kept = {action["actionId"] for action in self.action_states} - self._horizon_action_ids(sequence_id)
+        for i, node in enumerate(nodes):
+            for j, action in enumerate(node.get("actions", [])):
+                if action["actionId"] in kept:
+                    return Problem(
+                        f"actionId {action['actionId']!r} is already used by the order",
+                        f"nodes[{i + 1}].actions[{j}].actionId",
+                        Reject.STITCH,
+                    )
+        return None
 
     def _drop_after(self, sequence_id: int) -> None:
         """Forget the nodes, edges and actions after `sequence_id` (the horizon an update replaces)."""
@@ -116,16 +137,22 @@ class OrderBook:
                 {
                     "nodeId": node["nodeId"],
                     "sequenceId": node["sequenceId"],
-                    "released": node.get("released", True),
-                    "nodePosition": {"x": node["nodePosition"]["x"], "y": node["nodePosition"]["y"], "mapId": MAP_ID},
+                    "released": node["released"],
+                    "nodePosition": {
+                        "x": node["nodePosition"]["x"],
+                        "y": node["nodePosition"]["y"],
+                        "mapId": node["nodePosition"].get("mapId", MAP_ID),
+                    },
                 }
             )
-            self._node_actions[node["sequenceId"]] = self._add_actions(node.get("actions", []))
+            if node.get("actions"):  # no empty entries: the maps hold only what is still to run
+                self._node_actions[node["sequenceId"]] = self._add_actions(node["actions"])
         for edge in edges:
             self.edge_states.append(
-                {"edgeId": edge["edgeId"], "sequenceId": edge["sequenceId"], "released": edge.get("released", True)}
+                {"edgeId": edge["edgeId"], "sequenceId": edge["sequenceId"], "released": edge["released"]}
             )
-            self._edge_actions[edge["sequenceId"]] = self._add_actions(edge.get("actions", []))
+            if edge.get("actions"):
+                self._edge_actions[edge["sequenceId"]] = self._add_actions(edge["actions"])
 
     def _add_actions(self, actions: list[dict]) -> list[str]:
         for action in actions:
@@ -157,7 +184,8 @@ class OrderBook:
             if a > 0 and b > 0:
                 u = dx * math.cos(theta) + dy * math.sin(theta)
                 v = -dx * math.sin(theta) + dy * math.cos(theta)
-                return (u / a) ** 2 + (v / b) ** 2 <= 1
+                # hypot, not squares: tiny axes or far points must not overflow
+                return math.hypot(u / a, v / b) <= 1
             deviation = 0
         return math.hypot(dx, dy) <= (deviation if deviation > 0 else DEFAULT_TOLERANCE_M)
 

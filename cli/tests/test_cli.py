@@ -8,7 +8,7 @@ import pytest
 from fakes import Clock, FakeStack, robot
 
 from actunode import cli
-from actunode.client import StackError
+from actunode.client import RequestFailed, StackError
 from actunode.report import safe
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -138,12 +138,64 @@ def test_hostile_text_from_the_stack_is_neutralised(files, tmp_path):
     assert safe("a\x1b[31mb\x00") == "a\\x1b[31mb\\x00"
 
 
-def test_interrupt_exits_130_after_cleanup(files):
+def test_interrupt_exits_130_after_cleanup_and_still_writes_the_junit(files, tmp_path):
     stack = FakeStack(Clock())
+    real_robots = stack.robots
 
-    def interrupt(*args):
-        raise KeyboardInterrupt
+    def interrupt_once_injected():
+        if any(call[0] == "failure" for call in stack.calls):
+            raise KeyboardInterrupt
+        return real_robots()
 
-    stack.validation = interrupt
-    code, out = run([str(files(a=PASSING))], stack_factory=factory(stack))
-    assert code == 130 and "interrupted" in out
+    stack.robots = interrupt_once_injected
+    second = (
+        "name: second\nsteps:\n  - inject: {robot: robot_01, failure: LOW_BATTERY}\n"
+        "  - expect: {robot: robot_01, status: MOVING}\n"
+    )
+    report = tmp_path / "junit.xml"
+    code, out = run(["--junit", str(report), str(files(a=PASSING, b=second))], stack_factory=factory(stack))
+    assert code == 130 and "interrupted (injected failures and running missions were cleaned up)" in out
+    assert stack.calls[-1] == ("failure", "robot_01", "LOW_BATTERY", "clear", None)  # the cleanup ran
+    cases = ET.parse(report).getroot().findall("testsuite/testcase")
+    assert [c.get("name") for c in cases] == ["passes"]  # the scenario that finished
+
+
+def test_an_interrupted_cleanup_is_reported_as_incomplete(files):
+    stack = FakeStack(Clock())
+    real_failure = stack.failure
+
+    def failure(robot_id, failure, action, params=None):
+        if action == "clear":
+            raise KeyboardInterrupt  # a second Ctrl-C during cleanup
+        return real_failure(robot_id, failure, action, params)
+
+    stack.failure = failure
+    stack.robots = lambda: (_ for _ in ()).throw(KeyboardInterrupt) if stack.calls else [robot()]
+    text = (
+        "name: x\nsteps:\n  - inject: {robot: robot_01, failure: LOW_BATTERY}\n"
+        "  - expect: {robot: robot_01, status: IDLE}\n"
+    )
+    code, out = run([str(files(a=text))], stack_factory=factory(stack))
+    assert code == 130 and "NOT fully cleaned up" in out
+    assert ("stop_recording",) in stack.lab_calls  # the recording was stopped all the same
+
+
+def test_setup_refused_by_the_stack_is_could_not_run_and_the_junit_is_written(files, tmp_path):
+    stack = FakeStack(Clock())
+    stack.validation = lambda: (_ for _ in ()).throw(RequestFailed(404, "Not Found"))
+    report = tmp_path / "junit.xml"
+    code, out = run(["--junit", str(report), str(files(a=PASSING))], stack_factory=factory(stack))
+    assert code == 3 and "could not start: 404: Not Found" in out
+    assert ET.parse(report).getroot().find("testsuite/testcase/error") is not None
+
+
+def test_connect_refused_by_the_stack_is_could_not_run(files):
+    code, out = run([str(files(a=PASSING))], stack_factory=factory(fail_connect=RequestFailed(404, "Not Found")))
+    assert code == 3 and "404: Not Found" in out
+
+
+def test_the_junit_names_the_recording(files, tmp_path):
+    report = tmp_path / "junit.xml"
+    run(["--junit", str(report), str(files(a=PASSING))])
+    prop = ET.parse(report).getroot().find("testsuite/testcase/properties/property")
+    assert prop.get("name") == "actunode.session" and prop.get("value").endswith("_a")

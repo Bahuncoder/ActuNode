@@ -88,6 +88,8 @@ def test_valid_action_parameters_are_still_accepted(major):
 def test_order_application_is_atomic(major, update, monkeypatch):
     robot = Robot("robot_01", vda_major=major)
     order = horizon_order()
+    for node in order["nodes"][2:]:  # actions on the nodes the update adds, so _add_actions runs twice
+        node["actions"] = [{"actionId": f"x-{node['nodeId']}", "actionType": "drop", "blockingType": "HARD"}]
     if update:
         robot.accept_order(order)
         order = update_from(order, 1, 3)

@@ -4,6 +4,21 @@ What changed, per commit, newest first. Status and plans are in [docs/PROGRESS.m
 
 ## Unreleased
 
+### Full audit of weeks 0–12 (D-50, docs/AUDIT_2026-10-14.md)
+- Security: strict JSON numbers end to end; topics from files validated before publishing; one cookie parser;
+  API docs pinned and off when login is required; WebSocket feed and queue limits; failed logins logged;
+  broker memory/queue/connection limits; name-constrained CA; network listener without internal logins;
+  AEAD-only TLS; hardened containers (no capabilities, read-only, limits, restart policies); CI pinned to
+  commits, least-privilege tokens, Dependabot; customer CI template without persisted credentials.
+- Robustness: replay never stalls the API; hostile session files refused (huge snapshot lines, wrong types,
+  absurd times, control characters); simulator inbox bounded and work per tick budgeted, order graphs validated
+  (sequence ids, edges, released prefix, map, version, manufacturer), no slowdown on long-running orders;
+  UI panels survive any robot data, hidden tabs no longer grow memory, reconnect with backoff.
+- Operations: `mqtt-init remove-robot | remove-master | rotate | backup | restore | recreate-ca`, applied
+  with SIGHUP; scenarios can address other manufacturers' robots; import never destroys its input.
+- Correctness: empty battery always reported; duplicate/rejected orders publish state; validator: strict UTC
+  timestamps, FAILED → WAITING allowed; 5xx = could not run; cleanup always stops the recording.
+
 ### Week 12: scenarios in CI, site captures (D-49)
 - `docker compose run --rm runner test scenarios/`: the scenario runner in a container, inside the lab's
   network; your own scenarios with `ACTUNODE_SCENARIOS`; JUnit to `ACTUNODE_RESULTS`.

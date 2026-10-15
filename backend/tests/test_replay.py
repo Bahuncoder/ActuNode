@@ -2,6 +2,7 @@ import asyncio
 import json
 import time
 import tracemalloc
+from collections import OrderedDict
 
 import pytest
 from fastapi.testclient import TestClient
@@ -195,6 +196,7 @@ def published(monkeypatch, tmp_path):
     monkeypatch.setattr(mqtt_bridge, "publish", lambda topic, payload, qos=0: messages.append(topic))
     monkeypatch.setattr(sessions.recorder, "directory", tmp_path)
     monkeypatch.setattr(sessions.replayer, "ended_at", None)
+    monkeypatch.setattr(sessions.replayer, "last_published", OrderedDict())
     return messages
 
 

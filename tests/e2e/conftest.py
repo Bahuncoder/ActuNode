@@ -78,11 +78,12 @@ class Stack:
         """A one-line credential from the secrets volume."""
         return self.secret_text(path).strip().splitlines()[-1]
 
-    def mqtt_client(self, username: str | None, password: str | None) -> mqtt.Client:
+    def mqtt_client(self, username: str | None, password: str | None, plain: bool = False) -> mqtt.Client:
+        """plain: no TLS (the 127.0.0.1 port, for the internal logins that the TLS port refuses)."""
         client = mqtt.Client(callback_api_version=mqtt.CallbackAPIVersion.VERSION2)
         if username:
             client.username_pw_set(username, password)
-        if SHARED:
+        if SHARED and not plain:
             client.tls_set(ca_certs=str(self.ca_file))
         return client
 

@@ -21,11 +21,26 @@ x-logging: &logging
     max-size: "10m"
     max-file: "3"
 
+# Container hardening (I2): no Linux capabilities (services add back only what they need), no privilege gain,
+# read-only root filesystem with a small RAM-backed /tmp, a cap on processes. Memory limits are per service.
+x-hardened: &hardened
+  cap_drop: [ALL]
+  security_opt: ["no-new-privileges:true"]
+  read_only: true
+  tmpfs: ["/tmp"]
+  pids_limit: 256
+
 services:
   # Creates MQTT logins and the web login token on first start (kept in the secrets volume) and rebuilds the broker's
   # password file and ACL on every start (D-23, D-28). Tools password: docker compose run --rm mqtt-init show tools
   mqtt-init:
+    <<: *hardened
     image: eclipse-mosquitto:2
+    # Root, to own the credential files for each service; needs no network.
+    cap_add: [CHOWN, FOWNER, DAC_OVERRIDE]
+    network_mode: none
+    mem_limit: 128m
+    pids_limit: 64
     entrypoint: ["/bin/sh", "/init-secrets.sh"]
     environment:
       BACKEND_UID: ${ACTUNODE_UID:-1000}
@@ -39,7 +54,12 @@ services:
   # TLS certificates (D-26): a local CA, made once, and a server certificate for localhost and the
   # names in ACTUNODE_ALLOWED_HOSTS. CA for browsers and robots: docker compose run --rm cert-init show ca
   cert-init:
+    <<: *hardened
     image: python:3.12-slim
+    cap_add: [CHOWN, FOWNER, DAC_OVERRIDE]
+    network_mode: none
+    mem_limit: 128m
+    pids_limit: 64
     entrypoint: ["/bin/sh", "/init-certs.sh"]
     environment:
       ACTUNODE_ALLOWED_HOSTS: ${ACTUNODE_ALLOWED_HOSTS:-localhost,127.0.0.1,::1}
@@ -48,8 +68,13 @@ services:
       - secrets:/secrets
 
   mosquitto:
+    <<: *hardened
     logging: *logging
     image: eclipse-mosquitto:2
+    # Runs as the broker's own user from the start (no root, so no capabilities); persistence is off.
+    user: "1883:1883"
+    mem_limit: 512m  # the broker's own memory_limit is 256 MB (mosquitto.conf)
+    restart: unless-stopped
     # Unencrypted MQTT never leaves this computer; robots on a network use TLS on 8883 (D-26).
     ports:
       - "127.0.0.1:${ACTUNODE_MQTT_HOST_PORT:-1883}:1883"
@@ -76,7 +101,10 @@ services:
         condition: service_completed_successfully
 
   backend:
+    <<: *hardened
     logging: *logging
+    mem_limit: 1g
+    restart: unless-stopped
     build: ./backend
     # Write session files as the host user, not root. Set ACTUNODE_UID/ACTUNODE_GID
     # if your user id is not 1000 (check with `id -u` and `id -g`).
@@ -119,7 +147,10 @@ services:
         condition: service_healthy
 
   simulator:
+    <<: *hardened
     logging: *logging
+    mem_limit: 512m
+    restart: unless-stopped
     build:
       context: .
       dockerfile: simulator/Dockerfile
@@ -141,7 +172,10 @@ services:
         condition: service_healthy
 
   frontend:
+    <<: *hardened
     logging: *logging
+    mem_limit: 256m
+    restart: unless-stopped
     build: ./frontend
     # Plain HTTP only on this computer; HTTPS (8443) is what a network sees (D-26).
     ports:
@@ -173,7 +207,9 @@ services:
   # D-24) without publishing anything. Your own scenarios: ACTUNODE_SCENARIOS=/path/to/dir. JUnit reports and
   # other output: ACTUNODE_RESULTS (default ./test-results; create it first, the runner writes as ACTUNODE_UID).
   runner:
+    <<: *hardened
     profiles: ["test"]
+    mem_limit: 512m
     build: ./cli
     network_mode: "service:frontend"
     user: "${ACTUNODE_UID:-1000}:${ACTUNODE_GID:-1000}"

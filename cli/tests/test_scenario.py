@@ -29,7 +29,7 @@ def errors(text: str) -> str:
 def test_the_shipped_p1042_scenario_is_valid():
     scenario = load(ROOT / "scenarios" / "p1042_blocked_path.yaml")
     assert scenario.name == "P-1042 blocked on the way to storage"
-    assert scenario.robots == ("robot_01",)
+    assert scenario.robots == (("robot_01", None),)
     mission = scenario.steps[1]
     assert isinstance(mission, SendMission)
     assert (mission.source, mission.destination, mission.load, mission.as_) == (

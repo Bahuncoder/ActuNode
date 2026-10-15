@@ -1,5 +1,5 @@
 import { memo, useCallback, useState } from 'react'
-import { num, point, type MqttMessage } from './live'
+import { display, get, num, point, type MqttMessage } from './live'
 
 const SHOWN = 200
 
@@ -19,38 +19,51 @@ function robotOf(topic: string): string {
 function rowClass(message: MqttMessage): string {
   const issues = message.issues ?? []
   if (issues.some((issue) => issue.severity === 'error')) return 'has-error'
-  const payload = message.payload as { errors?: unknown[] }
-  if (issues.length > 0 || (Array.isArray(payload?.errors) && payload.errors.length > 0)) return 'has-warning'
+  const errors = get(message.payload, 'errors')
+  if (issues.length > 0 || (Array.isArray(errors) && errors.length > 0)) return 'has-warning'
   return ''
 }
 
 function summary(message: MqttMessage): string {
-  if (!message.validJson) return `invalid JSON: ${String(message.payload).slice(0, 80)}`
+  if (!message.validJson) return `invalid JSON: ${display(message.payload).slice(0, 80)}`
   if (typeof message.payload !== 'object' || message.payload === null || Array.isArray(message.payload)) {
-    return (JSON.stringify(message.payload) ?? '').slice(0, 100)
+    return display(message.payload).slice(0, 100)
   }
-  const p = message.payload as Record<string, any>
+  const p = message.payload
   switch (kindOf(message.topic)) {
     case 'state': {
-      const pos = point(p.agvPosition ?? p.mobileRobotPosition) // 2.x or 3.0
-      const battery = num(p.batteryState?.batteryCharge) ?? num(p.powerSupply?.stateOfCharge)
-      const errors = Array.isArray(p.errors) ? p.errors : []
+      const pos = point(get(p, 'agvPosition') ?? get(p, 'mobileRobotPosition')) // 2.x or 3.0
+      const battery = num(get(get(p, 'batteryState'), 'batteryCharge')) ?? num(get(get(p, 'powerSupply'), 'stateOfCharge'))
+      const errors = get(p, 'errors')
+      const status = get(get(p, 'actunode'), 'missionStatus')
       const parts = [
-        typeof p.actunode?.missionStatus === 'string' ? p.actunode.missionStatus : '',
+        typeof status === 'string' ? status : '',
         pos ? `(${pos.x.toFixed(1)}, ${pos.y.toFixed(1)})` : '',
         battery !== undefined ? `${battery}%` : '',
-        errors.length ? `⚠ ${errors.map((e: any) => e?.errorDescription ?? e?.errorType).join('; ')}` : '',
+        Array.isArray(errors) && errors.length
+          ? `⚠ ${errors.map((e) => display(get(e, 'errorDescription') ?? get(e, 'errorType'))).join('; ')}`
+          : '',
       ]
       return parts.filter(Boolean).join('  ')
     }
     case 'connection':
-      return String(p.connectionState)
-    case 'order':
-      return `${p.orderId} → ${(Array.isArray(p.nodes) ? p.nodes : []).map((n: any) => n?.nodeId).join(' → ')}`
+      return display(get(p, 'connectionState'))
+    case 'order': {
+      const nodes = get(p, 'nodes')
+      return `${display(get(p, 'orderId'))} → ${(Array.isArray(nodes) ? nodes : []).map((n) => display(get(n, 'nodeId'))).join(' → ')}`
+    }
     case 'inject':
-      return `${p.failure} ${p.action} (${p.injectionId})`
+      return `${display(get(p, 'failure'))} ${display(get(p, 'action'))} (${display(get(p, 'injectionId'))})`
     default:
-      return JSON.stringify(p).slice(0, 100)
+      return display(p).slice(0, 100)
+  }
+}
+
+function stringify(payload: unknown): string | undefined {
+  try {
+    return JSON.stringify(payload, null, 2)
+  } catch {
+    return undefined
   }
 }
 
@@ -59,7 +72,7 @@ function time(iso: string): string {
   return `${date.toLocaleTimeString([], { hour12: false })}.${String(date.getMilliseconds()).padStart(3, '0')}`
 }
 
-export default function MessageStream({ messages }: { messages: MqttMessage[] }) {
+function MessageStream({ messages }: { messages: MqttMessage[] }) {
   const [filter, setFilter] = useState('')
   const [hideState, setHideState] = useState(false)
   const [onlyIssues, setOnlyIssues] = useState(false)
@@ -78,7 +91,7 @@ export default function MessageStream({ messages }: { messages: MqttMessage[] })
   return (
     <div>
       <div className="stream-controls">
-        <input placeholder="Filter topic (e.g. robot_01)" value={filter} onChange={(e) => setFilter(e.target.value)} />
+        <input aria-label="Filter by topic" placeholder="Filter topic (e.g. robot_01)" value={filter} onChange={(e) => setFilter(e.target.value)} />
         <label>
           <input type="checkbox" checked={hideState} onChange={(e) => setHideState(e.target.checked)} />
           Hide state messages
@@ -116,7 +129,7 @@ const MessageRow = memo(function MessageRow({
   const kind = kindOf(message.topic)
   return (
     <li className={rowClass(message)}>
-        <button type="button" className="stream-row" onClick={() => onToggle(message.id)}>
+        <button type="button" className="stream-row" aria-expanded={open} onClick={() => onToggle(message.id)}>
           <span className="mono muted">{time(message.receivedAt)}</span>
           <span className={`kind kind-${kind}`}>{kind}</span>
           <span className="mono">{robotOf(message.topic)}</span>
@@ -142,9 +155,11 @@ const MessageRow = memo(function MessageRow({
             {message.topic}
             {message.retained ? '  (retained)' : ''}
             {'\n\n'}
-            {message.validJson ? JSON.stringify(message.payload, null, 2) : String(message.payload)}
+            {message.validJson ? (stringify(message.payload) ?? display(message.payload)) : display(message.payload)}
           </pre>
         )}
       </li>
   )
 })
+
+export default memo(MessageStream)

@@ -28,6 +28,7 @@ MAX_ROBOTS = 50
 
 # Physics step. State is published every --interval and on every state event.
 TICK_S = 0.1
+LOG_EVERY_S = 10.0
 
 
 def parking_spot(index: int) -> tuple[float, float]:
@@ -85,6 +86,25 @@ def step(connections, tick: int, ticks_per_publish: int) -> None:
         connection.publish_malformed()  # INVALID_PAYLOAD: one per tick, after the normal state
 
 
+def tick_loop(connections, ticks_per_publish: int, keep_running, clock=time.monotonic, sleep=time.sleep) -> None:
+    """Step every TICK_S. After a stall (suspend, swap, a long GC) the schedule starts again from now: the missed
+    ticks are skipped and noted (at most every LOG_EVERY_S), not run back to back."""
+    tick = 0
+    next_tick = clock()
+    last_logged = float("-inf")
+    while keep_running():
+        step(connections, tick, ticks_per_publish)
+        tick += 1
+        next_tick += TICK_S
+        now = clock()
+        if now - next_tick > TICK_S:
+            if now - last_logged >= LOG_EVERY_S:
+                logging.warning("simulation fell behind by %.1f s; skipping the missed ticks", now - next_tick)
+                last_logged = now
+            next_tick = now
+        sleep(max(0.0, next_tick - now))
+
+
 def main() -> None:
     args = parse_args()
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
@@ -115,13 +135,7 @@ def main() -> None:
     )
 
     ticks_per_publish = max(1, round(args.interval / TICK_S))
-    tick = 0
-    next_tick = time.monotonic()
-    while running:
-        step(connections, tick, ticks_per_publish)
-        tick += 1
-        next_tick += TICK_S
-        time.sleep(max(0.0, next_tick - time.monotonic()))
+    tick_loop(connections, ticks_per_publish, lambda: running)
 
     logging.info("Shutting down")
     for connection in connections:

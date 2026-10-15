@@ -10,9 +10,9 @@ import logging
 import sys
 from pathlib import Path
 
-from app.jsonsafe import MAX_PAYLOAD_BYTES, REJECTED_RULES, parse_payload
+from app.jsonsafe import MAX_PAYLOAD_BYTES, REJECTED_RULES, parse_payload, shape_rule
 from app.session_records import RecordError, iter_records
-from app.validator import RULES, Validator, issue
+from app.validator import MAX_ISSUE_TEXT, RULES, Validator, issue
 
 MAX_ISSUES = 100
 
@@ -40,8 +40,12 @@ def _check(validator: Validator, record: dict) -> list[dict]:
         body, rejected = parse_payload(raw.encode("utf-8", errors="replace") if isinstance(raw, str) else b"")
     else:
         body = record.get("payload")
-        if len(json.dumps(body, ensure_ascii=False, separators=(",", ":")).encode()) > MAX_PAYLOAD_BYTES:
+        # surrogatepass: a lone surrogate (JSON allows "\ud800") must not make the measuring itself fail (D8)
+        size = len(json.dumps(body, ensure_ascii=False, separators=(",", ":")).encode("utf-8", errors="surrogatepass"))
+        if size > MAX_PAYLOAD_BYTES:
             rejected = "payload-too-large"  # the same size rule the live feed applies (D-31)
+        else:
+            rejected = shape_rule(body)
     if rejected:
         return [issue("error", rejected, RULES[rejected])]
     try:
@@ -62,7 +66,7 @@ def validate_session(path: Path, *, strict: bool = False) -> dict:
     truncated = False
     header = None
     try:
-        for number, record in iter_records(path, strict=strict):
+        for number, record in iter_records(path, strict=strict, parse_snapshot=False):  # line 2 is not needed
             if header is None:
                 if record is None or record.get("type") != "session":
                     raise SessionFormatError("Not an ActuNode session (the first line must be a session header)")
@@ -93,7 +97,7 @@ def validate_session(path: Path, *, strict: bool = False) -> dict:
                         {
                             "line": number,
                             "t": record.get("t"),
-                            "topic": record["topic"],
+                            "topic": record["topic"][:MAX_ISSUE_TEXT],
                             "rule": item["rule"],
                             "severity": item["severity"],
                             "message": item["message"],
@@ -122,7 +126,7 @@ def main(argv: list[str] | None = None) -> int:
         return 2
     try:
         result = validate_session(Path(args[0]), strict=True)
-    except (OSError, UnicodeDecodeError, SessionFormatError) as error:
+    except (OSError, UnicodeError, SessionFormatError) as error:
         print(f"{args[0]}: {error}", file=sys.stderr)
         return 2
     print(f"{result['sessionId']}: {result['checked']} messages checked, {result['withIssues']} with issues")

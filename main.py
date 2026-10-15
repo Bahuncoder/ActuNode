@@ -32,8 +32,22 @@ order = {
         },
     ],
     "edges": [
-        {"edgeId": "start->RECEIVING_DOOR_2", "sequenceId": 1, "released": True, "actions": []},
-        {"edgeId": "RECEIVING_DOOR_2->STORAGE_A17", "sequenceId": 3, "released": True, "actions": []},
+        {
+            "edgeId": "start->RECEIVING_DOOR_2",
+            "sequenceId": 1,
+            "released": True,
+            "startNodeId": "start",
+            "endNodeId": "RECEIVING_DOOR_2",
+            "actions": [],
+        },
+        {
+            "edgeId": "RECEIVING_DOOR_2->STORAGE_A17",
+            "sequenceId": 3,
+            "released": True,
+            "startNodeId": "RECEIVING_DOOR_2",
+            "endNodeId": "STORAGE_A17",
+            "actions": [],
+        },
     ],
 }
 

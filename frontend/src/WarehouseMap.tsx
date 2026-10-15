@@ -1,6 +1,6 @@
 import { memo } from 'react'
 import type { Location, MapInfo } from './api'
-import { isOnline, missionStatus, robotPose, routePoints, type ProximityPair, type Robot } from './live'
+import { get, isOnline, missionStatus, robotPose, routePoints, statusClass, type ProximityPair, type Robot } from './live'
 
 // Built-in floor in meters, origin bottom-left (same frame as the simulator); used until /api/map answers.
 const FALLBACK_MAP: MapInfo = {
@@ -27,7 +27,7 @@ const LABEL_FLIP_X = 32
 
 const px = (x: number) => x * PX_PER_M
 
-export default function WarehouseMap({
+function WarehouseMap({
   robots,
   locations,
   proximity = [],
@@ -148,7 +148,6 @@ const RobotMarker = memo(function RobotMarker({ robot, near, width, height }: { 
   const position = robotPose(robot)
   if (!position) return null
 
-  const status = missionStatus(robot).toLowerCase()
   const offMap = position.x < 0 || position.x > width || position.y < 0 || position.y > height
   const otherMap = position.mapId !== undefined && position.mapId !== MAP_ID
   const x = Math.min(width, Math.max(0, position.x))
@@ -156,13 +155,15 @@ const RobotMarker = memo(function RobotMarker({ robot, near, width, height }: { 
   const heading = -position.theta * (180 / Math.PI)
   return (
     <g
-      className={`robot status-${status} ${isOnline(robot) ? '' : 'offline'} ${near ? 'near' : ''} ${offMap ? 'off-map' : ''} ${otherMap ? 'other-map' : ''}`}
+      className={`robot ${statusClass(missionStatus(robot))} ${isOnline(robot) ? '' : 'offline'} ${near ? 'near' : ''} ${offMap ? 'off-map' : ''} ${otherMap ? 'other-map' : ''}`}
       style={{ transform: `translate(${px(x)}px, ${py(y, height)}px)` }}
     >
-      <title>{`${robot.robotId}: ${missionStatus(robot)}${robot.state?.paused === true ? ' (paused)' : ''}${offMap ? ` - off map (${position.x.toFixed(1)}, ${position.y.toFixed(1)})` : ''}${otherMap ? ` - on map ${position.mapId}` : ''}`}</title>
+      <title>{`${robot.robotId}: ${missionStatus(robot)}${get(robot.state, 'paused') === true ? ' (paused)' : ''}${offMap ? ` - off map (${position.x.toFixed(1)}, ${position.y.toFixed(1)})` : ''}${otherMap ? ` - on map ${position.mapId}` : ''}`}</title>
       <circle r={9} />
       <line x1={0} y1={0} x2={13} y2={0} transform={`rotate(${heading})`} />
       <text y={-14}>{shortLabel(robot.robotId)}</text>
     </g>
   )
 })
+
+export default memo(WarehouseMap)

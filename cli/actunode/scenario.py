@@ -2,6 +2,7 @@
 
     name: P-1042 blocked on the way to storage
     vda_version: "2"                 # optional: which robots to address (default: what the stack runs)
+    manufacturer: Acme               # optional: the robots' manufacturer (default: ActuNode)
     steps:
       - send_mission: {robot: robot_01, source: RECEIVING_DOOR_2, destination: STORAGE_A17, load: P-1042, as: p1042}
       - expect: {robot: robot_01, order: p1042, status: MOVING, within: 15}
@@ -36,7 +37,9 @@ DEFAULT_WITHIN_S = 10
 
 RobotId = Annotated[str, Field(pattern=r"^[A-Za-z0-9_-]{1,64}$")]
 Name = Annotated[str, Field(pattern=r"^[A-Za-z0-9_.-]{1,64}$")]
-Seconds = Annotated[float, Field(gt=0, le=MAX_SECONDS)]
+# Strict: YAML `true` and `'5'` are not durations.
+Seconds = Annotated[float, Field(gt=0, le=MAX_SECONDS, strict=True)]
+ACTUNODE = "ActuNode"
 
 MISSION_STATUSES = ("IDLE", "ACCEPTED", "MOVING", "BLOCKED", "WAITING", "COMPLETED", "FAILED", "CANCELLED")
 MissionStatus = Literal["IDLE", "ACCEPTED", "MOVING", "BLOCKED", "WAITING", "COMPLETED", "FAILED", "CANCELLED"]
@@ -61,6 +64,7 @@ class SendMission(_Strict):
     source: str | None = Field(default=None, min_length=1, max_length=64)
     load: str | None = Field(default=None, min_length=1, max_length=64)
     as_: Name | None = Field(default=None, alias="as")  # a name later steps use for this order
+    manufacturer: Name | None = None  # default: the scenario's
 
     def describe(self) -> str:
         route = f"{self.source} -> {self.destination}" if self.source else self.destination
@@ -74,6 +78,7 @@ class Inject(_Strict):
     failure: Failure
     # Checked by the stack (POST /api/failures). Strict: YAML `true` must reach it as true and be refused, not as 1.
     params: dict[str, StrictInt | StrictStr] = Field(default_factory=dict)
+    manufacturer: Name | None = None  # only ActuNode's simulated robots take injections; checked in parse()
 
     def describe(self) -> str:
         params = ", ".join(f"{key}={value}" for key, value in self.params.items())
@@ -83,6 +88,7 @@ class Inject(_Strict):
 class Clear(_Strict):
     robot: RobotId
     failure: ClearableFailure
+    manufacturer: Name | None = None  # only ActuNode's simulated robots; checked in parse()
 
     def describe(self) -> str:
         return f"clear {self.failure} on {self.robot}"
@@ -90,6 +96,7 @@ class Clear(_Strict):
 
 class CancelMission(_Strict):
     robot: RobotId
+    manufacturer: Name | None = None  # default: the scenario's
 
     def describe(self) -> str:
         return f"cancel mission on {self.robot}"
@@ -153,6 +160,7 @@ class MessageCheck(_Strict):
 
 class _Conditions(_Strict):
     robot: RobotId | None = None
+    manufacturer: Name | None = None  # of `robot`; default: the scenario's
     status: list[MissionStatus] | None = Field(default=None, min_length=1)  # any of these
     order: Name | None = None  # the robot runs the order named with send_mission `as`
     error: ErrorCheck | None = None
@@ -180,6 +188,8 @@ class _Conditions(_Strict):
     @model_validator(mode="after")
     def _complete(self):
         robot_checks = [name for name in ROBOT_CHECKS if getattr(self, name) is not None]
+        if self.manufacturer is not None and self.robot is None:
+            raise ValueError("manufacturer needs robot")
         if robot_checks and self.robot is None:
             raise ValueError(f"{', '.join(robot_checks)} needs robot")
         if self.robot is not None and not robot_checks:
@@ -252,19 +262,20 @@ class Scenario:
     description: str
     vda_version: str | None
     steps: tuple[Step, ...]
+    manufacturer: str | None = None  # of every step that names none
 
     @property
     def uses_messages(self) -> bool:
         return any(isinstance(step, _Conditions) and step.message for step in self.steps)
 
     @property
-    def robots(self) -> tuple[str, ...]:
-        """Robots the scenario addresses, in order of first use."""
-        found: dict[str, None] = {}
+    def robots(self) -> tuple[tuple[str, str | None], ...]:
+        """(robot, manufacturer) the scenario addresses, in order of first use."""
+        found: dict[tuple[str, str | None], None] = {}
         for step in self.steps:
             robot = getattr(step, "robot", None)
             if robot:
-                found[robot] = None
+                found[(robot, step.manufacturer)] = None
         return tuple(found)
 
 
@@ -272,6 +283,7 @@ class _Header(_Strict):
     name: str = Field(min_length=1, max_length=200)
     description: str = Field(default="", max_length=10_000)
     vda_version: Literal["2", "3"] | None = None
+    manufacturer: Name | None = None
     steps: list[Any] = Field(min_length=1, max_length=MAX_STEPS)  # each checked by _step, numbered from 1
 
     @field_validator("vda_version", mode="before")
@@ -296,6 +308,8 @@ class _UniqueKeyLoader(yaml.SafeLoader):
         seen = set()
         for key_node, _ in node.value:
             key = self.construct_object(key_node, deep=deep)
+            if not isinstance(key, str | int | float | bool | type(None)):
+                raise yaml.constructor.ConstructorError(None, None, "a key must be plain text", key_node.start_mark)
             if key in seen:
                 raise yaml.constructor.ConstructorError(None, None, f"duplicate key {key!r}", key_node.start_mark)
             seen.add(key)
@@ -351,10 +365,20 @@ def parse(text: str, path: Path) -> Scenario:
     steps, problems = [], []
     for index, raw in enumerate(header.steps, start=1):
         try:
-            steps.append(_step(index, raw))
+            step = _step(index, raw)
         except ScenarioError as error:
             problems.append(str(error))
             steps.append(None)
+            continue
+        if getattr(step, "robot", None) and getattr(step, "manufacturer", None) is None and header.manufacturer:
+            step = step.model_copy(update={"manufacturer": header.manufacturer})
+        if isinstance(step, Inject | Clear) and step.manufacturer not in (None, ACTUNODE):
+            kind = "inject" if isinstance(step, Inject) else "clear"
+            problems.append(
+                f"steps[{index}].{kind}.manufacturer: failures can only be injected on ActuNode's simulated robots, "
+                f"not on {step.manufacturer!r} (give `manufacturer: {ACTUNODE}` on this step)"
+            )
+        steps.append(step)
     named: set[str] = set()
     for index, step in enumerate(steps, start=1):
         if isinstance(step, SendMission) and step.as_:
@@ -366,7 +390,7 @@ def parse(text: str, path: Path) -> Scenario:
             problems.append(f"steps[{index}].{kind}.order: no earlier send_mission is named {step.order!r} (use `as:`)")
     if problems:
         raise ScenarioError("\n".join(problems))
-    return Scenario(path, header.name, header.description, header.vda_version, tuple(steps))
+    return Scenario(path, header.name, header.description, header.vda_version, tuple(steps), header.manufacturer)
 
 
 def load(path: Path) -> Scenario:

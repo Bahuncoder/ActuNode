@@ -105,11 +105,11 @@ recordings, and a line is drawn between them on the map. Simulated robots drive 
 
 | Suite | Count | Where |
 |---|---|---|
-| Backend (pytest) | 463 | CI |
-| Simulator (pytest, incl. conformance against the official 2.1.0 and 3.0.0 schemas) | 397 | CI |
-| Frontend (Vitest: unit, component, shared backend contract fixtures) | 99 | CI |
-| Scenario runner `actunode test` and `actunode import` (pytest) | 148 | CI |
-| End to end against the real Docker stack, incl. Chromium via Playwright, `actunode test` and an outside fleet manager | 44 | CI, three configurations: VDA 2.1, VDA 3.0, VDA 2.1 with login; plus the Docker scenario runner on 2.1 and 3.0 |
+| Backend (pytest) | 576 | CI |
+| Simulator (pytest, incl. conformance against the official 2.1.0 and 3.0.0 schemas) | 465 | CI |
+| Frontend (Vitest: unit, component, shared backend contract fixtures) | 137 | CI |
+| Scenario runner `actunode test` and `actunode import` (pytest) | 220 | CI |
+| End to end against the real Docker stack, incl. Chromium via Playwright, `actunode test` and an outside fleet manager | 45 | CI, three configurations: VDA 2.1, VDA 3.0, VDA 2.1 with login; plus the Docker scenario runner on 2.1 and 3.0 |
 | Load test, 10 / 25 / 50 robots with missions, 18 thresholds | 18/18 passed at each size | Weekly in CI ([load.yml](.github/workflows/load.yml)) |
 
 Plus ruff, oxlint, `tsc`, and weekly security scans (pip-audit, npm audit, Trivy). Load figures were
@@ -219,14 +219,33 @@ certificate warning) and log in with the token. Only HTTPS (8443) and MQTT over 
 `ACTUNODE_BIND_ADDRESS`; plain HTTP and MQTT ports always stay on `127.0.0.1` ([D-26](docs/DECISIONS.md)).
 The certificate covers the names in `ACTUNODE_ALLOWED_HOSTS`.
 
+The local CA can only vouch for those names, `localhost`, and private network addresses (name constraints,
+`pathlen:0`), so importing it does not let anyone mint certificates for other sites. A CA made by an older
+version has no such limit and a name the CA does not permit stops `cert-init` with an error. Replace the CA
+(everybody then imports the new `actunode-ca.crt`):
+
+```bash
+docker compose run --rm cert-init recreate-ca
+docker compose up -d --force-recreate cert-init mosquitto frontend
+```
+
+Passwords and tokens: `docker compose run --rm mqtt-init rotate tools` (or `api-token`, which also needs
+`docker compose restart backend`), then `docker compose kill -s HUP mosquitto`. Back up the logins and
+certificates (secret: keep the file private) with `docker compose run --rm -T mqtt-init backup > actunode-secrets.tar`
+and restore them with `docker compose run --rm -T mqtt-init restore < actunode-secrets.tar`, then
+`docker compose up -d --force-recreate`.
+
 ## Connecting a real robot
 
 A real robot (or your own robot driver) connects to the same broker with its own login:
 
 ```bash
 docker compose run --rm mqtt-init add-robot Acme amr_7          # prints the password; user = Acme.amr_7
-docker compose up -d --force-recreate mqtt-init mosquitto       # apply the new login
+docker compose kill -s HUP mosquitto                            # apply it: the broker reloads its logins, nobody is disconnected
 ```
+
+Manage logins the same way: `remove-robot Acme amr_7`, `rotate robot Acme amr_7` (new password, printed), then the
+`kill -s HUP` line. `ActuNode.robot_01` ... are the simulated robots' names and cannot be added.
 
 - On this computer: `localhost:1883`. From the network: MQTT over TLS on `<this machine>:8883`, trusting
   `actunode-ca.crt` (see [Sharing](#sharing-the-lab-on-a-network)).
@@ -244,8 +263,10 @@ blocked?), give it its own login ([D-47](docs/DECISIONS.md)):
 
 ```bash
 docker compose run --rm mqtt-init add-master wms_fleet           # prints the password; user = master@wms_fleet
-docker compose up -d --force-recreate mqtt-init mosquitto        # apply the new login
+docker compose kill -s HUP mosquitto                             # apply it: the broker reloads its logins, nobody is disconnected
 ```
+
+`remove-master wms_fleet` and `rotate master wms_fleet` work like the robot commands (then `kill -s HUP`).
 
 - Point it at the broker (`localhost:1883`, or MQTT over TLS on 8883 from the network), interface `uagv`,
   manufacturer `ActuNode`, robots `robot_01`, `robot_02`, ... (VDA 5050 2.1 or 3.0, `ACTUNODE_VDA_VERSION`).

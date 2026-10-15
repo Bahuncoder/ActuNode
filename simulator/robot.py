@@ -4,7 +4,14 @@ import logging
 import math
 
 from simulator.instant import ID_IN_USE, InstantActions
-from simulator.messages import MALFORMED_KINDS, connection_message, factsheet_message, header, state_message
+from simulator.messages import (
+    MALFORMED_KINDS,
+    connection_message,
+    factsheet_message,
+    header,
+    state_message,
+    state_payload,
+)
 from simulator.orders import OrderBook
 from simulator.protocol import (
     ACCEPTED,
@@ -182,6 +189,8 @@ class Robot(OrderBook, InstantActions):
 
     def handle_order_payload(self, payload: bytes) -> bool:
         """Accept or reject a raw order message. Rejections are reported in `errors`."""
+        # An order or update that arrives is answered with a state, whatever happens to it (2.1 section 6.6, 3.0 6.1).
+        self.state_requested = True
         order, why = parse(payload)
         if why:
             self._reject("", f"order rejected: {why}")
@@ -194,8 +203,8 @@ class Robot(OrderBook, InstantActions):
     def accept_order(self, order: dict) -> bool:
         """Validate, then start a new order or apply an order update. Nothing is mutated before validation passes."""
         order_id = str(order.get("orderId", ""))  # _reject clips it
-        problem = check_order(order, self.robot_id, self.v)
-        is_update = not problem and order_id == self.order_id
+        is_update = order_id == self.order_id
+        problem = check_order(order, self.robot_id, self.v, is_update)
         # NOTE: a new order with orderUpdateId > 0 is accepted. 3.0 section 6.1.2 Figure 8 step 4 asks "Is
         # orderUpdateId 0?" (2.1 Figure 8 has no such step), but the outcome is only in the figure, not in the text.
         problem = problem or (self._check_update_ids(order) if is_update else None)
@@ -211,13 +220,41 @@ class Robot(OrderBook, InstantActions):
             )
             return False
         # Atomic: if anything unexpected fails half way, the robot stays exactly as it was.
-        before = copy.deepcopy(self.__dict__)
+        before = self._order_snapshot()
         try:
             return self._apply_update(order) if is_update else self._apply_new_order(order)
         except Exception:
-            self.__dict__.clear()
-            self.__dict__.update(before)
+            for name, value in before.items():
+                setattr(self, name, value)
             raise
+
+    # What applying an order or update can change; the snapshot copies only this (a deep copy of the whole robot
+    # costs milliseconds per order, and the single sim thread serves every robot).
+    _ORDER_FIELDS = (
+        "mission_status",
+        "order_id",
+        "order_update_id",
+        "last_node_id",
+        "last_node_sequence_id",
+        "_last_node_xy",
+        "_last_order",
+        "loads",
+        "errors",
+        "node_states",
+        "edge_states",
+        "action_states",
+        "instant_action_states",
+        "_node_actions",
+        "_edge_actions",
+        "_load_ids",
+    )
+
+    def _order_snapshot(self) -> dict:
+        """The order fields as they are now. Actions are copied one level deeper: their status changes in place."""
+        saved = {name: copy.copy(getattr(self, name)) for name in self._ORDER_FIELDS}
+        for name in ("action_states", "instant_action_states"):
+            saved[name] = [dict(action) for action in saved[name]]
+        return saved
 
     def _check_update_ids(self, order: dict) -> Problem | None:
         """Figure 8 for an update of the current order (2.1 section 6.6.2, 3.0 section 6.1.2): outdated, after a
@@ -385,6 +422,18 @@ class Robot(OrderBook, InstantActions):
         elif existing:
             self._drop_errors("batteryLow")
 
+    def _sync_battery_empty(self) -> None:
+        """batteryEmpty (FATAL) whenever the battery is at 0, wherever the robot stopped (at the last node or the
+        decision point too, not only on the way to a node); removed again above 0."""
+        has_error = any(e["errorType"] == "batteryEmpty" for e in self.errors)
+        if self.battery > 0 and has_error:
+            self._drop_errors("batteryEmpty")
+        elif self.battery <= 0 and not has_error:
+            references = [ref("orderId", self.order_id)] if self.order_id else []
+            self._add_error(
+                "batteryEmpty", f"Battery empty; stopped at ({self.x:.1f}, {self.y:.1f})", references, level="FATAL"
+            )
+
     @property
     def injected_failures(self) -> list[str]:
         """The injected failures a clear command can end, for the state's `actunode` extension."""
@@ -430,6 +479,7 @@ class Robot(OrderBook, InstantActions):
         """Advance the simulation by `dt` seconds."""
         self._advance(dt)
         self._sync_battery_low()
+        self._sync_battery_empty()
 
     def _advance(self, dt: float) -> None:
         self._moved = 0.0
@@ -511,7 +561,7 @@ class Robot(OrderBook, InstantActions):
         node = self.node_states.pop(0)
         if self.edge_states and self.edge_states[0]["sequenceId"] < node["sequenceId"]:
             edge = self.edge_states.pop(0)
-            self._run_actions(self._edge_actions.get(edge["sequenceId"], []))
+            self._run_actions(self._edge_actions.pop(edge["sequenceId"], []))
         self._traverse(node)
 
     def _traverse(self, node: dict) -> None:
@@ -519,7 +569,7 @@ class Robot(OrderBook, InstantActions):
         self.last_node_id = node["nodeId"]
         self.last_node_sequence_id = node["sequenceId"]
         self._last_node_xy = (node["nodePosition"]["x"], node["nodePosition"]["y"])
-        self._run_actions(self._node_actions.get(node["sequenceId"], []))
+        self._run_actions(self._node_actions.pop(node["sequenceId"], []))
         self._enter_edge()
 
     def _enter_edge(self) -> None:
@@ -574,6 +624,9 @@ class Robot(OrderBook, InstantActions):
     def state_message(self) -> dict:
         return state_message(self)
 
+    def state_payload(self) -> str:
+        return state_payload(self)
+
     def factsheet_message(self) -> dict:
         return factsheet_message(self)
 
@@ -589,7 +642,10 @@ class Robot(OrderBook, InstantActions):
             len(self.node_states),
             len(self.edge_states),
             tuple((action["actionId"], action["actionStatus"]) for action in self.action_states),
-            tuple(error["errorType"] for error in self.errors),
+            tuple(
+                (error["errorType"], tuple((r["referenceKey"], r["referenceValue"]) for r in error["errorReferences"]))
+                for error in self.errors
+            ),
             self.velocity > 0,
             self.order_id,
             self.order_update_id,

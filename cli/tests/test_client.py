@@ -102,7 +102,10 @@ def test_unreachable_is_a_stack_error():
         (404, {"detail": "Unknown robot: robot_09"}, RequestFailed, "Unknown robot"),
         (401, "Login required", StackError, "requires login"),
         (503, {"detail": "MQTT broker is not connected"}, StackError, "not ready: MQTT broker"),
-        (500, "Internal Server Error", RequestFailed, "500: Internal Server Error"),
+        (500, "Internal Server Error", StackError, "answered 500: Internal Server Error"),
+        (502, "Bad Gateway", StackError, "answered 502"),  # the proxy while the backend restarts
+        (504, "Gateway Timeout", StackError, "answered 504"),
+        (429, {"detail": "slow down"}, StackError, "answered 429: slow down"),
     ],
 )
 def test_error_answers_are_classified(status, body, kind, text):

@@ -32,8 +32,10 @@ jobs:
   python-deps:
     runs-on: ubuntu-24.04
     steps:
-      - uses: actions/checkout@v7
-      - uses: actions/setup-python@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7
         with:
           python-version: "3.12"
       - run: pip install pip-audit==2.10.1
@@ -48,8 +50,10 @@ jobs:
       run:
         working-directory: frontend
     steps:
-      - uses: actions/checkout@v7
-      - uses: actions/setup-node@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7
         with:
           node-version-file: frontend/.nvmrc
           cache: npm
@@ -62,24 +66,31 @@ jobs:
     env:
       TRIVY_VERSION: "0.71.2"
     steps:
-      - uses: actions/checkout@v7
-      - name: Install Trivy
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
+      - name: Install Trivy (checked against the checksums published with the release)
         run: |
-          curl -fsSL -o trivy.deb "https://github.com/aquasecurity/trivy/releases/download/v${TRIVY_VERSION}/trivy_${TRIVY_VERSION}_Linux-64bit.deb"
-          sudo dpkg -i trivy.deb
+          base="https://github.com/aquasecurity/trivy/releases/download/v${TRIVY_VERSION}"
+          deb="trivy_${TRIVY_VERSION}_Linux-64bit.deb"
+          curl -fsSL -o "$deb" "$base/$deb"
+          curl -fsSL -o checksums.txt "$base/trivy_${TRIVY_VERSION}_checksums.txt"
+          grep -F " $deb" checksums.txt | sha256sum -c -
+          sudo dpkg -i "$deb"
           trivy --version
       - name: Build images
         run: |
           docker build -t actunode-backend:ci backend
           docker build -t actunode-simulator:ci -f simulator/Dockerfile .
           docker build -t actunode-frontend:ci frontend
-      - name: Scan Dockerfiles
+          docker build -t actunode-runner:ci cli
+      - name: Scan Dockerfiles (Trivy has no Docker Compose checks; the compose file is hardened by hand, see docker-compose.yml)
         run: |
-          for dir in backend simulator frontend; do
+          for dir in backend simulator frontend cli; do
             trivy config --severity HIGH,CRITICAL --exit-code 1 "$dir"
           done
       - name: Scan images
         run: |
-          for image in actunode-backend:ci actunode-simulator:ci actunode-frontend:ci eclipse-mosquitto:2; do
+          for image in actunode-backend:ci actunode-simulator:ci actunode-frontend:ci actunode-runner:ci eclipse-mosquitto:2 python:3.12-slim; do
             trivy image --severity HIGH,CRITICAL --ignore-unfixed --exit-code 1 "$image"
           done

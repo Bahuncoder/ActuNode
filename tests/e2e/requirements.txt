@@ -1,7 +1,7 @@
-pytest>=8
+pytest>=8,<10
 httpx>=0.27,<1
 paho-mqtt>=2.1,<3
-websockets>=13
+websockets>=13,<16
 playwright>=1.47,<2
 # The scenario runner (tests/e2e/test_09_scenarios.py) with its own pinned dependencies.
 -r ../../cli/requirements.txt

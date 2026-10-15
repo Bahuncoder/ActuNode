@@ -122,8 +122,18 @@ def test_a_fleet_manager_login_is_scoped(stack, master):
     master.publish(f"uagv/v{VDA}/Acme/amr_9/order", json.dumps({"orderId": "fm-e2e-rogue"}))
     master.publish(f"uagv/v{VDA}/ActuNode/robot_01/state", json.dumps({"serialNumber": "robot_01", "spoof": True}))
     master.publish("actunode/v1/sim/robot_01/inject", json.dumps({"failure": "LOW_BATTERY", "action": "inject"}))
-    time.sleep(2)
-    topics = {m["topic"]: m["payload"] for m in stack.api.get("/messages").json()}
+    # Positive control, published last on the same connection: a permitted command (to a robot that does not
+    # exist, so nothing reacts). Once it has arrived, the forbidden ones before it have had their chance too.
+    sentinel_topic = f"uagv/v{VDA}/ActuNode/robot_99/zoneSet"
+    master.publish(sentinel_topic, json.dumps({"sentinel": "fm-e2e-permitted"}), qos=1).wait_for_publish(5)
+
+    def seen() -> dict:
+        return {m["topic"]: m["payload"] for m in stack.api.get("/messages").json()}
+
+    wait_for(lambda: sentinel_topic in seen(), 10, "the permitted command to arrive")
+    time.sleep(1)
+    topics = seen()
+    assert topics[sentinel_topic] == {"sentinel": "fm-e2e-permitted"}
     assert f"uagv/v{VDA}/Acme/amr_9/order" not in topics  # another manufacturer's robots
     assert {"serialNumber": "robot_01", "spoof": True} not in topics.values()  # cannot speak as a robot
     errors = {e["errorType"] for e in stack.robots()["robot_01"]["state"]["errors"]}

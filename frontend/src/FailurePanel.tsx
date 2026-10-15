@@ -1,6 +1,6 @@
-import { useState } from 'react'
+import { memo, useState } from 'react'
 import { injectFailure } from './api'
-import { FAILURE_LABELS, missionStatus, type FailureEntry, type Robot } from './live'
+import { display, FAILURE_LABELS, injectedFailures, missionStatus, type FailureEntry, type Robot } from './live'
 
 type Result = { ok: boolean; text: string }
 
@@ -14,14 +14,14 @@ const TYPES = [
 const KINDS = ['not-json', 'schema', 'wrong-serial', 'wrong-version']
 
 function paramsText(params?: Record<string, unknown>): string {
-  return Object.entries(params ?? {}).map(([key, value]) => `${key}=${String(value)}`).join(' ')
+  return Object.entries(params ?? {}).map(([key, value]) => `${key}=${display(value)}`).join(' ')
 }
 
 function time(iso: string): string {
   return new Date(iso).toLocaleTimeString([], { hour12: false })
 }
 
-export default function FailurePanel({ robots, failures }: { robots: Robot[]; failures: FailureEntry[] }) {
+function FailurePanel({ robots, failures }: { robots: Robot[]; failures: FailureEntry[] }) {
   const [chosen, setChosen] = useState('')
   const [failure, setFailure] = useState('BLOCKED_PATH')
   const [level, setLevel] = useState('15')
@@ -32,9 +32,12 @@ export default function FailurePanel({ robots, failures }: { robots: Robot[]; fa
   const [busy, setBusy] = useState(false)
   const [result, setResult] = useState<Result | null>(null)
 
-  // Default to a robot that is actually on a route, since that is what can be blocked.
-  const onRoute = robots.find((robot) => ['ACCEPTED', 'MOVING'].includes(missionStatus(robot)))
-  const robotId = chosen || onRoute?.robotId || robots[0]?.robotId || ''
+  // Default to a robot that is actually on a route, since that is what can be blocked. Picked once (when
+  // robots first appear), not on every frame, or the select would jump while statuses change.
+  const [defaultId, setDefaultId] = useState('')
+  if (!defaultId && robots.length > 0) {
+    setDefaultId((robots.find((robot) => ['ACCEPTED', 'MOVING'].includes(missionStatus(robot))) ?? robots[0]).robotId)
+  }
   // Failures address the simulator by serial: one entry per serial, showing its most recently seen robot.
   const bySerial = new Map<string, Robot>()
   for (const candidate of robots) {
@@ -42,13 +45,15 @@ export default function FailurePanel({ robots, failures }: { robots: Robot[]; fa
     if (!seen || (candidate.lastSeen ?? '') > (seen.lastSeen ?? '')) bySerial.set(candidate.robotId, candidate)
   }
   const serials = [...bySerial.values()]
+  // What the select shows is what gets sent: fall back to the first listed robot if the chosen one is gone.
+  const robotId = [chosen, defaultId].find((id) => id && bySerial.has(id)) ?? serials[0]?.robotId ?? ''
   const robot = bySerial.get(robotId)
   const status = robot ? missionStatus(robot) : '—'
 
   const type = TYPES.find((t) => t.value === failure) ?? TYPES[0]
   const needsRoute = failure === 'BLOCKED_PATH'
   // Absent on older simulators: then Clear stays enabled.
-  const injected = robot?.state?.actunode?.injectedFailures
+  const injected = injectedFailures(robot)
   const range: [string, number, number] | undefined = { LOW_BATTERY: [level, 1, 99] as [string, number, number],
     DISCONNECT: [duration, 1, 300] as [string, number, number],
     INVALID_PAYLOAD: [count, 1, 10] as [string, number, number],
@@ -56,7 +61,8 @@ export default function FailurePanel({ robots, failures }: { robots: Robot[]; fa
   }[
     failure as 'LOW_BATTERY' | 'DISCONNECT' | 'INVALID_PAYLOAD' | 'UNRESPONSIVE'
   ]
-  const invalid = range !== undefined && !(range[0].trim() !== '' && Number(range[0]) >= range[1] && Number(range[0]) <= range[2])
+  // The backend takes whole numbers only.
+  const invalid = range !== undefined && !(/^\d+$/.test(range[0].trim()) && Number(range[0]) >= range[1] && Number(range[0]) <= range[2])
   const clearBlocked = needsRoute
     ? status !== 'BLOCKED'
     : failure === 'LOW_BATTERY' && injected !== undefined && !injected.includes('LOW_BATTERY')
@@ -185,7 +191,7 @@ export default function FailurePanel({ robots, failures }: { robots: Robot[]; fa
             <span className="muted">{time(entry.timestamp)}</span>
             <span>{entry.robotId}</span>
             <span className={entry.action}>
-              {entry.failure} {entry.action === 'inject' ? 'injected' : 'cleared'}
+              {display(entry.failure)} {entry.action === 'inject' ? 'injected' : 'cleared'}
             </span>
             {entry.params && Object.keys(entry.params).length > 0 && <span className="muted">{paramsText(entry.params)}</span>}
             <span className="muted">was {entry.robotStatus}</span>
@@ -195,3 +201,5 @@ export default function FailurePanel({ robots, failures }: { robots: Robot[]; fa
     </section>
   )
 }
+
+export default memo(FailurePanel)

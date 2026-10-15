@@ -225,13 +225,24 @@ def test_empty_battery_failure_and_recovery_are_allowed_transitions():
     assert found == [[]] * len(sequence)
 
 
-def test_failed_cannot_jump_straight_to_completed():
+@pytest.mark.parametrize("after", ["WAITING", "COMPLETED"])
+def test_failed_may_go_on_to_waiting_or_completed(after):
+    """The simulator does this legitimately (D13)."""
     validator = Validator()
     topic, base = fixture("state_moving")
 
     validator.check(topic, state(base, "FAILED", 1), valid_json=True)
 
-    assert rules(validator.check(topic, state(base, "COMPLETED", 2), valid_json=True)) == ["mission-transition"]
+    assert rules(validator.check(topic, state(base, after, 2), valid_json=True)) == []
+
+
+def test_failed_cannot_jump_to_blocked():
+    validator = Validator()
+    topic, base = fixture("state_moving")
+
+    validator.check(topic, state(base, "FAILED", 1), valid_json=True)
+
+    assert rules(validator.check(topic, state(base, "BLOCKED", 2), valid_json=True)) == ["mission-transition"]
 
 
 def test_driving_must_match_mission_status():

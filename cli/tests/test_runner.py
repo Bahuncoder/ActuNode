@@ -67,9 +67,11 @@ def test_within_waits_for_a_later_state_and_stops_polling_once_it_holds(clock):
 
 
 def test_all_conditions_of_one_expect_must_hold_at_the_same_moment(clock):
-    stack = FakeStack(clock, [(0, [robot(status="MOVING")]), (1, [robot(status="IDLE", order="order-x")])])
-    result, _ = run(stack, clock, scenario("  - expect: {robot: robot_01, status: MOVING, no_error: x, within: 3}"))
-    assert result.outcome == PASSED
+    # Each condition is true at some time during the 3 s, but never both at once: must fail.
+    stack = FakeStack(clock, [(0, [robot(status="MOVING")]), (1, [robot(status="IDLE", errors=[("x", "WARNING")])])])
+    result, _ = run(stack, clock, scenario("  - expect: {robot: robot_01, status: MOVING, error: x, within: 3}"))
+    assert result.outcome == FAILED
+    assert "robot_01 status is IDLE (expected MOVING)" in result.message  # the state at the deadline
     result, _ = run(
         FakeStack(clock, [(0, [robot(status="MOVING")])]),
         clock,

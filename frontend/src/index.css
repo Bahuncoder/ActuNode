@@ -4,7 +4,7 @@
   --signal-blue: #00aeef;
   --machine-mint: #7cffcb;
   --fog-white: #eaf2f7;
-  --industrial-gray: #607d8b;
+  --industrial-gray: #8aa1ad; /* AA contrast (4.5:1) on --panel and --node-navy */
   --panel: #10263a;
   --border: #1d3a52;
   --danger: #ff6b6b;

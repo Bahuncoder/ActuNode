@@ -3,11 +3,11 @@ import logging
 import threading
 from contextlib import asynccontextmanager
 
-from fastapi import FastAPI, WebSocket, WebSocketDisconnect
+from fastapi import FastAPI, Request, WebSocket, WebSocketDisconnect
 
-from app import auth, failures, missions, sessions
+from app import auth, docs, failures, missions, sessions, vda5050
 from app.config import settings
-from app.live import LAGGED, hub
+from app.live import LAGGED, TooManyClients, hub
 from app.mqtt_state import mqtt_bridge
 from app.security import LocalWebGuard
 
@@ -38,11 +38,10 @@ app = FastAPI(
     description="Infrastructure for autonomous machines. AMR integration lab backend.",
     version=VERSION,
     lifespan=lifespan,
-    # Under /api so the UI port (nginx forwards /api) serves them too, not only the direct port 8000.
-    docs_url="/api/docs",
-    redoc_url="/api/redoc",
-    openapi_url="/api/openapi.json",
+    # Under /api so the UI port (nginx forwards /api) serves them too; not at all when login is required (W3).
+    **docs.app_options(settings.require_login),
 )
+docs.add_docs(app, settings.require_login)
 # Starlette runs the middleware added last first: LocalWebGuard (D-24), then SessionGuard (D-25).
 app.add_middleware(auth.SessionGuard)
 app.add_middleware(LocalWebGuard, allowed_hosts=settings.allowed_hosts)
@@ -53,7 +52,10 @@ app.include_router(sessions.router)
 
 
 @app.get("/api/health")
-def health() -> dict:
+def health(request: Request) -> dict:
+    if not auth.sessions.valid(request.cookies.get(auth.COOKIE)):
+        # Liveness only: the broker's address and our version are for people who are logged in (W11).
+        return {"status": "ok", "mqtt": {"connected": mqtt_bridge.connected}}
     return {
         "status": "ok",
         "version": VERSION,
@@ -103,19 +105,17 @@ async def live_feed(websocket: WebSocket):
     # an expired session also ends feeds that are already open.
     session_id = auth.session_from_cookie_header(websocket.headers.get("cookie"))
     await websocket.accept()
-    queue = hub.subscribe()  # before the snapshot, so nothing falls in between
+    try:
+        queue = hub.subscribe()  # before the snapshot, so nothing falls in between
+    except TooManyClients:
+        await websocket.close(code=1013, reason="too many live feeds open; try again later")
+        return
     # Watch for the close separately: with no events flowing (e.g. broker down) a handler
     # that only sends would never notice it, and would block server shutdown.
     closed = asyncio.create_task(_wait_for_close(websocket))
     try:
-        await websocket.send_json(
-            {
-                "type": "snapshot",
-                **await asyncio.to_thread(hub.snapshot),
-                "recording": sessions.recorder.status(),
-                "replay": sessions.replayer.status(),
-            }
-        )
+        # One strict encoder for everything sent (no NaN/Infinity), and off the event loop: a snapshot can be big.
+        await websocket.send_text(await asyncio.to_thread(_snapshot_text))
         while True:
             next_event = asyncio.create_task(queue.get())
             done, _ = await asyncio.wait(
@@ -123,6 +123,8 @@ async def live_feed(websocket: WebSocket):
             )
             if closed in done:
                 next_event.cancel()
+                if closed.result():  # a browser never sends on this feed
+                    await websocket.close(code=1008, reason="This feed takes no messages")
                 break
             if not auth.sessions.valid(session_id):
                 next_event.cancel()
@@ -143,7 +145,18 @@ async def live_feed(websocket: WebSocket):
         hub.unsubscribe(queue)
 
 
-async def _wait_for_close(websocket: WebSocket) -> None:
-    """Return when the client (or server shutdown) closes the socket; ignore client messages."""
-    while (await websocket.receive())["type"] != "websocket.disconnect":
-        pass
+def _snapshot_text() -> str:
+    return vda5050.dumps(
+        {
+            "type": "snapshot",
+            **hub.snapshot(),
+            "recording": sessions.recorder.status(),
+            "replay": sessions.replayer.status(),
+        }
+    )
+
+
+async def _wait_for_close(websocket: WebSocket) -> bool:
+    """Return when the client (or server shutdown) closes the socket: False. True if the client sent a
+    message instead (the feed is one-way; a client that sends is misbehaving, W5)."""
+    return (await websocket.receive())["type"] != "websocket.disconnect"

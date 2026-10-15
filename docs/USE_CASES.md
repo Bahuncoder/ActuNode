@@ -25,7 +25,7 @@ connects to that broker is inspected, validated and recorded, whoever sent it.
 | Connect the robot (or its driver) | `localhost:1883`, or MQTT over TLS on 8883 from the network | ✅ works |
 | See and check its traffic | Inspector and validator: schema, header ids, state transitions, version, topic | ✅ works |
 | Send it missions | UI **Target** select or `POST /api/missions` with `manufacturer`, `vda_version` | ✅ works |
-| Repeat it as a test | `actunode test` scenario with `send_mission`, `expect` on `connection`, `error`, `order`, `message` | ✅ works; `status` checks need ActuNode's own field, so use plain VDA 5050 checks |
+| Repeat it as a test | `actunode test` scenario with `manufacturer: Acme` (header, or per step) and `send_mission`, `expect` on `connection`, `error`, `order`, `message` | ✅ works; `status` checks need ActuNode's own field, so use plain VDA 5050 checks |
 | Inject failures into it | — | ❌ only ActuNode's simulated robots take failure commands (by design: never send faults to real hardware) |
 
 Checked 14 Oct: a robot `Acme amr_7` with its own login was seen, validated and sent a mission it received;

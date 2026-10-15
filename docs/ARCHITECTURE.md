@@ -235,7 +235,7 @@ can go first).
 | Variable | Used by | Default |
 |---|---|---|
 | `ACTUNODE_MQTT_HOST`, `ACTUNODE_MQTT_PORT` | backend, simulator | `localhost`, `1883` |
-| `ACTUNODE_MQTT_CLIENT_ID` | backend | `actunode-backend` |
+| `ACTUNODE_MQTT_CLIENT_ID` | backend | `actunode-backend-<random>` (a random suffix per process) |
 | `ACTUNODE_MQTT_USERNAME`, `ACTUNODE_MQTT_PASSWORD_FILE` | backend (login; password read from the file); simulator uses the password file with `ActuNode.<serial>` as each robot's username (D-28) | unset = anonymous |
 | `ACTUNODE_SESSIONS_DIR` | backend | `<repo>/sessions` |
 | `ACTUNODE_MAX_SESSION_MB` | backend (recording stops itself at this size; fractions allowed) | `200` |

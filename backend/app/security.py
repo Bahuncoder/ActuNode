@@ -13,15 +13,41 @@ Binding to 127.0.0.1 (D-18) keeps other machines out, but not other *web pages* 
 Requests without an Origin header (curl, scripts) are not from a browser page and are allowed.
 """
 
+import logging
+import time
 from urllib.parse import urlsplit
 
 from starlette.responses import PlainTextResponse
 from starlette.types import ASGIApp, Receive, Scope, Send
 
+log = logging.getLogger("actunode.security")
+
 SAFE_METHODS = {"GET", "HEAD", "OPTIONS"}
 
 
 DEFAULT_PORTS = {"http": 80, "https": 443}
+
+
+class LogThrottle:
+    """At most one log line per `every_s` (the pattern of mqtt.py's handler errors): a client cannot flood the log
+    by being refused over and over. `allow()` is None when suppressed, else how many were suppressed before."""
+
+    def __init__(self, every_s: float = 60):
+        self.every_s = every_s
+        self.clock = time.monotonic
+        self._last = float("-inf")
+        self._suppressed = 0
+
+    def allow(self) -> int | None:
+        now = self.clock()
+        if now - self._last < self.every_s:
+            self._suppressed += 1
+            return None
+        suppressed, self._last, self._suppressed = self._suppressed, now, 0
+        return suppressed
+
+
+_refused_log = LogThrottle()
 
 
 def hostname(value: str) -> str | None:
@@ -74,6 +100,19 @@ class LocalWebGuard:
 
     @staticmethod
     async def _refuse(scope: Scope, receive: Receive, send: Send, status: int, reason: str) -> None:
+        if (suppressed := _refused_log.allow()) is not None:
+            headers = {k.decode("latin-1").lower(): v.decode("latin-1") for k, v in scope["headers"]}
+            client = scope.get("client") or ("unknown",)
+            log.warning(
+                "Refused %s %s from %s: %s (Host %.100r, Origin %.100r)%s",
+                scope["type"],
+                scope.get("path", ""),
+                client[0],
+                reason,
+                headers.get("host"),
+                headers.get("origin"),
+                f"; {suppressed} more refusals not logged" if suppressed else "",
+            )
         if scope["type"] == "websocket":
             await receive()  # websocket.connect; closing before accept answers the handshake with 403
             await send({"type": "websocket.close", "code": 1008, "reason": reason})

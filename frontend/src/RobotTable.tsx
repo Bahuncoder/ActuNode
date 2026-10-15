@@ -1,24 +1,46 @@
 import { memo, useCallback, useState } from 'react'
 import { cancelMission } from './api'
-import { batteryCharge, CANCELLABLE_STATUSES, failureLabel, isOnline, missionStatus, type Robot, robotErrors, robotPose, text } from './live'
+import {
+  batteryCharge,
+  CANCELLABLE_STATUSES,
+  display,
+  failureLabel,
+  get,
+  injectedFailures,
+  isOnline,
+  missionStatus,
+  num,
+  type Robot,
+  robotErrors,
+  robotPose,
+  statusClass,
+  stringList,
+  text,
+} from './live'
 
 function loadText(robot: Robot): string {
-  const loads = robot.state?.loads
+  const loads = get(robot.state, 'loads')
   if (!Array.isArray(loads)) return '—'
-  return loads.length === 0 ? 'empty' : loads.map((load) => text(load?.loadId)).join(', ')
+  return loads.length === 0 ? 'empty' : loads.map((load) => text(get(load, 'loadId'))).join(', ')
 }
 
 // The backend keeps only a trimmed copy of very large states (issue 21); say what is missing.
-function trimmedTitle(trimmed: NonNullable<Robot['state']>['_truncated']): string {
-  const lists = Object.entries(trimmed?.lists ?? {}).map(([name, length]) => `${name}: first 50 of ${length}`)
-  const dropped = trimmed?.dropped?.length ? [`not stored: ${trimmed.dropped.join(', ')}`] : []
-  return [`state of ${trimmed?.bytes ?? '?'} bytes stored trimmed`, ...lists, ...dropped].join('; ')
+// A robot can publish its own `_truncated`, so every part of it is read defensively.
+function trimmedTitle(trimmed: unknown): string {
+  const lists = get(trimmed, 'lists')
+  const listed = lists !== null && typeof lists === 'object' ? Object.entries(lists).map(([name, length]) => `${name}: first 50 of ${display(length)}`) : []
+  const names = stringList(get(trimmed, 'dropped'))
+  const dropped = names.length ? [`not stored: ${names.join(', ')}`] : []
+  return [`state of ${num(get(trimmed, 'bytes')) ?? '?'} bytes stored trimmed`, ...listed, ...dropped].join('; ')
 }
 
-export default function RobotTable({ robots }: { robots: Robot[] }) {
+function RobotTable({ robots }: { robots: Robot[] }) {
   const [cancelling, setCancelling] = useState<Set<string>>(new Set())
   // Latest error per robot key, so concurrent failures each name their robot.
   const [errors, setErrors] = useState<Record<string, string>>({})
+  // Only robots still listed keep their error.
+  const listed = new Set(robots.map((robot) => robot.key))
+  const shownErrors = Object.entries(errors).filter(([key]) => listed.has(key))
 
   const cancel = useCallback(async (robot: Robot) => {
     setCancelling((keys) => new Set(keys).add(robot.key))
@@ -77,8 +99,8 @@ export default function RobotTable({ robots }: { robots: Robot[] }) {
           </tbody>
         </table>
       </div>
-      {Object.values(errors).map((message) => (
-        <p key={message} className="result error">{message}</p>
+      {shownErrors.map(([key, message]) => (
+        <p key={key} className="result error">{message}</p>
       ))}
     </>
   )
@@ -99,8 +121,9 @@ const RobotRow = memo(function RobotRow({
   const battery = batteryCharge(robot)
   const pose = robotPose(robot)
   const errors = robotErrors(robot)
+  const injected = injectedFailures(robot) ?? []
   return (
-<tr>
+        <tr>
           <td className="mono">
             {robot.robotId}
             {shared && (
@@ -110,15 +133,13 @@ const RobotRow = memo(function RobotRow({
           <td>
             <span className={`badge ${isOnline(robot) ? 'ok' : 'down'}`}>{text(robot.connection)}</span>
           </td>
-          <td className="mono">{text(robot.state?.version)}</td>
+          <td className="mono">{text(get(robot.state, 'version'))}</td>
           <td>
-            <span className={`badge status-${status.toLowerCase()}`}>{status}</span>
-            {(robot.state?.actunode?.injectedFailures?.length ?? 0) > 0 && (
-              <div className="muted">{`injected: ${(robot.state?.actunode?.injectedFailures ?? []).map(failureLabel).join(', ')}`}</div>
-            )}
-            {robot.state?.paused === true && <span className="badge status-paused">PAUSED</span>}
-            {robot.state?._truncated && (
-              <span className="muted" title={trimmedTitle(robot.state._truncated)}>
+            <span className={`badge ${statusClass(status)}`}>{status}</span>
+            {injected.length > 0 && <div className="muted">{`injected: ${injected.map(failureLabel).join(', ')}`}</div>}
+            {get(robot.state, 'paused') === true && <span className="badge status-paused">PAUSED</span>}
+            {!!get(robot.state, '_truncated') && (
+              <span className="muted" title={trimmedTitle(get(robot.state, '_truncated'))}>
                 {' '}
                 state trimmed
               </span>
@@ -133,8 +154,8 @@ const RobotRow = memo(function RobotRow({
             )}
           </td>
           <td className="mono">{pose ? `${pose.x.toFixed(1)}, ${pose.y.toFixed(1)}` : '—'}</td>
-          <td className="mono">{text(robot.state?.orderId)}</td>
-          <td className="mono">{text(robot.state?.lastNodeId)}</td>
+          <td className="mono">{text(get(robot.state, 'orderId'))}</td>
+          <td className="mono">{text(get(robot.state, 'lastNodeId'))}</td>
           <td className="mono">{loadText(robot)}</td>
           <td className={errors.length ? 'error-text' : ''}>{errors.length ? errors.join('; ') : '—'}</td>
           <td>
@@ -151,3 +172,5 @@ const RobotRow = memo(function RobotRow({
         </tr>
   )
 })
+
+export default memo(RobotTable)

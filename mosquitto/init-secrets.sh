@@ -2,7 +2,7 @@
 # Credentials for ActuNode: MQTT logins (D-23) and the web login token (D-25). Runs as root in the eclipse-mosquitto image, writing into the
 # mqtt-secrets volume mounted at /secrets. Each consumer gets its own folder, readable only by it:
 #
-#   /secrets/broker/     passwd (hashed), acl, healthcheck.password -> owned by mosquitto (1883)
+#   /secrets/broker/     passwd, passwd.net (hashed), acl, healthcheck.password -> owned by mosquitto (1883)
 #   /secrets/backend/    password, api-token                     -> owned by BACKEND_UID
 #   /secrets/simulator/  password (shared by robot_01..robot_NN) -> owned by SIMULATOR_UID
 #   /secrets/people/     tools.password                          -> root only; shown with `show tools`
@@ -11,22 +11,35 @@
 #
 # Passwords are created once and kept; the hashed password file and the ACL are rebuilt on every start.
 # A robot logs in as <manufacturer>.<serial> (D-28): VDA 5050 serial numbers are unique per manufacturer
-# only, so the login names both, and its ACL block pins both topic levels (any VDA major version).
+# only, so the login names both, and its ACL block pins both topic levels (VDA major versions v2 and v3).
 #
-#   (no argument)        create missing passwords, rebuild the password file
+#   (no argument)        create missing passwords, rebuild the password files and ACL
 #   show tools           print the read-only tools password
 #   show api-token       print the token for the web login (needed when ACTUNODE_REQUIRE_LOGIN=1)
 #   add-robot <manufacturer> <serial>   create a login for a real robot and print its password
 #   add-master <name> [<manufacturer> ...]   create a login for an outside master control (fleet manager) that
 #                        commands the robots of these manufacturers (default ActuNode: the simulated ones), D-47
+#   remove-robot <manufacturer> <serial> | remove-master <name>   delete a login
+#   rotate tools | api-token | robot <manufacturer> <serial> | master <name>   new password, printed (old one stops working)
+#   backup               write a tar of all credentials and certificates to stdout (keep it secret)
+#   restore              read such a tar from stdin, check its layout, replace the credentials
+#
+# Apply a change without disconnecting anybody: `docker compose kill -s HUP mosquitto` (the broker reloads its
+# password files and ACL). Rotating the api-token also needs `docker compose restart backend`.
 #
 # A master control logs in as master@<name>: robot logins never contain @, so the two cannot collide.
+# Two password files are built: broker/passwd (all logins; ports 1883 and 9001, inside Docker and on this computer)
+# and broker/passwd.net (tools, real robots, master controls; the TLS port 8883): the backend, the health check and
+# the simulated robots cannot log in from the network. Topics carry explicit VDA major versions (v2, v3): a login can
+# only create retained topics under those.
 set -eu
 umask 077
 S=/secrets
 BACKEND_UID="${BACKEND_UID:-1000}"
 SIMULATOR_UID="${SIMULATOR_UID:-1000}"
 SIM_MAX_ROBOTS="${SIM_MAX_ROBOTS:-50}"
+VERSIONS="v2 v3"  # VDA 5050 major versions the backend and simulator speak (SUPPORTED_MAJOR_VERSIONS)
+HUP="docker compose kill -s HUP mosquitto"
 
 new_password() { head -c 48 /dev/urandom | base64 | tr -dc 'A-Za-z0-9' | head -c 32; }
 
@@ -38,11 +51,23 @@ valid_name() {  # manufacturer and serial become a username and ACL topic levels
   printf '%s' "$1" | grep -Eq '^[A-Za-z0-9_-]{1,64}$'
 }
 
+is_sim_robot() {  # is_sim_robot <manufacturer> <serial>: one of the simulated robots (their login is shared)
+  [ "$1" = ActuNode ] || return 1
+  n=1
+  while [ "$n" -le "$SIM_MAX_ROBOTS" ]; do
+    [ "$2" = "$(printf 'robot_%02d' "$n")" ] && return 0
+    n=$((n + 1))
+  done
+  return 1
+}
+
 robot_acl() {  # robot_acl <manufacturer> <serial> [sim]: own robot-to-master topics write, own commands read
   echo
   echo "user $1.$2"
-  for t in state connection visualization factsheet; do echo "topic write uagv/+/$1/$2/$t"; done
-  for t in order instantActions zoneSet responses; do echo "topic read uagv/+/$1/$2/$t"; done
+  for v in $VERSIONS; do
+    for t in state connection visualization factsheet; do echo "topic write uagv/$v/$1/$2/$t"; done
+    for t in order instantActions zoneSet responses; do echo "topic read uagv/$v/$1/$2/$t"; done
+  done
   [ "${3:-}" = sim ] && echo "topic read actunode/v1/sim/$2/inject"
   return 0
 }
@@ -52,42 +77,118 @@ master_acl() {  # master_acl <name> <manufacturer>...: commands to those robots 
   echo
   echo "user master@$name"
   for m in "$@"; do
-    for t in order instantActions zoneSet responses; do echo "topic write uagv/+/$m/+/$t"; done
-    echo "topic read uagv/+/$m/#"
+    for v in $VERSIONS; do
+      for t in order instantActions zoneSet responses; do echo "topic write uagv/$v/$m/+/$t"; done
+      echo "topic read uagv/$v/$m/#"
+    done
   done
   return 0
 }
 
-new_robot=""
-new_master=""
+usage_exit() { echo "usage: $1" >&2; exit 2; }
+check_name() {  # check_name <what> <value>
+  valid_name "$2" || { echo "invalid $1: '$2' (letters, digits, _ and - only)" >&2; exit 2; }
+}
+
+# One run at a time (two at once could install a password file that misses logins, I12).
+mkdir -p "$S"
+exec 9> "$S/.lock"
+flock 9
+
+new_robot="" new_master="" note=""
 case "${1:-}" in
   show)
     case "${2:-}" in
       tools) cat "$S/people/tools.password" ;;
       api-token) cat "$S/backend/api-token" ;;
-      *) echo "usage: show tools | show api-token" >&2; exit 2 ;;
+      *) usage_exit "show tools | show api-token" ;;
     esac
     echo
     exit 0 ;;
+  backup)
+    [ $# -eq 1 ] || usage_exit "backup > file.tar"
+    [ -t 1 ] && { echo "backup writes a tar to stdout: redirect it to a file" >&2; exit 2; }
+    tar -C "$S" --exclude ./.lock --exclude './.restore.*' -cf - .
+    exit 0 ;;
+  restore)
+    [ $# -eq 1 ] || usage_exit "restore < file.tar"
+    work="$(mktemp -d "$S/.restore.XXXXXX")"
+    trap 'rm -rf "$work"' EXIT
+    cat > "$work/in.tar"
+    tar -tvf "$work/in.tar" | awk '
+      { t = substr($1, 1, 1); n = $NF }
+      (t != "-" && t != "d") || n ~ /^\// || n ~ /(^|\/)\.\.(\/|$)/ ||
+        (n !~ /^(\.\/)?(backend|simulator|people|robots|masters|ca|web|broker)(\/|$)/ && n !~ /^\.\/?$/) { bad = 1 }
+      END { exit bad }' || { echo "restore: not a backup made by 'backup' (unexpected entry); nothing changed" >&2; exit 1; }
+    mkdir "$work/x"
+    tar -xf "$work/in.tar" -C "$work/x"
+    for f in backend/password backend/api-token simulator/password people/tools.password; do
+      [ -s "$work/x/$f" ] || { echo "restore: backup lacks $f; nothing changed" >&2; exit 1; }
+    done
+    for d in backend simulator people robots masters ca web broker; do
+      [ -d "$work/x/$d" ] || continue
+      rm -rf "${S:?}/$d"
+      mv "$work/x/$d" "$S/$d"
+    done
+    rm -rf "$work"
+    echo "restore: credentials restored; run: docker compose up -d --force-recreate mqtt-init cert-init mosquitto backend simulator frontend" ;;
   add-robot)
-    [ $# -eq 3 ] || { echo "usage: add-robot <manufacturer> <serial>" >&2; exit 2; }
-    valid_name "$2" || { echo "invalid manufacturer: '$2' (letters, digits, _ and - only)" >&2; exit 2; }
-    valid_name "$3" || { echo "invalid serial number: '$3' (letters, digits, _ and - only)" >&2; exit 2; }
+    [ $# -eq 3 ] || usage_exit "add-robot <manufacturer> <serial>"
+    check_name manufacturer "$2"; check_name "serial number" "$3"
+    if is_sim_robot "$2" "$3"; then
+      echo "refused: ActuNode.$3 is a simulated robot (ACTUNODE_SIM_ROBOTS, up to $SIM_MAX_ROBOTS); use another manufacturer or serial" >&2
+      exit 2
+    fi
     new_robot="$2.$3"
     mkdir -p "$S/robots"
     ensure "$S/robots/$new_robot.password" ;;
   add-master)
-    [ $# -ge 2 ] || { echo "usage: add-master <name> [<manufacturer> ...]" >&2; exit 2; }
-    valid_name "$2" || { echo "invalid name: '$2' (letters, digits, _ and - only)" >&2; exit 2; }
+    [ $# -ge 2 ] || usage_exit "add-master <name> [<manufacturer> ...]"
+    check_name name "$2"
     new_master="$2"
     shift 2
     [ $# -gt 0 ] || set -- ActuNode
-    for m in "$@"; do
-      valid_name "$m" || { echo "invalid manufacturer: '$m' (letters, digits, _ and - only)" >&2; exit 2; }
-    done
+    for m in "$@"; do check_name manufacturer "$m"; done
     mkdir -p "$S/masters"
     ensure "$S/masters/$new_master.password"
     printf '%s\n' "$@" > "$S/masters/$new_master.manufacturers" ;;
+  remove-robot)
+    [ $# -eq 3 ] || usage_exit "remove-robot <manufacturer> <serial>"
+    check_name manufacturer "$2"; check_name "serial number" "$3"
+    [ -e "$S/robots/$2.$3.password" ] || { echo "no robot login $2.$3" >&2; exit 1; }
+    rm -f "$S/robots/$2.$3.password"
+    note="removed robot login $2.$3" ;;
+  remove-master)
+    [ $# -eq 2 ] || usage_exit "remove-master <name>"
+    check_name name "$2"
+    [ -e "$S/masters/$2.password" ] || { echo "no master control login $2" >&2; exit 1; }
+    rm -f "$S/masters/$2.password" "$S/masters/$2.manufacturers"
+    note="removed master control login master@$2" ;;
+  rotate)
+    case "${2:-}" in
+      tools)
+        [ $# -eq 2 ] || usage_exit "rotate tools"
+        rm -f "$S/people/tools.password"; mkdir -p "$S/people"; ensure "$S/people/tools.password"
+        note="new tools password: $(cat "$S/people/tools.password")" ;;
+      api-token)
+        [ $# -eq 2 ] || usage_exit "rotate api-token"
+        rm -f "$S/backend/api-token"; mkdir -p "$S/backend"; ensure "$S/backend/api-token"
+        note="new api token: $(cat "$S/backend/api-token")
+the backend reads it at start: docker compose restart backend (everybody logged in to the web UI must log in again)" ;;
+      robot)
+        [ $# -eq 4 ] || usage_exit "rotate robot <manufacturer> <serial>"
+        check_name manufacturer "$3"; check_name "serial number" "$4"
+        [ -e "$S/robots/$3.$4.password" ] || { echo "no robot login $3.$4" >&2; exit 1; }
+        rm -f "$S/robots/$3.$4.password"; ensure "$S/robots/$3.$4.password"
+        note="robot login: username=$3.$4 password=$(cat "$S/robots/$3.$4.password")" ;;
+      master)
+        [ $# -eq 3 ] || usage_exit "rotate master <name>"
+        check_name name "$3"
+        [ -e "$S/masters/$3.password" ] || { echo "no master control login $3" >&2; exit 1; }
+        rm -f "$S/masters/$3.password"; ensure "$S/masters/$3.password"
+        note="master control login: username=master@$3 password=$(cat "$S/masters/$3.password")" ;;
+      *) usage_exit "rotate tools | api-token | robot <manufacturer> <serial> | master <name>" ;;
+    esac ;;
   "") ;;
   *) echo "unknown command: $1" >&2; exit 2 ;;
 esac
@@ -99,13 +200,19 @@ ensure "$S/simulator/password"
 ensure "$S/people/tools.password"
 ensure "$S/broker/healthcheck.password"
 
-tmp="$S/broker/passwd.new"
-acl="$S/broker/acl.new"
-rm -f "$tmp"; : > "$tmp"
-cp /acl.base "$acl"
-add() { mosquitto_passwd -b "$tmp" "$1" "$(cat "$2")" > /dev/null; }
+tmp="$(mktemp "$S/broker/passwd.XXXXXX")"
+tmpnet="$(mktemp "$S/broker/passwd.net.XXXXXX")"
+acl="$(mktemp "$S/broker/acl.XXXXXX")"
+trap 'rm -f "$tmp" "$tmpnet" "$acl"' EXIT
+: > "$tmp"; : > "$tmpnet"
+cat /acl.base > "$acl"
+add() {  # add <login> <password file> [net]: net logins also go in the network listener's file
+  mosquitto_passwd -b "$tmp" "$1" "$(cat "$2")" > /dev/null
+  [ "${3:-}" = net ] && mosquitto_passwd -b "$tmpnet" "$1" "$(cat "$2")" > /dev/null
+  return 0
+}
 add actunode-backend "$S/backend/password"
-add tools "$S/people/tools.password"
+add tools "$S/people/tools.password" net
 add healthcheck "$S/broker/healthcheck.password"
 echo >> "$acl"; echo "# --- generated by mqtt-init: one block per robot login ---" >> "$acl"
 i=1
@@ -124,7 +231,11 @@ for f in "$S"/robots/*.password; do
       "re-create it with: add-robot <manufacturer> $login" >&2
     continue
   fi
-  add "$login" "$f"
+  if is_sim_robot "$manufacturer" "$serial"; then
+    echo "mqtt-init: WARNING: ignoring robot login '$login' (a simulated robot's name; remove it: remove-robot $manufacturer $serial)" >&2
+    continue
+  fi
+  add "$login" "$f" net
   robot_acl "$manufacturer" "$serial" >> "$acl"
 done
 echo >> "$acl"; echo "# --- generated by mqtt-init: one block per master control login (D-47) ---" >> "$acl"
@@ -139,27 +250,31 @@ for f in "$S"/masters/*.password; do
     echo "mqtt-init: WARNING: ignoring master control login '$name' (invalid name or manufacturers)" >&2
     continue
   fi
-  add "master@$name" "$f"
+  add "master@$name" "$f" net
   # shellcheck disable=SC2086 # one manufacturer per word, each checked by valid_name above
   master_acl "$name" $manufacturers >> "$acl"
 done
 mv "$tmp" "$S/broker/passwd"
+mv "$tmpnet" "$S/broker/passwd.net"
 mv "$acl" "$S/broker/acl"
 
 chown -R 1883:1883 "$S/broker"
 chown -R "$BACKEND_UID" "$S/backend"
 chown -R "$SIMULATOR_UID" "$S/simulator"
 chmod 500 "$S/broker" "$S/backend" "$S/simulator"
-chmod 400 "$S/broker/passwd" "$S/broker/acl" "$S/broker/healthcheck.password" "$S/backend/password" "$S/backend/api-token" \
-  "$S/simulator/password"
+chmod 400 "$S/broker/passwd" "$S/broker/passwd.net" "$S/broker/acl" "$S/broker/healthcheck.password" \
+  "$S/backend/password" "$S/backend/api-token" "$S/simulator/password"
 chmod -R go-rwx "$S/people" "$S/robots" "$S/masters"
 echo "mqtt-init: credentials ready ($SIM_MAX_ROBOTS simulated robots)"
 if [ -n "$new_robot" ]; then
   echo "robot login: username=$new_robot password=$(cat "$S/robots/$new_robot.password")"
-  echo "apply it: docker compose up -d --force-recreate mqtt-init mosquitto"
 fi
 if [ -n "$new_master" ]; then
   echo "master control login: username=master@$new_master password=$(cat "$S/masters/$new_master.password")"
   echo "it commands: $(tr '\n' ' ' < "$S/masters/$new_master.manufacturers")"
-  echo "apply it: docker compose up -d --force-recreate mqtt-init mosquitto"
 fi
+[ -n "$note" ] && echo "$note"
+if [ -n "$new_robot$new_master$note" ]; then
+  echo "apply it without disconnecting anybody: $HUP"
+fi
+exit 0

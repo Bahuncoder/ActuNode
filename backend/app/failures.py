@@ -10,6 +10,7 @@ from pydantic import BaseModel, ConfigDict, Field, ValidationError, model_valida
 
 from app import vda5050
 from app.live import hub
+from app.mqtt import PublishFailed
 from app.mqtt_state import mqtt_bridge
 
 log = logging.getLogger("actunode.failures")
@@ -63,7 +64,7 @@ NO_CLEAR = {
 
 
 class FailureRequest(BaseModel):
-    robot_id: str = Field(pattern=r"^[A-Za-z0-9_-]{1,64}$", examples=["robot_01"])
+    robot_id: str = Field(pattern=vda5050.ROBOT_ID_FIELD, examples=["robot_01"])
     failure: Literal["BLOCKED_PATH", "LOW_BATTERY", "DISCONNECT", "INVALID_PAYLOAD", "UNRESPONSIVE"] = "BLOCKED_PATH"
     action: Literal["inject", "clear"] = "inject"
     params: dict = Field(default_factory=dict)
@@ -139,7 +140,10 @@ def inject_failure(request: FailureRequest) -> dict:
         "params": request.params,
     }
     topic = control_topic(request.robot_id, "inject")
-    mqtt_bridge.publish(topic, json.dumps(command), qos=1)
+    try:
+        mqtt_bridge.publish(topic, json.dumps(command), qos=1)
+    except PublishFailed as error:
+        raise HTTPException(503, f"MQTT message not sent: {error}") from error
 
     entry = {**command, "topic": topic, "robotStatus": status}
     hub.add_failure(entry)

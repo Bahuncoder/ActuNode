@@ -15,8 +15,8 @@ export default function ReplayBanner({ replay }: { replay: ReplayStatus | null }
 
   const percent = replay.total ? (replay.sent / replay.total) * 100 : 100
   return (
-    <div className={`replay-banner ${running ? '' : 'done'}`} role="status">
-      <strong>▶ {STATE_TEXT[replay.state]}</strong>
+    <div className={`replay-banner ${running ? '' : 'done'}`}>
+      <strong role="status">▶ {STATE_TEXT[replay.state]}</strong>
       <span className="mono">{replay.sessionId}</span>
       <span className="mono muted">
         {replay.position.toFixed(1)} / {replay.duration.toFixed(1)} s · {replay.speed}× · {replay.sent}/{replay.total}{' '}

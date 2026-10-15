@@ -257,7 +257,7 @@ def test_horizon_actions_stay_waiting_and_node_in_base_finishes():
     run(robot, 5)
 
     status = {a["actionId"]: a["actionStatus"] for a in robot.state_message()["actionStates"]}
-    assert status == {"act-N1": "FINISHED", "e-1": "FINISHED"}
+    assert status == {"act-N1": "FINISHED"}
 
 
 # --- 5. order updates ---------------------------------------------------
@@ -303,7 +303,7 @@ def test_update_replaces_the_horizon_and_its_actions():
     robot.accept_order(order)
     run(robot, 5)
     update = update_from(order, 1, 2)
-    update["nodes"][-1]["nodeId"] = "N9"
+    update["nodes"][-1]["nodeId"] = update["edges"][-1]["endNodeId"] = "N9"
     update["nodes"][-1]["actions"] = [{"actionId": "new-h", "actionType": "pick", "blockingType": "HARD"}]
 
     assert robot.accept_order(update)
@@ -359,28 +359,19 @@ def test_update_for_a_completed_order_stitches_at_last_node():
     assert robot.last_node_id == "N2"
 
 
-# --- 6. edge actions ----------------------------------------------------
+# --- 6. edge actions: not supported (the factsheet lists actionScopes NODE only) ---------------------------
 
 
-def test_edge_action_waits_runs_on_the_edge_and_finishes_at_its_end_node():
-    robot = Robot("robot_01")
-    robot.accept_order(horizon_order(released=4))
+@BOTH
+@pytest.mark.parametrize("action_type", ["pick", "drop"])
+def test_pick_or_drop_on_an_edge_is_an_invalid_order_action(major, action_type):
+    robot = Robot("robot_01", vda_major=major)
+    order = make_order()
+    order["edges"][0]["actions"] = [{"actionId": "e", "actionType": action_type, "blockingType": "HARD"}]
 
-    def edge_status():
-        return next(a["actionStatus"] for a in robot.action_states if a["actionId"] == "e-1")
-
-    assert edge_status() == "RUNNING"  # N0 (its start node) is traversed at acceptance
-    run(robot, 1)
-    assert edge_status() == "RUNNING"
-    run(robot, 1.5)  # past N1
-    assert edge_status() == "FINISHED"
-
-
-def test_horizon_edge_action_is_not_started():
-    robot = Robot("robot_01")
-    order = horizon_order(released=1)
-    robot.accept_order(order)
-    assert next(a["actionStatus"] for a in robot.action_states if a["actionId"] == "e-1") == "WAITING"
+    assert robot.accept_order(order) is False
+    assert types(robot) == ["orderError" if major == "v2" else "INVALID_ORDER_ACTION"]
+    assert robot.order_id == ""
 
 
 # --- 7. loads -----------------------------------------------------------

@@ -41,5 +41,9 @@ The example sends one robot (`--robot`, default robot_03) between two locations 
    messages; the simulator must be stopped first, `docker compose stop simulator`). Robots in a replay
    cannot react to its commands: it shows what your fleet manager decides, not the whole loop.
 
+A reroute counts in `blocked_path_reaction.yaml` only as a **new** order (`orderUpdateId: 0`): an update of the
+blocked order does not free the robot. A fleet manager that reroutes by extending the order needs the match
+changed (or removed) in the scenario.
+
 Escalation that does not show on the wire (an e-mail, a dashboard alert) cannot be seen by ActuNode; give
 the scenario the MQTT reaction your fleet manager should have.

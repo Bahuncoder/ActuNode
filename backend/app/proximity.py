@@ -11,6 +11,10 @@ from collections.abc import Callable
 # A pair is reported once when it gets closer than min_distance, and re-armed only after moving
 # beyond min_distance * REARM, so robots hovering near the limit do not flood the log.
 REARM = 1.2
+# Positions kept and issues returned per message at most: the loop below is O(positions), and a flood of made-up
+# robots (or a cluster of hundreds close together) must not make every message cost more (W8).
+MAX_POSITIONS = 1000
+MAX_ISSUES_PER_MESSAGE = 20
 
 
 def state_position(state: dict) -> tuple[str, float, float, str] | None:
@@ -21,8 +25,12 @@ def state_position(state: dict) -> tuple[str, float, float, str] | None:
             continue
         x, y, map_id = position.get("x"), position.get("y"), position.get("mapId")
         if all(isinstance(v, int | float) and not isinstance(v, bool) for v in (x, y)) and isinstance(map_id, str):
-            if math.isfinite(x) and math.isfinite(y):
-                return f"/{key}", float(x), float(y), map_id
+            try:
+                fx, fy = float(x), float(y)  # OverflowError for an integer beyond the float range
+            except OverflowError:
+                continue
+            if math.isfinite(fx) and math.isfinite(fy):
+                return f"/{key}", fx, fy, map_id
     return None
 
 
@@ -32,7 +40,9 @@ class ProximityMonitor:
         min_distance: float = 1.0,
         stale_after: float = 3.0,
         now: Callable[[], float] = time.monotonic,
+        max_robots: int = MAX_POSITIONS,
     ):
+        self.max_robots = max_robots
         self.min_distance = min_distance
         self.stale_after = stale_after
         self._now = now
@@ -52,6 +62,8 @@ class ProximityMonitor:
         # both memory and this loop proportional to the robots that are live.
         for stale in [r for r, p in self._positions.items() if now - p[3] > self.stale_after]:
             self.forget(stale)
+        if robot_id not in self._positions and len(self._positions) >= self.max_robots:
+            return []  # more live robots than the cap: the newcomers are not watched
         self._positions[robot_id] = (x, y, map_id, now)
 
         issues = []
@@ -64,7 +76,7 @@ class ProximityMonitor:
                 continue
             distance = math.hypot(x - ox, y - oy)
             if distance < self.min_distance:
-                if pair not in self._near:
+                if pair not in self._near and len(issues) < MAX_ISSUES_PER_MESSAGE:
                     issues.append(
                         {
                             "severity": "warning",

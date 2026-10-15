@@ -6,7 +6,11 @@ import math
 from simulator.protocol import (
     MANUFACTURER,
     MAP_ID,
+    MAX_ACTIONS_PER_ORDER,
+    MAX_EDGES_PER_ORDER,
     MAX_ID_LENGTH,
+    MAX_INSTANT_ACTIONS_PER_MESSAGE,
+    MAX_NODES_PER_ORDER,
     MAX_STATE_BYTES,
     SPEED_M_PER_S,
     SUPPORTED_ACTIONS,
@@ -34,6 +38,15 @@ def header(robot, topic_name: str) -> dict:
 
 def state_message(robot) -> dict:
     """VDA 5050 `state` message in the robot's version. ActuNode-specific fields go under `actunode`."""
+    return state_with_json(robot)[0]
+
+
+def state_payload(robot) -> str:
+    """The state message as JSON text, serialised once (the size guard has to measure it anyway)."""
+    return state_with_json(robot)[1]
+
+
+def state_with_json(robot) -> tuple[dict, str]:
     v = robot.v
     # Rounding can push pi up to 3.142; the spec range is [-pi, pi].
     theta = max(-math.pi, min(math.pi, round(robot.theta, 3)))
@@ -61,9 +74,11 @@ def state_message(robot) -> dict:
     _put_action_states(robot, state)
     # Final guard: whatever else grew (the ids are bounded, the counts are not all), the state must stay
     # below the broker's packet limit. Drop the oldest finished instant action states until it fits.
-    while len(json.dumps(state)) > MAX_STATE_BYTES and robot.drop_oldest_done_instant_state():
+    text = json.dumps(state)
+    while len(text) > MAX_STATE_BYTES and robot.drop_oldest_done_instant_state():
         _put_action_states(robot, state)
-    return state
+        text = json.dumps(state)
+    return state, text
 
 
 def _put_action_states(robot, state: dict) -> None:
@@ -123,7 +138,14 @@ def factsheet_message(robot) -> dict:
         },
         "protocolLimits": {
             n["string_lengths"]: {n["id_length"]: MAX_ID_LENGTH, n["load_id_length"]: MAX_ID_LENGTH},
-            n["array_lengths"]: {},
+            # What the robot enforces (validation.check_size, instant.py): the action limit counts the whole order.
+            n["array_lengths"]: {
+                "order.nodes": MAX_NODES_PER_ORDER,
+                "order.edges": MAX_EDGES_PER_ORDER,
+                "node.actions": MAX_ACTIONS_PER_ORDER,
+                "edge.actions": MAX_ACTIONS_PER_ORDER,
+                "instantActions": MAX_INSTANT_ACTIONS_PER_MESSAGE,
+            },
             "timing": {n["order_interval"]: NOMINAL_MIN_INTERVAL_S, n["state_interval"]: NOMINAL_MIN_INTERVAL_S},
         },
         "protocolFeatures": {"optionalParameters": [], n["actions"]: pick_drop + instant},

@@ -42,6 +42,8 @@ _VALIDATE_POOL = ThreadPoolExecutor(max_workers=1, thread_name_prefix="validate"
 VALIDATION_CACHE_ENTRIES = 16
 _validation_cache: OrderedDict[tuple, dict] = OrderedDict()  # (session id, size, mtime_ns) -> report
 MB = 1024 * 1024
+# Sessions a replay is being started for (its file is being scanned): retention and delete leave them alone.
+_replay_starting: set[str] = set()
 
 
 def _sessions_changed() -> None:
@@ -68,7 +70,7 @@ def startup() -> None:
 def enforce_retention(now: datetime | None = None, protect: tuple[str, ...] = ()) -> list[str]:
     """Apply the retention settings, never touching the session being recorded or replayed, nor those in
     `protect` (a recording that has only just stopped) (D-41)."""
-    protected = set(protect)
+    protected = set(protect) | _replay_starting
     if current := recorder.status():
         protected.add(current["sessionId"])
     if replayer.running and (replay := replayer.status()):
@@ -104,9 +106,10 @@ replayer = Replayer(
     on_status=lambda status: hub.broadcast({"type": "replay", "replay": status}),
 )
 
-# A robot whose state arrived this recently is treated as live (the simulator publishes every second).
+# A robot whose state arrived this recently is treated as live (the simulator publishes every second); a robot
+# that says it is ONLINE is live whatever the age of its last state.
 LIVE_WINDOW = timedelta(seconds=3)
-# Messages published by a replay can still be arriving just after it ends.
+# Messages published by a replay can still be arriving just after it publishes them.
 REPLAY_ECHO = timedelta(seconds=0.5)
 
 
@@ -182,6 +185,8 @@ async def upload_session(request: Request, name: str | None = None) -> dict:
                 checked = await asyncio.to_thread(check_upload, temp)
             except UploadError as error:
                 raise HTTPException(422, str(error)) from error
+            if writer.session_id is None:  # a one-line file whose line is not a session header
+                raise HTTPException(422, "Line 1: the first line must be a session header")
             if settings.sessions_max_total_mb:
                 used, _ = await asyncio.to_thread(storage_used, directory)
                 if used + size > settings.sessions_max_total_mb * MB:
@@ -228,8 +233,8 @@ async def validate(session_id: str) -> dict:
             report = await asyncio.get_running_loop().run_in_executor(_VALIDATE_POOL, validate_session, path)
         except SessionFormatError as error:
             raise HTTPException(422, str(error)) from error
-        except UnicodeDecodeError:
-            raise HTTPException(422, "The session file is not UTF-8") from None
+        except UnicodeError:
+            raise HTTPException(422, "The session file is not valid text (UTF-8)") from None
         except OSError:
             raise HTTPException(404, f"Unknown session: {session_id}") from None
     _validation_cache[key] = report
@@ -286,7 +291,11 @@ def delete_session(session_id: str) -> Response:
     replay = replayer.status()
     if replayer.running and replay and replay["sessionId"] == session_id:
         raise HTTPException(409, "Cannot delete a session while it is being replayed")
-    path.unlink()
+    if session_id in _replay_starting:
+        raise HTTPException(409, "Cannot delete a session while it is being replayed")
+    path.unlink(missing_ok=True)
+    for key in [k for k in _validation_cache if k[0] == session_id]:
+        del _validation_cache[key]  # a report of a deleted session is of no use, and it can be big
     _sessions_changed()
     return Response(status_code=204)
 
@@ -308,10 +317,21 @@ async def start_replay(session_id: str, request: ReplayRequest | None = None) ->
     if not mqtt_bridge.connected:
         raise HTTPException(503, "MQTT broker is not connected")
 
+    _replay_starting.add(session_id)  # retention must not delete the file between the scan and the start
+    try:
+        return await _start_replay(session_id, path, request)
+    finally:
+        _replay_starting.discard(session_id)
+
+
+async def _start_replay(session_id: str, path: Path, request: ReplayRequest) -> dict:
     try:
         scan = await asyncio.to_thread(scan_session, path)
     except ReplayError as error:
         raise HTTPException(422, str(error)) from error
+    except (UnicodeError, ValueError, TypeError, AttributeError, RecursionError) as error:
+        log.warning("Replay: %s cannot be scanned: %r", session_id, error)
+        raise HTTPException(422, "The session file cannot be replayed (unexpected content)") from None
 
     keys = set(scan["robotIds"])
     if request.include_commands:  # failure injections reach the ActuNode simulator of that serial
@@ -346,18 +366,24 @@ def stop_replay() -> dict:
     return {"stopping": True}
 
 
+def _heard(robot: dict, field: str) -> datetime | None:
+    return datetime.fromisoformat(robot[field]) if robot.get(field) else None
+
+
 def _is_live(key: str) -> bool:
-    """Is the robot with exactly this key ("<major>/<manufacturer>/<serial>") publishing state now?"""
-    # Only state messages count: connection messages are retained by the broker
-    # and re-delivered on every reconnect, long after a robot has gone.
-    seen = [
-        robot["lastStateAt"]
-        for robot in hub.robots_for(key.rsplit("/", 1)[-1])
-        if robot["key"] == key and robot.get("lastStateAt")
-    ]
-    if not seen:
+    """Is the robot with exactly this key ("<major>/<manufacturer>/<serial>") publishing now?
+
+    Live: a state newer than LIVE_WINDOW, or a connection that says ONLINE (real robots may send state every
+    30 s, D5). Not live, either way: what we last heard from the robot is the echo of a replay we published for
+    exactly this key (D6) - its ONLINE came from the replay's own connection message."""
+    robot = next((r for r in hub.robots_for(key.rsplit("/", 1)[-1]) if r["key"] == key), None)
+    if robot is None:
         return False
-    last_seen = max(datetime.fromisoformat(at) for at in seen)
-    if replayer.ended_at and last_seen <= replayer.ended_at + REPLAY_ECHO:
+    replayed = replayer.last_published.get(key)
+    last_seen = _heard(robot, "lastSeen")
+    if replayed and (last_seen is None or last_seen <= replayed + REPLAY_ECHO):
         return False  # the last thing we heard came from a replay
-    return datetime.now(UTC) - last_seen < LIVE_WINDOW
+    if robot["connection"] == "ONLINE":
+        return True
+    last_state = _heard(robot, "lastStateAt")
+    return last_state is not None and datetime.now(UTC) - last_state < LIVE_WINDOW

@@ -1,11 +1,12 @@
+import { memo } from 'react'
 import { resetValidation } from './api'
-import type { ValidationSummary } from './live'
+import { display, type ValidationSummary } from './live'
 
 function time(iso: string): string {
   return new Date(iso).toLocaleTimeString([], { hour12: false })
 }
 
-export default function ValidationPanel({ validation }: { validation: ValidationSummary | null }) {
+function ValidationPanel({ validation }: { validation: ValidationSummary | null }) {
   if (!validation) return null
 
   const clean = validation.withIssues === 0
@@ -50,19 +51,19 @@ export default function ValidationPanel({ validation }: { validation: Validation
             <tbody>
               {validation.byRule.map((rule) => (
                 <tr key={rule.rule}>
-                  <td className="mono" title={rule.description}>
-                    {rule.rule}
+                  <td className="mono" title={display(rule.description)}>
+                    {display(rule.rule)}
                   </td>
                   <td>
                     <span className={`badge ${rule.severity === 'error' ? 'down' : 'warn'}`}>{rule.severity}</span>
                   </td>
-                  <td className="mono">{rule.count}</td>
+                  <td className="mono">{display(rule.count)}</td>
                   <td className="error-text">
                     {rule.last && (
                       <>
                         <span className="mono muted">{time(rule.last.at)} </span>
-                        {rule.last.message}
-                        <span className="mono muted"> · {rule.last.topic}</span>
+                        {display(rule.last.message)}
+                        <span className="mono muted"> · {display(rule.last.topic)}</span>
                       </>
                     )}
                   </td>
@@ -75,3 +76,5 @@ export default function ValidationPanel({ validation }: { validation: Validation
     </section>
   )
 }
+
+export default memo(ValidationPanel)

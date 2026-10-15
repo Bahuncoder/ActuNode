@@ -21,4 +21,9 @@ Only the latest `main` and the latest release get fixes.
 ## Security design
 
 The reasoning behind the security measures is in [docs/DECISIONS.md](docs/DECISIONS.md):
-D-18, D-23 to D-26, D-28, D-31, D-32, D-36 and D-41.
+D-18, D-23 to D-26, D-28, D-31, D-32, D-36 and D-41. The latest audit and its fixes: [docs/AUDIT_2026-10-14.md](docs/AUDIT_2026-10-14.md).
+
+Infrastructure measures: broker memory, queue and connection limits; the network listener (8883) has its own
+password file without the internal logins; the local CA is name-constrained; containers drop all Linux
+capabilities, cannot gain privileges and run with read-only root filesystems; GitHub Actions are pinned to commit
+SHAs and kept current by Dependabot.

@@ -14,7 +14,7 @@ the status line, the schedule table, the session log, and the open issues.
 |---|---|
 | **Calendar** | Week 1 of 8 by date (Fri 9 Oct – Thu 15 Oct 2026); dates no longer gate the work (D-30) |
 | **Last updated** | Wed 14 Oct 2026 |
-| **Status** | **Phase 1 (weeks 1–8) complete; v0.1.0 released 13 Oct 2026** (D-43). Phase 2 (weeks 9–16, D-44) under way: **Weeks 9 and 10 done** (D-45, D-46: `actunode test`, timing and message expectations, every run recorded, five sample scenarios). **Decision point** (D-44): the founder's first user conversations decide the order of weeks 11–16; without new input, Week 11 is next. **Product audit 14 Oct (D-47):** outside fleet managers can now connect; security headers added. **Week 11 done (D-48):** the plan's demo question runs as a scenario against a fleet manager; `UNRESPONSIVE`; replay with current time. **Week 12 done (D-49):** Docker scenario runner, CI job, GitHub Actions template, `actunode import` for site captures. Next: Week 13 (ROS 2 robot stack), unless user conversations reorder. No open issues. |
+| **Status** | **Phase 1 (weeks 1–8) complete; v0.1.0 released 13 Oct 2026** (D-43). Phase 2 (weeks 9–16, D-44) under way: **Weeks 9 and 10 done** (D-45, D-46: `actunode test`, timing and message expectations, every run recorded, five sample scenarios). **Decision point** (D-44): the founder's first user conversations decide the order of weeks 11–16; without new input, Week 11 is next. **Product audit 14 Oct (D-47):** outside fleet managers can now connect; security headers added. **Week 11 done (D-48):** the plan's demo question runs as a scenario against a fleet manager; `UNRESPONSIVE`; replay with current time. **Week 12 done (D-49).** **Full audit of weeks 0–12 done (D-50, docs/AUDIT_2026-10-14.md):** six reviews, ~95 findings (13 High), all fixed with tests; gate green. Next: Week 13 (ROS 2 robot stack), unless user conversations reorder. No open issues. |
 | **Working rule** | A week is done when its work is fully done (D-30): features, then a quality gate (independent bug and security review, scans, a test for every fix, all suites and e2e green, docs). Then the next week starts, whatever the date. |
 
 ## Schedule
@@ -57,6 +57,25 @@ the 8-week plan; the 8-week plan is the full roadmap. All of Days 1–7 were bui
 | Day 5 | `BLOCKED_PATH` failure | Week 6 (1 of 4 failures) |
 | Days 6–7 | Record to JSONL, replay | Week 7 |
 | 10 Oct | 10 robots; validator, schemas, VDA 5050 notes | Weeks 4, 5, 1 (rest) |
+
+## Full audit of weeks 0–12 (14–15 Oct, D-50)
+
+Six independent reviews of every line (backend web, backend data, simulator, frontend and nginx, infrastructure
+and CI, runner and test quality) plus an architecture review: about 95 findings, 13 High, each reproduced or
+traced. Decisions, details and results: [AUDIT_2026-10-14.md](AUDIT_2026-10-14.md). Fixed by five workers in
+parallel on disjoint files, from the reviewers' findings, then merged and gated here.
+
+Highest-impact fixes: overflowing JSON numbers could blank every browser and hide messages; a crafted session
+file could exhaust memory (25×) or freeze the API during replay, or make the broker drop the backend; any
+robot or fleet-manager login could exhaust the broker's memory; an outside fleet manager could freeze all
+simulated robots or wedge one with a malformed order; one malformed robot message could take down UI panels;
+the runner crashed with the wrong exit code on refused requests and could not address other manufacturers'
+robots; the import could destroy its own input.
+
+Gate: backend 576, simulator 465, runner 220, frontend 137 (lint, build, types); e2e 41+4 / 41+4 / 44+1 (VDA 2.1,
+3.0, 2.1 with login and TLS); load test all thresholds at 10/25/50 robots; 19 black-box attacks re-run; nginx
+headers, gzip and asset 404 checked on a running server. The gate found two more issues, fixed: the load
+test's browser probe blocked by the new CSP, and a year-long cache header on a 404.
 
 ## Week 12: scenarios in CI, site captures (14 Oct, D-49)
 
@@ -492,6 +511,10 @@ exercised by hand with a real browser and MQTT traffic.
 
 ## Open issues and technical debt
 
+Open from the full audit (D-50): per-user identity and an audit trail in shared labs (A3), metrics (A6),
+versioned scenario format and API, published images (A5, A7: Week 16); merge the two session-id generators;
+remove the simulator's unreachable edge-action code.
+
 Open from the product audit (D-47), checked 14 Oct, with the recommended order:
 (Items 1 and 2 done in Week 11, D-48.)
 1. **Replay against a fleet manager**: checked, it works (simulator stopped, as replay requires; a
@@ -517,6 +540,10 @@ Numbered so they can be referenced from commits. Remove an item only when it is 
 ## Session log
 
 Newest first. One entry per work session: what was done, what was learned, what is next.
+
+### Wed 14 – Thu 15 Oct 2026: full audit of weeks 0–12 (D-50)
+- Six parallel reviews, an architecture review, five parallel fix workers, full gate. All suites, e2e in three
+  configurations, the load test and the attack probes green on the final code.
 
 ### Wed 14 Oct 2026 (evening): Week 12 (D-49)
 - Docker scenario runner, CI job `scenarios`, GitHub Actions template, `actunode import`. Gate green in all

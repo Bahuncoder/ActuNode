@@ -82,8 +82,8 @@ class FakeStack:
         self.orders_sent += 1
         return {"order_id": f"order-{self.orders_sent}"}
 
-    def cancel_mission(self, robot_id, vda_version):
-        self._call("cancel_mission", robot_id, vda_version)
+    def cancel_mission(self, robot_id, vda_version, manufacturer=None):
+        self._call("cancel_mission", robot_id, vda_version, *([manufacturer] if manufacturer else []))
         return {}
 
     def start_recording(self, name):
@@ -96,7 +96,8 @@ class FakeStack:
 
     def open_feed(self, clock):
         self._lab("open_feed")
-        return FakeFeed(self)
+        self.feed = FakeFeed(self)
+        return self.feed
 
     def failure(self, robot_id, failure, action, params=None):
         self._call("failure", robot_id, failure, action, params)

@@ -2,6 +2,7 @@
 
 import json
 import os
+import re
 import threading
 from collections import OrderedDict
 from dataclasses import dataclass
@@ -10,6 +11,22 @@ from itertools import count
 
 MANUFACTURER = "ActuNode"
 MAP_ID = "warehouse"
+
+# Identity patterns, the one place (D-50, D4): every id that ends up in a topic is checked with fullmatch
+# (re.match with `$` would accept a trailing newline). Serial numbers ActuNode addresses, and topic levels.
+ROBOT_ID_PATTERN = r"[A-Za-z0-9_-]{1,64}"
+LEVEL_PATTERN = r"[A-Za-z0-9_.-]{1,64}"  # manufacturer, map id, the topic's last level
+ROBOT_ID_RE = re.compile(ROBOT_ID_PATTERN)
+LEVEL_RE = re.compile(LEVEL_PATTERN)
+SIM_INJECT_RE = re.compile(rf"actunode/v1/sim/({ROBOT_ID_PATTERN})/inject")
+# For pydantic fields (anchored; Rust regex `$` does not match before a trailing newline).
+ROBOT_ID_FIELD = f"^{ROBOT_ID_PATTERN}$"
+LEVEL_FIELD = f"^{LEVEL_PATTERN}$"
+# No publishable topic is longer; MQTT allows 65,535 bytes.
+MAX_TOPIC_CHARS = 512
+# Characters a topic from a file must not hold: control characters (the broker drops the connection), the
+# wildcards, and lone surrogates (cannot be encoded).
+UNSAFE_TOPIC_CHARS = re.compile(r"[\x00-\x1f\x7f-\x9f+#\ud800-\udfff]")
 
 # Topic layout: interfaceName/majorVersion/manufacturer/serialNumber/topic
 INTERFACE_NAME = os.getenv("ACTUNODE_VDA_INTERFACE", "uagv")
@@ -46,6 +63,19 @@ def topic_parts(topic_name: str) -> TopicParts | None:
     return TopicParts(parts[1], parts[2], parts[3], parts[4])
 
 
+def is_publishable_topic(topic: str) -> bool:
+    """True for a topic ActuNode may publish from a recorded file: uagv/<v>/<manufacturer>/<serial>/<name> with
+    every level well formed, or the simulator's inject topic."""
+    if not isinstance(topic, str) or len(topic) > MAX_TOPIC_CHARS:
+        return False
+    if SIM_INJECT_RE.fullmatch(topic):
+        return True
+    parts = topic_parts(topic)
+    return parts is not None and all(
+        LEVEL_RE.fullmatch(level) for level in (parts.manufacturer, parts.serial_number, parts.name)
+    )
+
+
 def robot_key(parts: TopicParts) -> str:
     """Identity of one robot: "<major>/<manufacturer>/<serial>", e.g. "v2/ActuNode/robot_01"."""
     return f"{parts.major}/{parts.manufacturer}/{parts.serial_number}"
@@ -53,11 +83,11 @@ def robot_key(parts: TopicParts) -> str:
 
 def dumps(message: dict) -> str:
     """Compact JSON for publishing: no padding, and non-ASCII kept as is (escaping would triple its size)."""
-    text = json.dumps(message, separators=(",", ":"), ensure_ascii=False)
+    text = json.dumps(message, separators=(",", ":"), ensure_ascii=False, allow_nan=False)
     try:
         text.encode("utf-8")
     except UnicodeEncodeError:  # a lone surrogate (JSON allows "\ud800"): only ASCII escaping can carry it
-        text = json.dumps(message, separators=(",", ":"))
+        text = json.dumps(message, separators=(",", ":"), allow_nan=False)
     return text
 
 

@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react'
+import { memo, useEffect, useRef, useState } from 'react'
 import {
   deleteSession,
   fetchRecording,
@@ -13,10 +13,12 @@ import {
   type ValidationReport,
   type SessionSummary,
 } from './api'
-import { num, text, type RecordingStatus, type RecordingStopped, type ReplayStatus } from './live'
+import { display, num, text, type RecordingStatus, type RecordingStopped, type ReplayStatus } from './live'
 
 const POLL_MS = 1000
 const SPEEDS = [1, 2, 5, 10]
+// The server's upload limit (ACTUNODE_MAX_UPLOAD_MB default); a larger file is refused here, without sending it.
+const MAX_UPLOAD_BYTES = 200 * 1024 ** 2
 
 function formatDuration(seconds: number): string {
   const m = Math.floor(seconds / 60)
@@ -54,15 +56,15 @@ function ValidationResult({ report }: { report: ValidationReport | string }) {
       </p>
       <ul>
         {report.byRule.map((rule) => (
-          <li key={rule.rule} title={rule.description}>
-            <span>{rule.rule}</span> <span className={`badge ${rule.severity === 'error' ? 'down' : 'warn'}`}>{rule.severity}</span> ×{rule.count}
+          <li key={rule.rule} title={display(rule.description)}>
+            <span>{display(rule.rule)}</span> <span className={`badge ${rule.severity === 'error' ? 'down' : 'warn'}`}>{rule.severity}</span> ×{rule.count}
           </li>
         ))}
       </ul>
       <ul>
         {report.issues.slice(0, 10).map((issue, index) => (
           <li key={index}>
-            line {issue.line} · {issue.topic} · {issue.message}
+            line {display(issue.line)} · {display(issue.topic)} · {display(issue.message)}
           </li>
         ))}
       </ul>
@@ -80,7 +82,7 @@ function ValidationResult({ report }: { report: ValidationReport | string }) {
   )
 }
 
-export default function RecorderPanel({
+function RecorderPanel({
   recording,
   recordingStopped,
   replay,
@@ -109,9 +111,16 @@ export default function RecorderPanel({
   // Refresh the list whenever recording starts or stops (from this tab or another).
   const recordingId = recording?.sessionId ?? null
   const [listVersion, setListVersion] = useState(0)
+  const [listError, setListError] = useState<string | null>(null)
+  const listSequence = useRef(0) // an older answer must not overwrite a newer one
+  const [validating, setValidating] = useState<Set<string>>(new Set())
+  const [uploading, setUploading] = useState(false)
   useEffect(() => {
+    const sequence = ++listSequence.current
     fetchSessions()
       .then((list) => {
+        if (sequence !== listSequence.current) return
+        setListError(null)
         const valid = list.filter((session) => typeof session?.sessionId === 'string')
         setSessions(valid)
         const ids = new Set(valid.map((session) => session.sessionId))
@@ -120,7 +129,9 @@ export default function RecorderPanel({
           return kept.length === Object.keys(current).length ? current : Object.fromEntries(kept)
         })
       })
-      .catch(() => {})
+      .catch((err) => {
+        if (sequence === listSequence.current) setListError((err as Error).message)
+      })
     fetchSessionStorage().then(setStorage).catch(() => {})
   }, [recordingId, listVersion, sessionsVersion])
 
@@ -179,17 +190,30 @@ export default function RecorderPanel({
   }
 
   async function validate(sessionId: string) {
+    if (validating.has(sessionId)) return
+    setValidating((current) => new Set(current).add(sessionId))
     try {
       const report = await validateSession(sessionId)
       setReports((current) => ({ ...current, [sessionId]: report }))
     } catch (err) {
       setReports((current) => ({ ...current, [sessionId]: (err as Error).message }))
+    } finally {
+      setValidating((current) => {
+        const next = new Set(current)
+        next.delete(sessionId)
+        return next
+      })
     }
   }
 
   async function upload(file: File | undefined) {
-    if (!file) return
+    if (!file || uploading) return
     setUploadMessage(null)
+    if (file.size > MAX_UPLOAD_BYTES) {
+      setUploadMessage({ text: `${file.name} is ${formatSize(file.size)}; the limit is ${formatSize(MAX_UPLOAD_BYTES)}`, error: true })
+      return
+    }
+    setUploading(true)
     try {
       const created = await uploadSession(file, uploadName)
       setUploadMessage({ text: `Uploaded ${created.name ?? created.sessionId}`, error: false })
@@ -197,6 +221,8 @@ export default function RecorderPanel({
       setListVersion((version) => version + 1)
     } catch (err) {
       setUploadMessage({ text: (err as Error).message, error: true })
+    } finally {
+      setUploading(false)
     }
   }
 
@@ -278,6 +304,7 @@ export default function RecorderPanel({
           <input
             type="file"
             accept=".jsonl,application/x-ndjson"
+            disabled={uploading}
             onChange={(e) => {
               const input = e.target
               void upload(input.files?.[0]).then(() => {
@@ -287,6 +314,7 @@ export default function RecorderPanel({
           />
         </label>
       </div>
+      {uploading && <p className="muted">Uploading…</p>}
       {uploadMessage && <p className={`result mono${uploadMessage.error ? ' error' : ''}`}>{uploadMessage.text}</p>}
       {storage && (
         <p className="muted">
@@ -296,6 +324,7 @@ export default function RecorderPanel({
         </p>
       )}
 
+      {listError && <p className="result mono error">Could not load the session list: {listError}</p>}
       <div className="table-scroll">
         <table className="robot-table sessions-table">
           <thead>
@@ -309,7 +338,7 @@ export default function RecorderPanel({
             </tr>
           </thead>
           <tbody>
-            {sessions.length === 0 && (
+            {sessions.length === 0 && !listError && (
               <tr>
                 <td colSpan={6} className="muted">
                   No sessions recorded yet.
@@ -368,11 +397,12 @@ export default function RecorderPanel({
                         type="button"
                         className="link-button"
                         aria-label={`Validate session ${text(session.name) === '—' ? session.sessionId : text(session.name)}`}
+                        disabled={validating.has(session.sessionId)}
                         onClick={() => validate(session.sessionId)}
                       >
                         Validate
                       </button>
-                      <a className="link" href={`/api/sessions/${session.sessionId}/download`} download>
+                      <a className="link" href={`/api/sessions/${encodeURIComponent(session.sessionId)}/download`} download>
                         Download
                       </a>
                       <button
@@ -401,3 +431,5 @@ export default function RecorderPanel({
     </section>
   )
 }
+
+export default memo(RecorderPanel)

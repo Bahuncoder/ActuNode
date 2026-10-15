@@ -7,7 +7,9 @@ recording. The CLI is a separate package, hence the copies; test_import.py pins 
 
 import json
 import math
+import os
 import re
+import tempfile
 from datetime import UTC, datetime
 from pathlib import Path
 
@@ -88,7 +90,7 @@ def parse_line(raw: bytes) -> tuple[float, str, bytes, str]:
     except UnicodeDecodeError:
         raise ValueError("not valid UTF-8") from None
     parts = text.split(" ", 2)
-    if len(parts) < 3 or not parts[2]:
+    if len(parts) < 3:  # an empty payload (legitimate MQTT) is "<time> <topic> " with nothing after the space
         raise ValueError("expected '<unix time> <topic> <payload>'")
     stamp, topic, payload = parts
     if not _TIME.fullmatch(stamp.encode()):
@@ -112,6 +114,7 @@ def convert(source, output: Path, name: str | None = None, strict: bool = False,
     name = clean_name(name)
     if output.exists() and not force:
         raise ImportError_(f"{output} already exists (use --force to overwrite)")
+    _refuse_same_file(source, output)
     stats = {
         "messages": 0,
         "skipped": 0,
@@ -125,7 +128,8 @@ def convert(source, output: Path, name: str | None = None, strict: bool = False,
         "moreRobots": False,
         "sessionId": None,
     }
-    out = None
+    out = tmp = None
+    done = False
     first = last_t = 0.0
     number = 0
     try:
@@ -165,8 +169,9 @@ def convert(source, output: Path, name: str | None = None, strict: bool = False,
                 stats["sessionId"] = f"{stamp}_{name}" if name else stamp
                 stats["firstAt"] = started
                 first = when
-                try:
-                    out = output.open("w" if force else "x", encoding="utf-8")
+                try:  # written next to OUTPUT and renamed at the end: an error never leaves a partial or lost file
+                    handle, tmp = tempfile.mkstemp(dir=output.parent, prefix=f".{output.name}.", suffix=".tmp")
+                    out = os.fdopen(handle, "w", encoding="utf-8")
                 except OSError as error:
                     raise ImportError_(f"cannot write {output}: {error.strerror or error}") from None
                 header = {"type": "session", "formatVersion": FORMAT_VERSION, "sessionId": stats["sessionId"]}
@@ -201,18 +206,28 @@ def convert(source, output: Path, name: str | None = None, strict: bool = False,
             stats,
             {"type": "end", "endedAt": stats["lastAt"], "messageCount": stats["messages"], "reason": "stopped"},
         )
+        out.close()
+        os.replace(tmp, output)
+        done = True
     except OSError as error:
         raise ImportError_(f"cannot read or write: {error.strerror or error}") from None
-    except BaseException:
-        if out is not None:
-            out.close()
-            out = None
-            output.unlink(missing_ok=True)
-        raise
     finally:
         if out is not None:
             out.close()
+        if tmp is not None and not done:
+            Path(tmp).unlink(missing_ok=True)
     return stats
+
+
+def _refuse_same_file(source, output: Path) -> None:
+    """The capture is the input: writing the session over it would destroy it."""
+    try:
+        wanted = output.stat()
+        have = os.fstat(source.fileno())
+    except (OSError, AttributeError, ValueError):  # no such output yet; or the source is not a real file
+        return
+    if (have.st_dev, have.st_ino) == (wanted.st_dev, wanted.st_ino):
+        raise ImportError_(f"{output} is the capture itself; write the session to another file")
 
 
 def _write(out, stats: dict, record: dict) -> None:
