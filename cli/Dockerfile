@@ -1,5 +1,5 @@
 # actunode test in a container (D-49): docker compose run --rm runner test scenarios/
-FROM python:3.12-slim
+FROM python:3.14-slim
 WORKDIR /src
 COPY pyproject.toml README.md requirements.txt ./
 # Dependencies from the bounded requirements file, then the package itself (build tool pinned to a range).
