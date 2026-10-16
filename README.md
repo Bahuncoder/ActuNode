@@ -281,6 +281,15 @@ docker compose kill -s HUP mosquitto                             # apply it: the
 
 Who uses ActuNode for what, and what works today: [docs/USE_CASES.md](docs/USE_CASES.md).
 
+## Learn from it
+
+- [docs/FAILURE_CATALOGUE.md](docs/FAILURE_CATALOGUE.md): what goes wrong between fleet managers and robots, and how to
+  make each failure happen in the lab.
+- [docs/SCENARIO_GALLERY.md](docs/SCENARIO_GALLERY.md): every shipped scenario, what it proves, how long it takes.
+- [docs/MESSAGE_FLOWS.md](docs/MESSAGE_FLOWS.md): an order, a cancel and a dropped connection on the wire, from real
+  recordings.
+- [docs/USE_CASES.md](docs/USE_CASES.md): who uses ActuNode for what.
+
 ## Your robot in the lab
 
 Bring a VDA 5050 robot (or its simulator, or a ROS 2 stack) into the lab and check how well it speaks VDA 5050:

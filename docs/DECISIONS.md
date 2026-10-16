@@ -948,3 +948,17 @@ fails if any result changes, so the report cannot go stale silently.
 raw checks: an unreachable node reported reached with no error. docs/CONFORMANCE_ROS2_CONNECTOR.md,
 docs/research/upstream/, docs/CONNECT_YOUR_ROBOT.md.
 
+## D-53 · Week 15: developer credibility from the lab's own evidence
+16 Oct 2026 · Accepted
+
+**Context.** Week 15: a failure-case catalogue, a scenario gallery, message-flow walkthroughs, and two blog post
+drafts for the founder (plan milestone 1, "developer credibility").
+**Decision.** Everything is built from evidence the lab produced, not from general claims: the message flows from
+recorded sessions (timings, ids and header ids as recorded), catalogue entries only where the lab can reproduce or
+detect the failure (open ones marked open: duplicate missions, WMS assumptions), failures "seen in the wild" only
+where this project found them. The gallery is kept complete by a test. The blog drafts stay private
+(`docs/company/`, not in git): the founder edits and publishes them, the conformance post after the upstream issues
+are filed and the maintainers have had time to respond.
+**Consequences.** docs/FAILURE_CATALOGUE.md, docs/SCENARIO_GALLERY.md, docs/MESSAGE_FLOWS.md (Mermaid diagrams,
+rendered by GitHub); two drafts in docs/company/blog-drafts/.
+

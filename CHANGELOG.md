@@ -4,6 +4,11 @@ What changed, per commit, newest first. Status and plans are in [docs/PROGRESS.m
 
 ## Unreleased
 
+### Week 15: developer credibility (D-53)
+- docs/FAILURE_CATALOGUE.md: failures between fleet managers and robots, how to reproduce or detect each.
+- docs/SCENARIO_GALLERY.md: every shipped scenario (a test keeps it complete).
+- docs/MESSAGE_FLOWS.md: order, cancel and dropped connection, from real recordings.
+
 ### UI for real robots (D-52)
 - Robots that do not report ActuNode's mission status (real robots, ROS 2 stacks) show a status derived from plain
   VDA 5050 fields (IDLE, MOVING, WAITING, PAUSED, ERROR), marked "VDA".

@@ -14,7 +14,7 @@ the status line, the schedule table, the session log, and the open issues.
 |---|---|
 | **Calendar** | Week 1 of 8 by date (Fri 9 Oct – Thu 15 Oct 2026); dates no longer gate the work (D-30) |
 | **Last updated** | Wed 14 Oct 2026 |
-| **Status** | **Phase 1 (weeks 1–8) complete; v0.1.0 released 13 Oct 2026** (D-43). Phase 2 (weeks 9–16, D-44) under way: **Weeks 9 and 10 done** (D-45, D-46: `actunode test`, timing and message expectations, every run recorded, five sample scenarios). **Decision point** (D-44): the founder's first user conversations decide the order of weeks 11–16; without new input, Week 11 is next. **Product audit 14 Oct (D-47):** outside fleet managers can now connect; security headers added. **Week 11 done (D-48):** the plan's demo question runs as a scenario against a fleet manager; `UNRESPONSIVE`; replay with current time. **Week 12 done (D-49).** **Full audit of weeks 0–12 done (D-50, docs/AUDIT_2026-10-14.md):** six reviews, ~95 findings (13 High), all fixed with tests; gate green. **Week 13 done (D-51):** a real ROS 2 stack (Nav2 + InOrbit's VDA 5050 connector) in the lab; eight deviations found. **Week 14 done (D-52):** conformance suite, the connector's report (4/9), five upstream drafts (not filed: founder's call), robot guide. Next: Week 15 (developer credibility), unless user conversations reorder. No open issues. |
+| **Status** | **Phase 1 (weeks 1–8) complete; v0.1.0 released 13 Oct 2026** (D-43). Phase 2 (weeks 9–16, D-44) under way: **Weeks 9 and 10 done** (D-45, D-46: `actunode test`, timing and message expectations, every run recorded, five sample scenarios). **Decision point** (D-44): the founder's first user conversations decide the order of weeks 11–16; without new input, Week 11 is next. **Product audit 14 Oct (D-47):** outside fleet managers can now connect; security headers added. **Week 11 done (D-48):** the plan's demo question runs as a scenario against a fleet manager; `UNRESPONSIVE`; replay with current time. **Week 12 done (D-49).** **Full audit of weeks 0–12 done (D-50, docs/AUDIT_2026-10-14.md):** six reviews, ~95 findings (13 High), all fixed with tests; gate green. **Week 13 done (D-51):** a real ROS 2 stack (Nav2 + InOrbit's VDA 5050 connector) in the lab; eight deviations found. **Week 14 done (D-52):** conformance suite, the connector's report (4/9), five upstream drafts (not filed: founder's call), robot guide. **Week 15 done (D-53):** failure catalogue, scenario gallery, message flows from real recordings; two blog drafts (private, for the founder). Next: Week 16 (onboarding, triage routine, v0.2.0). No open issues. |
 | **Working rule** | A week is done when its work is fully done (D-30): features, then a quality gate (independent bug and security review, scans, a test for every fix, all suites and e2e green, docs). Then the next week starts, whatever the date. |
 
 ## Schedule
@@ -37,7 +37,7 @@ Week 1 started on Friday 9 October 2026 (Day 1). Each week runs Friday to Thursd
 | 12 | 25–31 Dec | Scenarios in CI | Docker runner + GitHub Actions example | ✅ Built 14 Oct (D-49), with the site capture import | ✅ Quality gate passed 14 Oct |
 | 13 | 1–7 Jan | ROS 2 robot stack, part 1 | Nav2 robot behind the VDA 5050 connector, optional profile | ✅ Built 15 Oct (D-51) | ✅ Quality gate passed 15 Oct |
 | 14 | 8–14 Jan | ROS 2 robot stack, part 2 | Scenarios against it; conformance report; connect-your-robot guide | ✅ Built 15 Oct (D-52) | ✅ Quality gate passed 15 Oct |
-| 15 | 15–21 Jan | Developer credibility | Failure catalogue, scenario gallery, blog drafts | ⬜ | ⬜ |
+| 15 | 15–21 Jan | Developer credibility | Failure catalogue, scenario gallery, blog drafts | ✅ Built 16 Oct (D-53) | ✅ Quality gate passed 16 Oct |
 | 16 | 22–28 Jan | Ready for external users | Onboarding path, triage routine, v0.2.0 | ⬜ | ⬜ |
 
 Legend: ✅ done · 🟡 partly done / known gaps · ⬜ not started
@@ -57,6 +57,19 @@ the 8-week plan; the 8-week plan is the full roadmap. All of Days 1–7 were bui
 | Day 5 | `BLOCKED_PATH` failure | Week 6 (1 of 4 failures) |
 | Days 6–7 | Record to JSONL, replay | Week 7 |
 | 10 Oct | 10 robots; validator, schemas, VDA 5050 notes | Weeks 4, 5, 1 (rest) |
+
+## Week 15: developer credibility (16 Oct, D-53)
+
+Built: [FAILURE_CATALOGUE.md](FAILURE_CATALOGUE.md) (robot, fleet-manager and site failures; how to reproduce or
+detect each; open ones marked), [SCENARIO_GALLERY.md](SCENARIO_GALLERY.md) (16 scenarios; `cli/tests/test_gallery.py`
+fails if one is missing), [MESSAGE_FLOWS.md](MESSAGE_FLOWS.md) (P-1042, cancel and resume, dropped connection:
+Mermaid sequence diagrams with the timings and ids of real recordings). Two blog drafts for the founder in
+`docs/company/blog-drafts/` (private): the conformance run against InOrbit's connector (publish after filing the
+upstream issues), and testing a fleet manager's blocked-aisle reaction in CI.
+
+Gate: every relative link in the repository's Markdown resolves (script); facts in the drafts checked against
+the recordings and code; corrected while checking: the error count in the conformance post ("in a few minutes" →
+"an afternoon"), the gallery test reading a CI workflow as a scenario.
 
 ## Week 14: conformance (15 Oct, D-52)
 
@@ -588,6 +601,9 @@ Numbered so they can be referenced from commits. Remove an item only when it is 
 ## Session log
 
 Newest first. One entry per work session: what was done, what was learned, what is next.
+
+### Fri 16 Oct 2026: Week 15 (D-53)
+- Failure catalogue, scenario gallery, message flows from recordings; two private blog drafts.
 
 ### Thu 15 Oct 2026 (later): Week 14 (D-52)
 - Conformance suite and raw checks; the connector's report with spec citations; upstream drafts (not filed);
