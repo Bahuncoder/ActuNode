@@ -907,3 +907,24 @@ login mode says only whether the lab is up; adding a robot or fleet manager logi
 `docker compose kill -s HUP mosquitto` (no disconnects). Open: per-user identity and an audit trail
 (A3), metrics (A6), versioned scenario format and API, published images (A5, A7).
 
+## D-51 · Week 13: a real ROS 2 robot stack behind InOrbit's open-source VDA 5050 connector
+15 Oct 2026 · Accepted
+
+**Context.** Week 13: a ROS 2 simulated robot (Nav2, headless) behind the open-source VDA 5050 connector, as an
+optional Docker profile; ActuNode sends it a mission and validates its traffic. Research: InOrbit's
+`vda5050_connector` is the maintained ROS 2 connector (VDA 5050 2.0, ROS 2 Humble, BSD-3), with a Python Nav2
+adapter for TurtleBot3; TUM's targets VDA 5050 1.1 and ROS 1. Nav2's light loopback simulator exists only from
+Jazzy.
+**Decision.** Humble (the connector's distribution) with `turtlebot3_fake_node` (odometry only, no physics,
+headless), Nav2 on a map generated from ActuNode's warehouse (`ros2/make_map.py`, tested against
+`warehouse.py`), no AMCL (static start pose), costmaps from the static map. The connector and adapter are built
+from pinned commits, not vendored. The robot logs in like a real robot over TLS (its own login `ROS2.nav2_01`,
+created by `mqtt-init`, readable only by the robot; the CA certificate published world-readable as
+`public/ca.crt`). Optional `ros2` profile; a weekly CI workflow and an opt-in e2e test. ActuNode gained optional
+`theta` (heading) on missions, and puts the robot's own heading on the start node: legitimate for a master
+control, and needed because the connector drops orders without headings.
+**Consequences.** ActuNode drives a real ROS 2 stack: it plans around the racks and reaches the node. The lab
+found eight deviations in the connector (docs/research/ROS2_CONNECTOR.md), among them an order dropped without
+error and a node reported reached when navigation failed: Week 14 turns them into the conformance report and
+upstream reports. The image is not in the weekly security scan (a large ROS base image; optional, local only).
+

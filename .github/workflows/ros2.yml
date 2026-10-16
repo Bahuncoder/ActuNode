@@ -1,0 +1,36 @@
+# A real ROS 2 robot stack (D-51): Nav2 with a fake TurtleBot3 behind InOrbit's open-source VDA 5050 connector, built from ros2/Dockerfile (several minutes), so not on every push.
+name: "ROS 2 robot"
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: "0 4 * * 0"
+  push:
+    paths:
+      - "ros2/**"
+      - "tests/e2e/test_13_ros2_robot.py"
+      - ".github/workflows/ros2.yml"
+
+jobs:
+  ros2-robot:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7
+        with:
+          python-version: "3.12"
+      - run: pip install -r tests/e2e/requirements.txt
+      - run: pytest tests/e2e/test_13_ros2_robot.py -v
+        env:
+          ACTUNODE_E2E_ROS2: "1"
+      - if: failure()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
+        with:
+          name: ros2-robot-logs
+          path: tests/e2e/last-run.log
+          if-no-files-found: warn

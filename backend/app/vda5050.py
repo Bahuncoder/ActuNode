@@ -118,11 +118,14 @@ EDGE_HAS_ENDPOINTS = {"v2": True, "v3": False}
 
 
 def _node(stop: dict, sequence_id: int) -> dict:
+    position = {"x": stop["x"], "y": stop["y"], "mapId": stop.get("mapId", MAP_ID)}
+    if "theta" in stop:  # optional in VDA 5050 2.1 / 3.0, but some connectors need it
+        position["theta"] = stop["theta"]
     return {
         "nodeId": stop["nodeId"],
         "sequenceId": sequence_id,
         "released": True,
-        "nodePosition": {"x": stop["x"], "y": stop["y"], "mapId": stop.get("mapId", MAP_ID)},
+        "nodePosition": position,
         "actions": stop.get("actions", []),
     }
 

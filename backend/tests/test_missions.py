@@ -574,3 +574,81 @@ def test_oversized_messages_are_refused_with_422(client, published, monkeypatch)
     ):
         assert response.status_code == 422
         assert response.json()["detail"] == "message too large for the broker"
+
+
+def _thetas(order):
+    return [n["nodePosition"].get("theta", "none") for n in order["nodes"]]
+
+
+@pytest.mark.parametrize("version,major", [("2", "v2"), ("3", "v3")])
+def test_orders_without_theta_have_no_theta_anywhere(client, published, version, major):
+    _state_with_position(major, "ActuNode", "robot_t0")
+
+    client.post("/api/missions", json={**P1042, "robot_id": "robot_t0", "vda_version": version})
+
+    [(topic, order)] = published
+    assert _thetas(order) == ["none"] * 3
+    assert _validates(topic, order) == []
+
+
+@pytest.mark.parametrize("version,major", [("2", "v2"), ("3", "v3")])
+def test_request_theta_goes_on_source_and_destination(client, published, version, major):
+    client.post("/api/missions", json={**P1042, "robot_id": "robot_t1", "vda_version": version, "theta": 1.5})
+
+    [(topic, order)] = published
+    assert _thetas(order) == [1.5, 1.5]
+    assert _validates(topic, order) == []
+
+
+@pytest.mark.parametrize("version,major", [("2", "v2"), ("3", "v3")])
+def test_start_node_carries_the_reported_heading(client, published, version, major):
+    key = "agvPosition" if major == "v2" else "mobileRobotPosition"
+    position = {"x": 1.5, "y": 2.5, "mapId": "warehouse", "theta": -0.5}
+    _seen(f"uagv/{major}/ActuNode/robot_t2/state", {"serialNumber": "robot_t2", key: position})
+
+    client.post("/api/missions", json={**P1042, "robot_id": "robot_t2", "vda_version": version, "theta": 2.0})
+
+    [(topic, order)] = published
+    assert _thetas(order) == [-0.5, 2.0, 2.0]
+    assert _validates(topic, order) == []
+
+
+@pytest.mark.parametrize("theta", ["NaN", "Infinity", None, "up", True])
+def test_start_node_has_no_theta_when_the_robot_reports_none_or_a_bad_one(client, published, theta):
+    position = {"x": 1.5, "y": 2.5, "mapId": "warehouse", "theta": theta}
+    _seen("uagv/v2/ActuNode/robot_t3/state", {"serialNumber": "robot_t3", "agvPosition": position})
+    if theta in ("NaN", "Infinity"):  # json.dumps cannot send these as numbers
+        hub.handle_mqtt(
+            "uagv/v2/ActuNode/robot_t3/state",
+            json.dumps({"serialNumber": "robot_t3", "agvPosition": position | {"theta": 0}})
+            .replace('"theta": 0', f'"theta": {theta}')
+            .encode(),
+        )
+
+    client.post("/api/missions", json={**P1042, "robot_id": "robot_t3"})
+
+    [(_, order)] = published
+    assert _thetas(order)[0] == "none"
+
+
+@pytest.mark.parametrize("theta", [3.2, -3.2, "NaN", "x"])
+def test_out_of_range_theta_is_rejected(client, published, theta):
+    assert client.post("/api/missions", json={**P1042, "robot_id": "robot_t4", "theta": theta}).status_code == 422
+    assert (
+        client.post("/api/missions/robot_t4/extend", json={"to_location": "CHARGING", "theta": theta}).status_code
+        == 422
+    )
+    assert published == []
+
+
+@pytest.mark.parametrize("version,major", [("2", "v2"), ("3", "v3")])
+def test_extend_with_theta(client, published, version, major):
+    sent = _mission(client, "robot_t5", major)
+    _robot_state(major, "robot_t5", sent["order"], last_seq=2)
+    published.clear()
+
+    assert _extend(client, "robot_t5", major=major, theta=0.25).status_code == 202
+
+    [(topic, update)] = published
+    assert _thetas(update) == ["none", 0.25]
+    assert _validates(topic, update) == []

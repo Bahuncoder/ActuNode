@@ -281,6 +281,24 @@ docker compose kill -s HUP mosquitto                             # apply it: the
 
 Who uses ActuNode for what, and what works today: [docs/USE_CASES.md](docs/USE_CASES.md).
 
+## A real ROS 2 robot (optional)
+
+A ROS 2 robot stack, as integrators meet it: Nav2 on ROS 2 Humble with a fake TurtleBot3 (odometry only, headless)
+behind InOrbit's open-source VDA 5050 connector, on a map generated from this warehouse ([D-51](docs/DECISIONS.md)).
+It logs in like a real robot (`ROS2.nav2_01`, MQTT over TLS) and ActuNode inspects, validates and records it.
+
+```bash
+docker compose --profile ros2 up -d --build      # first build: several minutes (ROS 2, Nav2, the connector)
+curl -s -X POST localhost:8080/api/missions -H 'content-type: application/json' \
+  -d '{"robot_id":"nav2_01","manufacturer":"ROS2","vda_version":"2","destination":"STORAGE_A17","theta":1.57}'
+```
+
+On a lab that was already running, apply the robot's login first: `docker compose kill -s HUP mosquitto`. The
+connector drops orders without node headings, so send `theta`. What the lab found running it (an order ignored
+without error, nodes reported reached when navigation failed, schema errors in every state):
+[docs/research/ROS2_CONNECTOR.md](docs/research/ROS2_CONNECTOR.md). Test: `ACTUNODE_E2E_ROS2=1 tests/e2e/.venv/bin/pytest
+tests/e2e/test_13_ros2_robot.py` (weekly in CI).
+
 ## Configuration
 
 All variables, with defaults: [docs/ARCHITECTURE.md, Configuration](docs/ARCHITECTURE.md#configuration).
@@ -308,7 +326,7 @@ Interactive OpenAPI docs: **http://localhost:8080/api/docs**. Full table:
 | Area | Endpoints |
 |---|---|
 | Robots and live feed | `GET /api/health`, `GET /api/map`, `GET /api/locations`, `GET /api/robots`, `GET /api/messages`, `GET /api/proximity`, `WS /api/ws` |
-| Missions | `POST /api/missions`, `POST /api/missions/{robot}/cancel`, `POST /api/missions/{robot}/extend` |
+| Missions | `POST /api/missions` (optional `theta`, heading in radians), `POST /api/missions/{robot}/cancel`, `POST /api/missions/{robot}/extend` |
 | Failures | `GET` / `POST /api/failures` |
 | Validation | `GET /api/validation`, `POST /api/validation/reset` |
 | Recording | `GET /api/recording`, `POST /api/recording/start`, `POST /api/recording/stop` |
@@ -435,6 +453,7 @@ Offline playground with no MQTT at all (one mission through the robot state mach
 | `frontend/` | React + TypeScript lab UI (nginx in Docker) |
 | `simulator/` | Python AMR simulator, VDA 5050 2.1 and 3.0 |
 | `mosquitto/`, `tls/` | Broker config, login and ACL generation, local CA |
+| `ros2/` | The optional ROS 2 robot: Dockerfile, launch, Nav2 parameters, generated warehouse map |
 | `examples/` | An example fleet manager and the scenario that tests it |
 | `cli/`, `scenarios/` | `actunode test`, the scenario runner; scenario files |
 | `contracts/` | Shared fixtures that tie backend and frontend (and simulator) message shapes |
@@ -443,10 +462,19 @@ Offline playground with no MQTT at all (one mission through the robot state mach
 
 ## Project status
 
-ActuNode Lab is built to an 8-week plan ([docs/PLAN.md](docs/PLAN.md)). Weeks 1–7 are complete, each
-closed by a quality gate (independent review, scans, a regression test for every fix, all suites green):
-simulator, missions and state transitions, multi-robot map, inspector and validation, failure injection,
-record and replay. Week 8 (this README, the demo video, publishing) completes the plan. Details and
+As of 15 October 2026, **Phase 1 (weeks 1–8) is complete**, with v0.1.0 released on 13 October.
+The lab includes simulated robots, missions, a multi-robot map, message inspection and validation,
+failure injection, record/replay, documentation and demo tooling.
+
+**Phase 2 is complete through Week 12:** YAML scenario tests with timing and message expectations,
+recordings and JUnit reports; an example external fleet manager and reaction test; a Docker scenario
+runner and GitHub Actions example; and import of site MQTT captures. The latest quality gate records
+passing unit, end-to-end and load checks after the [weeks 0–12 audit](docs/AUDIT_2026-10-14.md).
+
+**Next planned:** connect an independent ROS 2 / Nav2 robot stack through a VDA 5050 connector and
+run scenarios against it (weeks 13–14). Real robot-stack compatibility and external-user onboarding
+still need validation; user conversations may reorder the remaining work. Week numbers describe
+roadmap milestones, not elapsed calendar weeks. Plan: [docs/PLAN.md](docs/PLAN.md); detailed status and
 measurements: [docs/PROGRESS.md](docs/PROGRESS.md); changes: [CHANGELOG.md](CHANGELOG.md).
 
 **Out of scope** (by design or until users ask):
@@ -460,8 +488,9 @@ measurements: [docs/PROGRESS.md](docs/PROGRESS.md); changes: [CHANGELOG.md](CHAN
 
 | Document | What it covers |
 |---|---|
+| [Product specification](docs/product/README.md) | PRD, technical requirements, app flow, UI/UX brief, backend schema and implementation plan |
 | [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) | Components, topics, API, WebSocket events, session format, configuration, tests |
-| [docs/DECISIONS.md](docs/DECISIONS.md) | Why things are built the way they are (D-1 to D-42) |
+| [docs/DECISIONS.md](docs/DECISIONS.md) | Why things are built the way they are (D-1 to D-50) |
 | [docs/VDA5050_NOTES.md](docs/VDA5050_NOTES.md) | Protocol notes and validator rules |
 | [docs/research/VDA5050_3_0.md](docs/research/VDA5050_3_0.md) | VDA 5050 3.0 compared with 2.1 |
 | [docs/DEMO.md](docs/DEMO.md) | 3-minute demo script and the automated recorder |

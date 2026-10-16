@@ -18,3 +18,8 @@ The full MIT license text is in LICENSE.txt inside each of those folders.
 The 2.1.0 files are unchanged from upstream. In the 3.0.0 files factsheet.schema, order.schema and
 visualization.schema, 7 trailing commas (invalid JSON) were removed; nothing else was changed
 (see backend/app/schemas/README.md).
+
+The optional ROS 2 robot (ros2/, D-51) is built from third-party open-source code fetched at image build time,
+not included in this repository: InOrbit's vda5050_connector (https://github.com/inorbit-ai/ros_amr_interop) and
+vda5050_adapter_examples (https://github.com/inorbit-ai/vda5050_adapter_examples), BSD-3-Clause; ROS 2, Nav2 and
+TurtleBot3 packages from the ROS distribution (Apache-2.0 and BSD licences).

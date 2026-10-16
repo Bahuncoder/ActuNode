@@ -1,4 +1,5 @@
-from typing import Literal
+import math
+from typing import Annotated, Literal
 from uuid import uuid4
 
 from fastapi import APIRouter, HTTPException, Path
@@ -27,17 +28,23 @@ class Address(BaseModel):
     vda_version: Literal["2", "3"] | None = None
 
 
+# Heading in radians at the destination (VDA 5050 nodePosition.theta); omitted when not given.
+Theta = Annotated[float | None, Field(ge=-3.141593, le=3.141593, allow_inf_nan=False, examples=[1.57])]
+
+
 class MissionRequest(Address):
     # Restricted so a robot id can never inject MQTT topic levels or wildcards.
     robot_id: str = Field(pattern=vda5050.ROBOT_ID_FIELD, examples=["robot_01"])
     destination: str = Field(examples=["STORAGE_A17"])
     source: str | None = Field(default=None, examples=["RECEIVING_DOOR_2"])
     load_id: str | None = Field(default=None, max_length=64, examples=["P-1042"])
+    theta: Theta = None
 
 
 class ExtendRequest(Address):
     to_location: str = Field(examples=["CHARGING"])
     action: Literal["pick", "drop"] = "drop"
+    theta: Theta = None
 
 
 @router.get("/map")
@@ -64,14 +71,18 @@ def send_mission(mission: MissionRequest) -> dict:
     # Start where the robot is (from its own state, D-28), so the first node is trivially reachable.
     position = _reported_position(mission.robot_id, major, manufacturer)
     if position:
-        _, x, y, map_id = position
-        stops.append({"nodeId": f"start-{order_id}", "x": x, "y": y, "mapId": map_id, "actions": []})
+        _, x, y, map_id, theta = position
+        start = {"nodeId": f"start-{order_id}", "x": x, "y": y, "mapId": map_id, "actions": []}
+        stops.append(start | ({"theta": theta} if theta is not None else {}))
     if mission.source:
-        stops.append(_stop(mission.source, vda5050.load_action("pick", f"{order_id}-pick", mission.load_id)))
+        stops.append(
+            _stop(mission.source, vda5050.load_action("pick", f"{order_id}-pick", mission.load_id), mission.theta)
+        )
     stops.append(
         _stop(
             mission.destination,
             vda5050.load_action("drop", f"{order_id}-drop", mission.load_id) if mission.source else None,
+            mission.theta,
         )
     )
 
@@ -146,7 +157,13 @@ def extend_mission(request: ExtendRequest, robot_id: str = Path(pattern=vda5050.
         update_id = confirmed + 1
         action = vda5050.load_action(request.action, f"{order_id}-u{update_id}-{request.action}", None)
         update = vda5050.build_order_update(
-            robot_id, order_id, update_id, stitch, _stop(request.to_location, action), major, manufacturer
+            robot_id,
+            order_id,
+            update_id,
+            stitch,
+            _stop(request.to_location, action, request.theta),
+            major,
+            manufacturer,
         )
         _publish(order_topic, update)
         sent_orders.remember(key, update, running=order_id)
@@ -212,7 +229,9 @@ def _reported_position(robot_id: str, major: str, manufacturer: str):
     position = state_position(state) if state else None
     # The map id is robot-controlled and goes into the order we publish: only accept a plain one.
     if position and vda5050.LEVEL_RE.fullmatch(position[3]) and all(abs(v) <= MAX_COORDINATE for v in position[1:3]):
-        return position
+        theta = state[position[0][1:]].get("theta")
+        finite = isinstance(theta, int | float) and not isinstance(theta, bool) and math.isfinite(theta)
+        return (*position, float(theta) if finite else None)
     return None
 
 
@@ -236,11 +255,12 @@ def _identity_warning(robot_id: str, major: str, manufacturer: str) -> str | Non
     )
 
 
-def _stop(location: str, action: dict | None) -> dict:
+def _stop(location: str, action: dict | None, theta: float | None = None) -> dict:
     position = LOCATIONS[location]
-    return {
+    stop = {
         "nodeId": location,
         "x": position["x"],
         "y": position["y"],
         "actions": [action] if action else [],
     }
+    return stop | ({"theta": theta} if theta is not None else {})

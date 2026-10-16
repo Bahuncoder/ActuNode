@@ -12,9 +12,9 @@ from app.mqtt_state import mqtt_bridge
 NOW = datetime(2026, 10, 12, 12, 0, 0, tzinfo=UTC)
 
 
-def make(directory, started, size=1000):
-    """A session file whose id says it started `started` ago."""
-    session_id = (NOW - started).strftime("%Y%m%d-%H%M%S") + "_s"
+def make(directory, started, size=1000, now=NOW):
+    """A session file whose id says it started `started` before `now`."""
+    session_id = (now - started).strftime("%Y%m%d-%H%M%S") + "_s"
     path = directory / f"{session_id}.jsonl"
     path.write_bytes(b"x" * size)
     return path
@@ -124,8 +124,11 @@ def test_other_files_are_left_alone(setup, tmp_path):
 
 def test_storage_endpoint(setup, tmp_path):
     setup(keep_days=5, max_total_mb=7)
-    make(tmp_path, timedelta(days=1), 1024 * 1024)
-    make(tmp_path, timedelta(days=2), 1024 * 1024 // 2)
+    # Ages from the real clock: the app's startup retention uses it. (Ages from the fixed NOW made this test
+    # fail once the calendar passed NOW + 3 days: the older file was then really past keep_days.)
+    now = datetime.now(UTC)
+    make(tmp_path, timedelta(days=1), 1024 * 1024, now=now)
+    make(tmp_path, timedelta(days=2), 1024 * 1024 // 2, now=now)
 
     with TestClient(app) as client:
         response = client.get("/api/sessions/storage")

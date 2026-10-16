@@ -46,6 +46,7 @@ services:
       BACKEND_UID: ${ACTUNODE_UID:-1000}
       SIMULATOR_UID: 1000
       SIM_MAX_ROBOTS: 50
+      ROS2_UID: 1000
     volumes:
       - ./mosquitto/init-secrets.sh:/init-secrets.sh:ro
       - ./mosquitto/config/acl:/acl.base:ro
@@ -228,6 +229,43 @@ services:
       - ${ACTUNODE_RESULTS:-./test-results}:/work/test-results
     depends_on:
       frontend:
+        condition: service_healthy
+
+  # The ROS 2 robot (D-51), optional: docker compose --profile ros2 up -d --build
+  # Nav2 on ROS 2 Humble with a fake TurtleBot3 (odometry only, headless) behind InOrbit's open-source VDA 5050
+  # connector. It logs in like a real robot (ROS2.nav2_01, MQTT over TLS on 8883) and gets only its own password
+  # and the public CA certificate.
+  ros2-robot:
+    profiles: ["ros2"]
+    logging: *logging
+    build: ./ros2
+    environment:
+      ACTUNODE_ROS2_MANUFACTURER: ROS2
+      ACTUNODE_ROS2_SERIAL: nav2_01
+    volumes:
+      - type: volume
+        source: secrets
+        target: /run/actunode/robot.password
+        read_only: true
+        volume:
+          subpath: ros2/password
+      - type: volume
+        source: secrets
+        target: /run/actunode/ca.crt
+        read_only: true
+        volume:
+          subpath: public/ca.crt
+    read_only: true
+    tmpfs:
+      - /tmp
+      - /home/robot
+    cap_drop: [ALL]
+    security_opt: ["no-new-privileges:true"]
+    mem_limit: 2g
+    pids_limit: 512
+    restart: unless-stopped
+    depends_on:
+      mosquitto:
         condition: service_healthy
 
 volumes:

@@ -147,9 +147,9 @@ WebSocket client's queue → `send_json`.
 | POST | `/api/login`, `/api/logout` | Exchange the API token for a session cookie / end it (D-25) |
 | GET | `/api/locations` | Named warehouse locations |
 | GET | `/api/map` | The warehouse map: `size`, `zones` (incl. CHARGING and PARKING), `racks`, `locations` (single source for UI and simulator tests, D-37) |
-| POST | `/api/missions` | Send a mission (robot, source, destination, load; optional `manufacturer`, `vda_version`) |
+| POST | `/api/missions` | Send a mission (robot, source, destination, load; optional `theta` heading in radians, `manufacturer`, `vda_version`) |
 | POST | `/api/missions/{robot}/cancel` | Send a `cancelOrder` instant action (optional `manufacturer`, `vda_version`); 202 with `actionId`, `topic` (D-35) |
-| POST | `/api/missions/{robot}/extend` | Order update extending the order the robot reports running (from its own state, if ActuNode sent it) to `to_location` (optional `action`, `manufacturer`, `vda_version`); 409 if unknown, cancelled, foreign or the previous update is unconfirmed (D-35) |
+| POST | `/api/missions/{robot}/extend` | Order update extending the order the robot reports running (from its own state, if ActuNode sent it) to `to_location` (optional `action`, `theta`, `manufacturer`, `vda_version`); 409 if unknown, cancelled, foreign or the previous update is unconfirmed (D-35) |
 | GET | `/api/robots` | Latest connection + state per robot |
 | GET | `/api/proximity` | Pairs of live robots (by key, e.g. `v2/ActuNode/robot_01`) currently closer than `ACTUNODE_PROXIMITY_M` (D-22, D-27) |
 | GET | `/api/messages` | Recent MQTT messages with validation issues |
@@ -257,6 +257,15 @@ can go first).
 | `ACTUNODE_MQTT_HOST_PORT`, `ACTUNODE_MQTT_WS_HOST_PORT` | Docker Compose (host ports) | `1883`, `9001` |
 | `ACTUNODE_SESSIONS_HOST_DIR` | Docker Compose (recordings on the host) | `./sessions` |
 | `ACTUNODE_E2E_HOST` | end-to-end tests | `localhost` |
+
+## ROS 2 robot (`ros2/`, optional profile `ros2`, D-51)
+
+`ros2-robot` runs ROS 2 Humble: `turtlebot3_fake_node` (odometry from velocity commands), Nav2 (map server with
+the warehouse map from `ros2/make_map.py`, planner, controller; costmaps from the static map only, no AMCL: a
+static `map → odom` transform from the start pose, and `warehouse` as another name for `map`), and InOrbit's
+VDA 5050 connector (MQTT bridge, controller, TurtleBot3 Nav2 adapter) built from pinned commits. It logs in as
+the robot `ROS2.nav2_01` over MQTT/TLS (8883), with only its own password file (`/secrets/ros2/`) and the
+public CA certificate (`/secrets/public/ca.crt`) mounted. Same hardening as the other services.
 
 ## Scenario runner (`cli/`, D-45)
 

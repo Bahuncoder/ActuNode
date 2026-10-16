@@ -6,6 +6,7 @@
 #   /secrets/broker/tls/    server.crt/.key    mosquitto, port 8883      -> owned by mosquitto (1883)
 #   /secrets/web/           server.crt/.key    nginx, port 443 (8443)    -> owned by nginx (101, non-root)
 #   /secrets/people/ca.crt                     what browsers and robots trust: `show ca`
+#   /secrets/public/ca.crt                     the same certificate, world-readable, for containers (D-51)
 #
 # The CA is made once (10 years). The server certificate covers localhost, 127.0.0.1, ::1, mosquitto
 # and every name in ACTUNODE_ALLOWED_HOSTS; it is renewed when that list changes or within 30 days of
@@ -90,6 +91,12 @@ if [ "$renew" = yes ]; then
 fi
 
 cp "$S/ca/ca.crt" "$S/people/ca.crt"
+# The CA certificate is public (only its key is secret): a world-readable copy for containers that must trust
+# the lab's TLS, such as the ROS 2 robot (D-51), which mounts just this file.
+mkdir -p "$S/public"
+cp "$S/ca/ca.crt" "$S/public/ca.crt"
+chmod 755 "$S/public"
+chmod 444 "$S/public/ca.crt"
 cp "$S/ca/ca.crt" "$S/broker/tls/ca.crt"
 chown -R 1883:1883 "$S/broker/tls"
 chown -R 101:101 "$S/web"

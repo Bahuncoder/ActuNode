@@ -14,7 +14,7 @@ the status line, the schedule table, the session log, and the open issues.
 |---|---|
 | **Calendar** | Week 1 of 8 by date (Fri 9 Oct – Thu 15 Oct 2026); dates no longer gate the work (D-30) |
 | **Last updated** | Wed 14 Oct 2026 |
-| **Status** | **Phase 1 (weeks 1–8) complete; v0.1.0 released 13 Oct 2026** (D-43). Phase 2 (weeks 9–16, D-44) under way: **Weeks 9 and 10 done** (D-45, D-46: `actunode test`, timing and message expectations, every run recorded, five sample scenarios). **Decision point** (D-44): the founder's first user conversations decide the order of weeks 11–16; without new input, Week 11 is next. **Product audit 14 Oct (D-47):** outside fleet managers can now connect; security headers added. **Week 11 done (D-48):** the plan's demo question runs as a scenario against a fleet manager; `UNRESPONSIVE`; replay with current time. **Week 12 done (D-49).** **Full audit of weeks 0–12 done (D-50, docs/AUDIT_2026-10-14.md):** six reviews, ~95 findings (13 High), all fixed with tests; gate green. Next: Week 13 (ROS 2 robot stack), unless user conversations reorder. No open issues. |
+| **Status** | **Phase 1 (weeks 1–8) complete; v0.1.0 released 13 Oct 2026** (D-43). Phase 2 (weeks 9–16, D-44) under way: **Weeks 9 and 10 done** (D-45, D-46: `actunode test`, timing and message expectations, every run recorded, five sample scenarios). **Decision point** (D-44): the founder's first user conversations decide the order of weeks 11–16; without new input, Week 11 is next. **Product audit 14 Oct (D-47):** outside fleet managers can now connect; security headers added. **Week 11 done (D-48):** the plan's demo question runs as a scenario against a fleet manager; `UNRESPONSIVE`; replay with current time. **Week 12 done (D-49).** **Full audit of weeks 0–12 done (D-50, docs/AUDIT_2026-10-14.md):** six reviews, ~95 findings (13 High), all fixed with tests; gate green. **Week 13 done (D-51):** a real ROS 2 stack (Nav2 + InOrbit's VDA 5050 connector) in the lab; eight deviations found. Next: Week 14 (conformance report, upstream reports, connect-your-robot guide), unless user conversations reorder. No open issues. |
 | **Working rule** | A week is done when its work is fully done (D-30): features, then a quality gate (independent bug and security review, scans, a test for every fix, all suites and e2e green, docs). Then the next week starts, whatever the date. |
 
 ## Schedule
@@ -35,7 +35,7 @@ Week 1 started on Friday 9 October 2026 (Day 1). Each week runs Friday to Thursd
 | 10 | 11–17 Dec | Expectations + five sample scenarios | `scenarios/`; decision point | ✅ Built 13 Oct (D-46) | ✅ Quality gate passed 13 Oct; decision point open |
 | 11 | 18–24 Dec | Testing an external master control | "cancel, reroute or escalate?" as a scenario | ✅ Built 14 Oct (D-47, D-48) | ✅ Quality gate passed 14 Oct |
 | 12 | 25–31 Dec | Scenarios in CI | Docker runner + GitHub Actions example | ✅ Built 14 Oct (D-49), with the site capture import | ✅ Quality gate passed 14 Oct |
-| 13 | 1–7 Jan | ROS 2 robot stack, part 1 | Nav2 robot behind the VDA 5050 connector, optional profile | ⬜ | ⬜ |
+| 13 | 1–7 Jan | ROS 2 robot stack, part 1 | Nav2 robot behind the VDA 5050 connector, optional profile | ✅ Built 15 Oct (D-51) | ✅ Quality gate passed 15 Oct |
 | 14 | 8–14 Jan | ROS 2 robot stack, part 2 | Scenarios against it; conformance report; connect-your-robot guide | ⬜ | ⬜ |
 | 15 | 15–21 Jan | Developer credibility | Failure catalogue, scenario gallery, blog drafts | ⬜ | ⬜ |
 | 16 | 22–28 Jan | Ready for external users | Onboarding path, triage routine, v0.2.0 | ⬜ | ⬜ |
@@ -57,6 +57,30 @@ the 8-week plan; the 8-week plan is the full roadmap. All of Days 1–7 were bui
 | Day 5 | `BLOCKED_PATH` failure | Week 6 (1 of 4 failures) |
 | Days 6–7 | Record to JSONL, replay | Week 7 |
 | 10 Oct | 10 robots; validator, schemas, VDA 5050 notes | Weeks 4, 5, 1 (rest) |
+
+## Week 13: a real ROS 2 robot stack (15 Oct, D-51)
+
+Built: the optional `ros2` profile (`ros2/`): ROS 2 Humble, Nav2 with a fake TurtleBot3 (odometry only, headless)
+on a map generated from the warehouse, behind InOrbit's open-source VDA 5050 connector and TurtleBot3 Nav2 adapter
+(pinned commits). It logs in as the robot `ROS2.nav2_01` over MQTT/TLS with only its own password and the public
+CA certificate. ActuNode sent it a mission: it planned around the racks and reached STORAGE_A17. Missions gained
+optional `theta`. Opt-in e2e test (3 tests) and a weekly CI workflow.
+
+Found while bringing it up (the lab doing its job): the connector drops orders without node headings with no
+error; it reported a node reached when Nav2 had aborted; `driving` false while moving; `operatingMode ""` in every
+state (the validator's schema rule); `positionInitialized` false; its MQTT thread dies on a refused login. Eight
+items in [research/ROS2_CONNECTOR.md](research/ROS2_CONNECTOR.md), input to Week 14.
+
+| Found in our own setup | Fix |
+|---|---|
+| ROS's setup scripts break under `set -u` | Relaxed around them |
+| TurtleBot3's fake-robot launch needs the Gazebo package | The fake node and a static base transform, no Gazebo |
+| Launch arguments are shared between included files: Nav2's empty `namespace` reached the connector | Each include gets its own |
+| The connector's launch prefixes parameter keys with its namespace | Per-node keys, as its example |
+| The connector trusts `VDA5050_CONNECTOR_TLS_CA_CERT`, not `SSL_CERT_FILE` | Set |
+| Robot passwords and the CA certificate are root-only in the secrets volume | The robot's own password file (`ros2/`) and a world-readable CA certificate (`public/`); backup/restore know both |
+| ActuNode's map is `warehouse`, Nav2's `map`: goals in an unknown frame | `warehouse` is a second name for `map` in the robot's transforms |
+| A retention test had a fixed date and failed once the calendar passed it | Ages from the real clock |
 
 ## Full audit of weeks 0–12 (14–15 Oct, D-50)
 
@@ -540,6 +564,10 @@ Numbered so they can be referenced from commits. Remove an item only when it is 
 ## Session log
 
 Newest first. One entry per work session: what was done, what was learned, what is next.
+
+### Thu 15 Oct 2026: Week 13 (D-51)
+- Researched ROS 2 VDA 5050 connectors (InOrbit's maintained; TUM's 1.1/ROS 1). Built the `ros2` profile; ActuNode
+  drives the Nav2 robot; eight connector deviations recorded for Week 14. e2e 3/3 on an isolated stack.
 
 ### Wed 14 – Thu 15 Oct 2026: full audit of weeks 0–12 (D-50)
 - Six parallel reviews, an architecture review, five parallel fix workers, full gate. All suites, e2e in three

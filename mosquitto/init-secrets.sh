@@ -8,6 +8,7 @@
 #   /secrets/people/     tools.password                          -> root only; shown with `show tools`
 #   /secrets/robots/     <manufacturer>.<serial>.password        -> root only; shown when added
 #   /secrets/masters/    <name>.password, <name>.manufacturers   -> root only; shown when added
+#   /secrets/ros2/       password (the ROS 2 robot, ROS2.nav2_01) -> owned by ROS2_UID (D-51)
 #
 # Passwords are created once and kept; the hashed password file and the ACL are rebuilt on every start.
 # A robot logs in as <manufacturer>.<serial> (D-28): VDA 5050 serial numbers are unique per manufacturer
@@ -38,6 +39,8 @@ S=/secrets
 BACKEND_UID="${BACKEND_UID:-1000}"
 SIMULATOR_UID="${SIMULATOR_UID:-1000}"
 SIM_MAX_ROBOTS="${SIM_MAX_ROBOTS:-50}"
+ROS2_UID="${ROS2_UID:-1000}"
+ROS2_LOGIN="ROS2.nav2_01"  # the optional ROS 2 robot (profile ros2, D-51): a robot login like a real robot's
 VERSIONS="v2 v3"  # VDA 5050 major versions the backend and simulator speak (SUPPORTED_MAJOR_VERSIONS)
 HUP="docker compose kill -s HUP mosquitto"
 
@@ -118,14 +121,14 @@ case "${1:-}" in
     tar -tvf "$work/in.tar" | awk '
       { t = substr($1, 1, 1); n = $NF }
       (t != "-" && t != "d") || n ~ /^\// || n ~ /(^|\/)\.\.(\/|$)/ ||
-        (n !~ /^(\.\/)?(backend|simulator|people|robots|masters|ca|web|broker)(\/|$)/ && n !~ /^\.\/?$/) { bad = 1 }
+        (n !~ /^(\.\/)?(backend|simulator|people|robots|masters|ros2|public|ca|web|broker)(\/|$)/ && n !~ /^\.\/?$/) { bad = 1 }
       END { exit bad }' || { echo "restore: not a backup made by 'backup' (unexpected entry); nothing changed" >&2; exit 1; }
     mkdir "$work/x"
     tar -xf "$work/in.tar" -C "$work/x"
     for f in backend/password backend/api-token simulator/password people/tools.password; do
       [ -s "$work/x/$f" ] || { echo "restore: backup lacks $f; nothing changed" >&2; exit 1; }
     done
-    for d in backend simulator people robots masters ca web broker; do
+    for d in backend simulator people robots masters ros2 public ca web broker; do
       [ -d "$work/x/$d" ] || continue
       rm -rf "${S:?}/$d"
       mv "$work/x/$d" "$S/$d"
@@ -137,6 +140,10 @@ case "${1:-}" in
     check_name manufacturer "$2"; check_name "serial number" "$3"
     if is_sim_robot "$2" "$3"; then
       echo "refused: ActuNode.$3 is a simulated robot (ACTUNODE_SIM_ROBOTS, up to $SIM_MAX_ROBOTS); use another manufacturer or serial" >&2
+      exit 2
+    fi
+    if [ "$2.$3" = "$ROS2_LOGIN" ]; then
+      echo "refused: $ROS2_LOGIN is the ROS 2 robot's login (profile ros2); use another manufacturer or serial" >&2
       exit 2
     fi
     new_robot="$2.$3"
@@ -193,10 +200,11 @@ the backend reads it at start: docker compose restart backend (everybody logged 
   *) echo "unknown command: $1" >&2; exit 2 ;;
 esac
 
-mkdir -p "$S/broker" "$S/backend" "$S/simulator" "$S/people" "$S/robots" "$S/masters"
+mkdir -p "$S/broker" "$S/backend" "$S/simulator" "$S/people" "$S/robots" "$S/masters" "$S/ros2"
 ensure "$S/backend/password"
 ensure "$S/backend/api-token"
 ensure "$S/simulator/password"
+ensure "$S/ros2/password"
 ensure "$S/people/tools.password"
 ensure "$S/broker/healthcheck.password"
 
@@ -222,6 +230,9 @@ while [ "$i" -le "$SIM_MAX_ROBOTS" ]; do
   robot_acl ActuNode "$serial" sim >> "$acl"
   i=$((i + 1))
 done
+# The ROS 2 robot connects like a real robot: over TLS (8883), with its own robot ACL block.
+add "$ROS2_LOGIN" "$S/ros2/password" net
+robot_acl "${ROS2_LOGIN%%.*}" "${ROS2_LOGIN#*.}" >> "$acl"
 for f in "$S"/robots/*.password; do
   [ -e "$f" ] || continue
   login="$(basename "$f" .password)"
@@ -229,6 +240,10 @@ for f in "$S"/robots/*.password; do
   if [ "$manufacturer" = "$login" ] || ! valid_name "$manufacturer" || ! valid_name "$serial"; then
     echo "mqtt-init: WARNING: ignoring robot login '$login' (logins are now <manufacturer>.<serial>, D-28);" \
       "re-create it with: add-robot <manufacturer> $login" >&2
+    continue
+  fi
+  if [ "$login" = "$ROS2_LOGIN" ]; then
+    echo "mqtt-init: WARNING: ignoring robot login '$login' (the ROS 2 robot's name; remove it: remove-robot ${login%%.*} ${login#*.})" >&2
     continue
   fi
   if is_sim_robot "$manufacturer" "$serial"; then
@@ -261,9 +276,10 @@ mv "$acl" "$S/broker/acl"
 chown -R 1883:1883 "$S/broker"
 chown -R "$BACKEND_UID" "$S/backend"
 chown -R "$SIMULATOR_UID" "$S/simulator"
-chmod 500 "$S/broker" "$S/backend" "$S/simulator"
+chown -R "$ROS2_UID" "$S/ros2"
+chmod 500 "$S/broker" "$S/backend" "$S/simulator" "$S/ros2"
 chmod 400 "$S/broker/passwd" "$S/broker/passwd.net" "$S/broker/acl" "$S/broker/healthcheck.password" \
-  "$S/backend/password" "$S/backend/api-token" "$S/simulator/password"
+  "$S/backend/password" "$S/backend/api-token" "$S/simulator/password" "$S/ros2/password"
 chmod -R go-rwx "$S/people" "$S/robots" "$S/masters"
 echo "mqtt-init: credentials ready ($SIM_MAX_ROBOTS simulated robots)"
 if [ -n "$new_robot" ]; then

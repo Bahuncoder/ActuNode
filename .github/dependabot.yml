@@ -41,3 +41,7 @@ updates:
     directory: /frontend
     schedule:
       interval: weekly
+  - package-ecosystem: docker
+    directory: /ros2
+    schedule:
+      interval: weekly

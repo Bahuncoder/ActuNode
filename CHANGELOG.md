@@ -4,6 +4,13 @@ What changed, per commit, newest first. Status and plans are in [docs/PROGRESS.m
 
 ## Unreleased
 
+### Week 13: a real ROS 2 robot stack (D-51)
+- Optional profile `ros2`: Nav2 on ROS 2 Humble with a fake TurtleBot3 behind InOrbit's open-source VDA 5050
+  connector, on a map generated from the warehouse; logs in as a robot over MQTT/TLS.
+- Missions take an optional `theta` (heading); the start node carries the robot's own heading.
+- Findings running it: docs/research/ROS2_CONNECTOR.md. Weekly CI workflow and an opt-in e2e test.
+- A retention test that failed once the calendar passed its fixed date now uses the real clock.
+
 ### Full audit of weeks 0–12 (D-50, docs/AUDIT_2026-10-14.md)
 - Security: strict JSON numbers end to end; topics from files validated before publishing; one cookie parser;
   API docs pinned and off when login is required; WebSocket feed and queue limits; failed logins logged;
