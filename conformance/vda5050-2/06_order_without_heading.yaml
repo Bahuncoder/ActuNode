@@ -1,0 +1,14 @@
+# VDA 5050 2.x robot conformance (D-52). The robot under test is named in `manufacturer` and `robot:` below:
+# replace ROS2 / nav2_01 with yours (docs/CONNECT_YOUR_ROBOT.md). Plain VDA 5050 checks only: no ActuNode fields.
+name: "06 An order without node headings is accepted (theta is optional)"
+description: >
+  VDA 5050 makes nodePosition.theta optional. A robot may still refuse an order, but then it must say so in
+  its state errors; ignoring it silently leaves the fleet manager waiting.
+manufacturer: ROS2
+steps:
+  - send_mission: {robot: nav2_01, destination: PACK_SORT, as: no_heading}
+  - expect:
+      robot: nav2_01
+      order: no_heading
+      within: 10
+  - expect: {message: {topic: uagv/+/ROS2/nav2_01/state, match: {lastNodeId: PACK_SORT}}, within: 150}

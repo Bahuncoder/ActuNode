@@ -4,6 +4,15 @@ What changed, per commit, newest first. Status and plans are in [docs/PROGRESS.m
 
 ## Unreleased
 
+### Week 14: conformance (D-52)
+- `conformance/vda5050-2/`: a VDA 5050 2.x conformance suite for any robot (nine scenarios), and
+  `conformance/raw_checks.py` for orders the mission sender never builds.
+- docs/CONFORMANCE_ROS2_CONNECTOR.md: InOrbit's ROS 2 connector measured (4 of 9 pass; a node reported reached when
+  navigation failed; orders without headings dropped silently; `driving` always false; schema-invalid state).
+- docs/research/upstream/: five issue drafts for the connector's maintainers.
+- docs/CONNECT_YOUR_ROBOT.md: bring your own robot into the lab and run the suite.
+- Scenarios: `rule:` on message checks (the validator's verdict on that message), `theta` on missions.
+
 ### Week 13: a real ROS 2 robot stack (D-51)
 - Optional profile `ros2`: Nav2 on ROS 2 Humble with a fake TurtleBot3 behind InOrbit's open-source VDA 5050
   connector, on a map generated from the warehouse; logs in as a robot over MQTT/TLS.

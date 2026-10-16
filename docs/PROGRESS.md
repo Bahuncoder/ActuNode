@@ -14,7 +14,7 @@ the status line, the schedule table, the session log, and the open issues.
 |---|---|
 | **Calendar** | Week 1 of 8 by date (Fri 9 Oct – Thu 15 Oct 2026); dates no longer gate the work (D-30) |
 | **Last updated** | Wed 14 Oct 2026 |
-| **Status** | **Phase 1 (weeks 1–8) complete; v0.1.0 released 13 Oct 2026** (D-43). Phase 2 (weeks 9–16, D-44) under way: **Weeks 9 and 10 done** (D-45, D-46: `actunode test`, timing and message expectations, every run recorded, five sample scenarios). **Decision point** (D-44): the founder's first user conversations decide the order of weeks 11–16; without new input, Week 11 is next. **Product audit 14 Oct (D-47):** outside fleet managers can now connect; security headers added. **Week 11 done (D-48):** the plan's demo question runs as a scenario against a fleet manager; `UNRESPONSIVE`; replay with current time. **Week 12 done (D-49).** **Full audit of weeks 0–12 done (D-50, docs/AUDIT_2026-10-14.md):** six reviews, ~95 findings (13 High), all fixed with tests; gate green. **Week 13 done (D-51):** a real ROS 2 stack (Nav2 + InOrbit's VDA 5050 connector) in the lab; eight deviations found. Next: Week 14 (conformance report, upstream reports, connect-your-robot guide), unless user conversations reorder. No open issues. |
+| **Status** | **Phase 1 (weeks 1–8) complete; v0.1.0 released 13 Oct 2026** (D-43). Phase 2 (weeks 9–16, D-44) under way: **Weeks 9 and 10 done** (D-45, D-46: `actunode test`, timing and message expectations, every run recorded, five sample scenarios). **Decision point** (D-44): the founder's first user conversations decide the order of weeks 11–16; without new input, Week 11 is next. **Product audit 14 Oct (D-47):** outside fleet managers can now connect; security headers added. **Week 11 done (D-48):** the plan's demo question runs as a scenario against a fleet manager; `UNRESPONSIVE`; replay with current time. **Week 12 done (D-49).** **Full audit of weeks 0–12 done (D-50, docs/AUDIT_2026-10-14.md):** six reviews, ~95 findings (13 High), all fixed with tests; gate green. **Week 13 done (D-51):** a real ROS 2 stack (Nav2 + InOrbit's VDA 5050 connector) in the lab; eight deviations found. **Week 14 done (D-52):** conformance suite, the connector's report (4/9), five upstream drafts (not filed: founder's call), robot guide. Next: Week 15 (developer credibility), unless user conversations reorder. No open issues. |
 | **Working rule** | A week is done when its work is fully done (D-30): features, then a quality gate (independent bug and security review, scans, a test for every fix, all suites and e2e green, docs). Then the next week starts, whatever the date. |
 
 ## Schedule
@@ -36,7 +36,7 @@ Week 1 started on Friday 9 October 2026 (Day 1). Each week runs Friday to Thursd
 | 11 | 18–24 Dec | Testing an external master control | "cancel, reroute or escalate?" as a scenario | ✅ Built 14 Oct (D-47, D-48) | ✅ Quality gate passed 14 Oct |
 | 12 | 25–31 Dec | Scenarios in CI | Docker runner + GitHub Actions example | ✅ Built 14 Oct (D-49), with the site capture import | ✅ Quality gate passed 14 Oct |
 | 13 | 1–7 Jan | ROS 2 robot stack, part 1 | Nav2 robot behind the VDA 5050 connector, optional profile | ✅ Built 15 Oct (D-51) | ✅ Quality gate passed 15 Oct |
-| 14 | 8–14 Jan | ROS 2 robot stack, part 2 | Scenarios against it; conformance report; connect-your-robot guide | ⬜ | ⬜ |
+| 14 | 8–14 Jan | ROS 2 robot stack, part 2 | Scenarios against it; conformance report; connect-your-robot guide | ✅ Built 15 Oct (D-52) | ✅ Quality gate passed 15 Oct |
 | 15 | 15–21 Jan | Developer credibility | Failure catalogue, scenario gallery, blog drafts | ⬜ | ⬜ |
 | 16 | 22–28 Jan | Ready for external users | Onboarding path, triage routine, v0.2.0 | ⬜ | ⬜ |
 
@@ -57,6 +57,24 @@ the 8-week plan; the 8-week plan is the full roadmap. All of Days 1–7 were bui
 | Day 5 | `BLOCKED_PATH` failure | Week 6 (1 of 4 failures) |
 | Days 6–7 | Record to JSONL, replay | Week 7 |
 | 10 Oct | 10 robots; validator, schemas, VDA 5050 notes | Weeks 4, 5, 1 (rest) |
+
+## Week 14: conformance (15 Oct, D-52)
+
+Built: `conformance/vda5050-2/` (nine scenarios, plain VDA 5050 only, for any 2.x robot), `conformance/raw_checks.py`
+(orders the mission sender never builds, via a fleet manager login), scenario `rule:` on message checks and
+`theta` on missions; [CONFORMANCE_ROS2_CONNECTOR.md](CONFORMANCE_ROS2_CONNECTOR.md) (each result cites the VDA 5050
+2.1.0 text, fetched from the VDA's repository); five upstream drafts ([research/upstream/](research/upstream/));
+[CONNECT_YOUR_ROBOT.md](CONNECT_YOUR_ROBOT.md). The opt-in ROS 2 e2e test runs the suite and fails if a result changes.
+
+| Found | Fix |
+|---|---|
+| Scenario 07 passed in 0.5 s: the robot already stood at the destination | Destination never left by the other scenarios |
+| Scenario 09 assumed a cancelled robot stops on the spot; the spec allows the next node (§6.6.3) | Checks FINISHED within the time to the next node; the report says it passes |
+| The Week 13 notes called the map check a violation; it is a 2.1 rule (the connector speaks 2.0) | Informational in the report |
+| A section number written from memory (§6.2 for header ids) | §6.4, checked against the text |
+| The guide said missions carry no actions without a load id | With a `source` they have pick and drop |
+
+Verified: the suite against the ROS 2 robot (4 of 9 pass), raw checks 0 of 3, ROS 2 e2e 4/4 on an isolated stack.
 
 ## Week 13: a real ROS 2 robot stack (15 Oct, D-51)
 
@@ -564,6 +582,10 @@ Numbered so they can be referenced from commits. Remove an item only when it is 
 ## Session log
 
 Newest first. One entry per work session: what was done, what was learned, what is next.
+
+### Thu 15 Oct 2026 (later): Week 14 (D-52)
+- Conformance suite and raw checks; the connector's report with spec citations; upstream drafts (not filed);
+  connect-your-robot guide. ROS 2 e2e 4/4.
 
 ### Thu 15 Oct 2026: Week 13 (D-51)
 - Researched ROS 2 VDA 5050 connectors (InOrbit's maintained; TUM's 1.1/ROS 1). Built the `ros2` profile; ActuNode

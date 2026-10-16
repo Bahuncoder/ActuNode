@@ -928,3 +928,23 @@ found eight deviations in the connector (docs/research/ROS2_CONNECTOR.md), among
 error and a node reported reached when navigation failed: Week 14 turns them into the conformance report and
 upstream reports. The image is not in the weekly security scan (a large ROS base image; optional, local only).
 
+## D-52 · Week 14: a VDA 5050 conformance suite, the connector's report, upstream drafts, the robot guide
+15 Oct 2026 · Accepted
+
+**Context.** Week 14: the scenarios run against the ROS 2 robot, a conformance report of what passes and fails,
+upstream reports where the connector deviates, a "connect your own robot" guide. The sample scenarios rely on
+ActuNode-only features (failure injection, `missionStatus`), which a real robot does not have.
+**Decision.** A separate suite, `conformance/vda5050-2/`: nine scenarios using only plain VDA 5050 behaviour
+(connection, order, the robot's own state messages, the validator's per-message verdict), so it runs against any
+2.x robot; the robot is named in each file's header and replaced with `sed`. Scenario checks gained `rule:` on
+`message` (a message the validator flagged with that rule: a per-robot verdict) and `theta` on `send_mission`.
+Orders the mission sender would never build go through `conformance/raw_checks.py` with a fleet manager login.
+Every result in the report cites the VDA 5050 2.1.0 text (fetched from the VDA's repository); claims were
+corrected where the spec allows the behaviour (cancel at the next node) or the rule is 2.1-only (map check).
+Upstream reports are drafts: filing them is the founder's call. The opt-in ROS 2 e2e test runs the suite and
+fails if any result changes, so the report cannot go stale silently.
+**Consequences.** Against InOrbit's connector: 4 of 9 checks pass; failures: schema-invalid state (empty
+`operatingMode`), `positionInitialized` false, orders without headings dropped silently, `driving` always false;
+raw checks: an unreachable node reported reached with no error. docs/CONFORMANCE_ROS2_CONNECTOR.md,
+docs/research/upstream/, docs/CONNECT_YOUR_ROBOT.md.
+

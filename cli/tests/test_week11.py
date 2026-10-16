@@ -83,3 +83,31 @@ def test_cleanup_does_not_clear_a_block_that_is_already_over(clock):
     result = run(stack, clock, scenario("  - inject: {robot: robot_03, failure: BLOCKED_PATH}\n  - wait: 2"))
     assert result.cleanup == ["BLOCKED_PATH on robot_03 already over (robot_03 is CANCELLED)"]
     assert [c for c in stack.calls if c[3:4] == ("clear",)] == []
+
+
+def test_a_mission_may_carry_a_heading(clock):
+    steps = scenario("  - send_mission: {robot: robot_03, destination: STORAGE_A17, theta: 1.57}").steps
+    assert steps[0].describe() == "send mission robot_03: STORAGE_A17 heading 1.57"
+    stack = FakeStack(clock, [(0, [robot("robot_03")])])
+    run(stack, clock, scenario("  - send_mission: {robot: robot_03, destination: STORAGE_A17, theta: 1.57}"))
+    assert stack.calls[0][1]["theta"] == 1.57
+
+
+@pytest.mark.parametrize("theta", ["4", "true", "3.5", "'1.0'"])
+def test_a_heading_must_be_a_number_within_pi(theta):
+    with pytest.raises(Exception, match="theta"):
+        scenario(f"  - send_mission: {{robot: r, destination: A, theta: {theta}}}")
+
+
+def test_a_message_check_can_require_a_validator_rule(clock):
+    state = "uagv/v2/ROS2/nav2_01/state"
+    clean = (1, {"topic": state, "payload": {"driving": False}, "issues": []})
+    flagged = (2, {"topic": state, "payload": {"driving": False}, "issues": [{"rule": "schema", "severity": "error"}]})
+    check = "  - expect: {message: {topic: 'uagv/+/+/nav2_01/state', rule: schema}, within: 3}"
+    assert scenario(check).steps[0].describe().endswith("flagged schema within 3 s")
+    stack = FakeStack(clock, [(0, [robot("robot_01")])], messages=[clean, flagged])
+    assert run(stack, clock, scenario(check)).outcome == PASSED and clock.now >= 2
+    clock.now = 0
+    stack = FakeStack(clock, [(0, [robot("robot_01")])], messages=[clean])
+    never = "  - never: {message: {topic: 'uagv/+/+/nav2_01/state', rule: schema}, for: 2}"
+    assert run(stack, clock, scenario(never)).outcome == PASSED

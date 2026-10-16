@@ -9,9 +9,11 @@ Opt-in (the image builds ROS 2 Humble, Nav2 and the connector: several minutes t
 import math
 import os
 import time
+import xml.etree.ElementTree as ET
 
 import pytest
-from conftest import wait_for
+from conftest import ROOT, wait_for
+from test_09_scenarios import actunode_test
 
 pytestmark = pytest.mark.skipif(os.environ.get("ACTUNODE_E2E_ROS2") != "1", reason="set ACTUNODE_E2E_ROS2=1")
 
@@ -81,3 +83,21 @@ def test_its_traffic_is_validated(stack, ros2_robot):
     # Known deviation, reported in the Week 14 conformance report: operatingMode "" in every state.
     rules = {(i["rule"], i["path"]) for m in states for i in m["issues"]}
     assert ("schema", "/operatingMode") in rules
+
+
+# docs/CONFORMANCE_ROS2_CONNECTOR.md (D-52): the scenarios the connector fails. If this changes (a connector fix, a
+# new commit), update the report and the upstream drafts, then this set.
+KNOWN_FAILURES = {"02", "04", "05", "06", "08"}
+
+
+def test_the_conformance_report_still_holds(stack, ros2_robot, tmp_path):
+    junit = tmp_path / "conformance.xml"
+    actunode_test(stack, tmp_path, ROOT / "conformance" / "vda5050-2", junit=junit)
+    passed = {}
+    for case in ET.parse(junit).getroot().iter("testcase"):
+        passed[case.get("name")[:2]] = case.find("failure") is None and case.find("error") is None
+    assert sorted(passed) == [f"{n:02d}" for n in range(1, 10)]
+    failed = {number for number, ok in passed.items() if not ok}
+    assert failed == KNOWN_FAILURES, (
+        f"results changed: failed {sorted(failed)}; update docs/CONFORMANCE_ROS2_CONNECTOR.md"
+    )

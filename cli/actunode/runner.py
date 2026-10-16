@@ -248,6 +248,8 @@ class Runner:
                 body["source"] = step.source
             if step.load:
                 body["load_id"] = step.load
+            if step.theta is not None:
+                body["theta"] = step.theta
             if self.vda:
                 body["vda_version"] = self.vda
             order_id = self.stack.send_mission(body)["order_id"]
@@ -363,7 +365,10 @@ class Runner:
     def _one_message_mismatches(self, check: MessageCheck) -> tuple[list[str], str]:
         on_topic = [m for m in self.feed.since(self.window_start) if topic_matches(check.topic, m["topic"])]
         for message in on_topic:
-            if check.match is None or contains(check.match, message.get("payload")):
+            flagged = check.rule is None or any(
+                isinstance(issue, dict) and issue.get("rule") == check.rule for issue in message.get("issues") or []
+            )
+            if flagged and (check.match is None or contains(check.match, message.get("payload"))):
                 return [], f"{message['topic']}: {_short(message.get('payload'))}"
         if not on_topic:
             return [f"no message on {check.topic}"], ""

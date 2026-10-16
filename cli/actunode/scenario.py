@@ -23,6 +23,7 @@ from pydantic import (
     BaseModel,
     ConfigDict,
     Field,
+    StrictFloat,
     StrictInt,
     StrictStr,
     ValidationError,
@@ -65,12 +66,15 @@ class SendMission(_Strict):
     load: str | None = Field(default=None, min_length=1, max_length=64)
     as_: Name | None = Field(default=None, alias="as")  # a name later steps use for this order
     manufacturer: Name | None = None  # default: the scenario's
+    # Heading at the destination (and source), radians (D-51). Some robots need it although VDA 5050 does not.
+    theta: Annotated[StrictFloat | StrictInt, Field(ge=-3.141593, le=3.141593)] | None = None
 
     def describe(self) -> str:
         route = f"{self.source} -> {self.destination}" if self.source else self.destination
         load = f" (load {self.load})" if self.load else ""
+        heading = f" heading {self.theta:g}" if self.theta is not None else ""
         name = f" as {self.as_}" if self.as_ else ""
-        return f"send mission {self.robot}: {route}{load}{name}"
+        return f"send mission {self.robot}: {route}{load}{heading}{name}"
 
 
 class Inject(_Strict):
@@ -141,6 +145,9 @@ class MessageCheck(_Strict):
 
     topic: str = Field(min_length=1, max_length=256)
     match: dict | None = None
+    # The lab's validator flagged the message with this rule (D-52): a per-robot verdict, where `validation:`
+    # counts the whole lab. `never: {message: {topic: <robot>/state, rule: schema}}` = no schema error from it.
+    rule: str | None = Field(default=None, min_length=1, max_length=64)
 
     @field_validator("topic")
     @classmethod
@@ -155,7 +162,8 @@ class MessageCheck(_Strict):
 
     def describe(self) -> str:
         text = f"message on {self.topic}"
-        return text + (f" matching {json.dumps(self.match, separators=(', ', ': '))}" if self.match else "")
+        text += f" matching {json.dumps(self.match, separators=(', ', ': '))}" if self.match else ""
+        return text + (f" flagged {self.rule}" if self.rule else "")
 
 
 class _Conditions(_Strict):

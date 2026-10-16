@@ -129,6 +129,13 @@ The runner looks every 0.25 s, so a robot state that lasts less than that can be
 | `validation: {no_errors: true}` | The validator reported no error-severity issue since the scenario started. |
 | `message: {topic: uagv/+/+/robot_01/instantActions, match: {actions: [{actionType: cancelOrder}]}}` | A message arrived on a topic matching the MQTT filter (`+` one level, `#` the rest), and its payload contains `match` (see below). Any robot or system, any direction: also orders and instant actions a fleet manager sends. A list of such checks means **any one of them** (D-48): "cancel, reroute or pause". |
 
+### Per-message validator verdict and headings
+
+`message: {topic: ..., rule: schema}` holds for a message on that topic that the lab's validator flagged with the
+rule, so `never: {message: {topic: uagv/+/Acme/amr_7/state, rule: schema}, for: 15}` checks one robot's state
+messages (the `validation:` condition counts the whole lab). `send_mission` takes `theta` (radians): the heading at
+the destination, for robots that need one (D-52).
+
 ### Message expectations
 
 The runner follows every MQTT message the lab sees through its live feed (the WebSocket the UI uses), so

@@ -1,5 +1,9 @@
 # A ROS 2 robot behind InOrbit's VDA 5050 connector (Week 13, D-51)
 
+> Week 14 re-checked each item against the VDA 5050 2.1.0 text: see the conformance report,
+> [../CONFORMANCE_ROS2_CONNECTOR.md](../CONFORMANCE_ROS2_CONNECTOR.md). Corrections: R3 (map check) is a 2.1 rule,
+> informational for this 2.0 connector; cancelling at the next node is allowed (§6.6.3).
+
 What ActuNode's lab observed running a real open-source ROS 2 stack: Nav2 (ROS 2 Humble) with a fake TurtleBot3
 (odometry only), behind InOrbit's open-source VDA 5050 connector (`inorbit-ai/ros_amr_interop`, package
 `vda5050_connector`, commit `de36489`, BSD-3-Clause) and its TurtleBot3 Nav2 adapter

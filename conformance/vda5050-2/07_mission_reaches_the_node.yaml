@@ -1,0 +1,10 @@
+# VDA 5050 2.x robot conformance (D-52). The robot under test is named in `manufacturer` and `robot:` below:
+# replace ROS2 / nav2_01 with yours (docs/CONNECT_YOUR_ROBOT.md). Plain VDA 5050 checks only: no ActuNode fields.
+# Loading Dock 2: never where the other scenarios leave the robot, so the trip is real (a robot already at the
+# destination would "reach" it at once).
+name: "07 A mission is driven to its node and the node is reported reached"
+manufacturer: ROS2
+steps:
+  - send_mission: {robot: nav2_01, destination: LOADING_DOCK_2, theta: 0.0, as: trip}
+  - expect: {robot: nav2_01, order: trip, within: 10}
+  - expect: {message: {topic: uagv/+/ROS2/nav2_01/state, match: {lastNodeId: LOADING_DOCK_2}}, within: 150}

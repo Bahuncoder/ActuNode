@@ -1,0 +1,9 @@
+# VDA 5050 2.x robot conformance (D-52). The robot under test is named in `manufacturer` and `robot:` below:
+# replace ROS2 / nav2_01 with yours (docs/CONNECT_YOUR_ROBOT.md). Plain VDA 5050 checks only: no ActuNode fields.
+name: "02 State messages pass the VDA 5050 schema"
+description: Every state message the robot publishes for 15 s validates against the official JSON schema.
+manufacturer: ROS2
+steps:
+  - expect: {robot: nav2_01, connection: ONLINE, within: 15}
+  - expect: {message: {topic: uagv/+/ROS2/nav2_01/state}, within: 40}
+  - never: {message: {topic: uagv/+/ROS2/nav2_01/state, rule: schema}, for: 15}

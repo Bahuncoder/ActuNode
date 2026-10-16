@@ -1,0 +1,8 @@
+# VDA 5050 2.x robot conformance (D-52). The robot under test is named in `manufacturer` and `robot:` below:
+# replace ROS2 / nav2_01 with yours (docs/CONNECT_YOUR_ROBOT.md). Plain VDA 5050 checks only: no ActuNode fields.
+name: "03 Header ids count up and timestamps are UTC ISO 8601"
+manufacturer: ROS2
+steps:
+  - expect: {robot: nav2_01, connection: ONLINE, within: 15}
+  - never: {message: {topic: uagv/+/ROS2/nav2_01/#, rule: header-id}, for: 15}
+  - never: {message: {topic: uagv/+/ROS2/nav2_01/#, rule: timestamp}, for: 5}

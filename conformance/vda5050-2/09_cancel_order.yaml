@@ -1,0 +1,16 @@
+# VDA 5050 2.x robot conformance (D-52). The robot under test is named in `manufacturer` and `robot:` below:
+# replace ROS2 / nav2_01 with yours (docs/CONNECT_YOUR_ROBOT.md). Plain VDA 5050 checks only: no ActuNode fields.
+name: "09 cancelOrder stops the robot and is reported finished"
+manufacturer: ROS2
+steps:
+  - send_mission: {robot: nav2_01, destination: LOADING_DOCK_1, theta: 0.0, as: trip}
+  - expect: {robot: nav2_01, order: trip, within: 10}
+  - wait: 4
+  - cancel_mission: {robot: nav2_01}
+  # VDA 5050 2.1 §6.6.3: the vehicle stops "right where it is or on the next node"; once all movement has stopped,
+  # cancelOrder reports FINISHED. Here the next node is the destination: up to the time to reach it.
+  - expect:
+      message:
+        topic: uagv/+/ROS2/nav2_01/state
+        match: {actionStates: [{actionType: cancelOrder, actionStatus: FINISHED}]}
+      within: 60

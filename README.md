@@ -281,6 +281,12 @@ docker compose kill -s HUP mosquitto                             # apply it: the
 
 Who uses ActuNode for what, and what works today: [docs/USE_CASES.md](docs/USE_CASES.md).
 
+## Your robot in the lab
+
+Bring a VDA 5050 robot (or its simulator, or a ROS 2 stack) into the lab and check how well it speaks VDA 5050:
+[docs/CONNECT_YOUR_ROBOT.md](docs/CONNECT_YOUR_ROBOT.md). The conformance suite (`conformance/vda5050-2/`) and a
+worked example, InOrbit's ROS 2 connector measured: [docs/CONFORMANCE_ROS2_CONNECTOR.md](docs/CONFORMANCE_ROS2_CONNECTOR.md).
+
 ## A real ROS 2 robot (optional)
 
 A ROS 2 robot stack, as integrators meet it: Nav2 on ROS 2 Humble with a fake TurtleBot3 (odometry only, headless)
@@ -296,7 +302,7 @@ curl -s -X POST localhost:8080/api/missions -H 'content-type: application/json' 
 On a lab that was already running, apply the robot's login first: `docker compose kill -s HUP mosquitto`. The
 connector drops orders without node headings, so send `theta`. What the lab found running it (an order ignored
 without error, nodes reported reached when navigation failed, schema errors in every state):
-[docs/research/ROS2_CONNECTOR.md](docs/research/ROS2_CONNECTOR.md). Test: `ACTUNODE_E2E_ROS2=1 tests/e2e/.venv/bin/pytest
+[docs/CONFORMANCE_ROS2_CONNECTOR.md](docs/CONFORMANCE_ROS2_CONNECTOR.md). Test: `ACTUNODE_E2E_ROS2=1 tests/e2e/.venv/bin/pytest
 tests/e2e/test_13_ros2_robot.py` (weekly in CI).
 
 ## Configuration
@@ -453,6 +459,7 @@ Offline playground with no MQTT at all (one mission through the robot state mach
 | `frontend/` | React + TypeScript lab UI (nginx in Docker) |
 | `simulator/` | Python AMR simulator, VDA 5050 2.1 and 3.0 |
 | `mosquitto/`, `tls/` | Broker config, login and ACL generation, local CA |
+| `conformance/` | VDA 5050 2.x conformance suite for any robot, and raw checks |
 | `ros2/` | The optional ROS 2 robot: Dockerfile, launch, Nav2 parameters, generated warehouse map |
 | `examples/` | An example fleet manager and the scenario that tests it |
 | `cli/`, `scenarios/` | `actunode test`, the scenario runner; scenario files |
