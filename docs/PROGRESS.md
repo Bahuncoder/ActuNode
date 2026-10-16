@@ -69,7 +69,9 @@ unchanged).
 Then, asked to make every check pass, a third patch: the connector rejects orders on maps the robot does not have
 (`known_map_ids`, opt-in), and its validation errors carry the standard type (`validationError`, was
 `validationOrder`). Verified in the lab: patched 9/9 scenarios and 3/3 raw checks, repeated runs back to back, no
-validator issue in the robot's state; unpatched still 4/9 and 0/3, as published. Testing found and fixed two
+validator issue in the robot's state. Then the last two connector bugs (undecodable orders dropped; the refused-login
+`TypeError`), a fourth raw check, and 4/4; the refused login tested live with a throwaway robot whose login does
+not exist; unpatched still 4/9 and 0/3, as published. Testing found and fixed two
 false results in `conformance/raw_checks.py` (an order left open made the unknown-map check pass; a pending cancel
 could cancel the next order). Report, upstream drafts (now two PRs plus two issues), CHANGELOG, D-55 updated; the
 ROS 2 workflow runs both variants. Filing upstream is still the founder's call.
@@ -639,7 +641,7 @@ Newest first. One entry per work session: what was done, what was learned, what 
 
 ### Fri 16 Oct 2026 (evening): ROS 2 robot fixes (D-55)
 Patches for the example adapter and the connector; 9/9 with them; raw checks script corrected; upstream drafts
-reworked into PRs; then the map check (3/3).
+reworked into PRs; then the map check (3/3); then the last two bugs (4/4) and five upstream PRs.
 
 ### Fri 16 Oct 2026 (later): Week 16 and the 0.2.0 release candidate (D-54)
 Getting started, compatibility promise, triage routine, scenario format version, version 0.2.0 (6c234f2). Gate passed:

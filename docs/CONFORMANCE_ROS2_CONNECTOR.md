@@ -46,6 +46,7 @@ Raw checks (orders ActuNode's mission sender would never build, sent with a mast
 |---|---|---|---|
 | A node the robot cannot reach (inside a rack) is not reported reached | ❌ **fail** | §6.10.6 `lastNodeId`: "Node ID of last reached node"; §6.10.2 | Robot moved 0.3 m; Nav2 aborted (no path); state: `lastNodeId: "target"` |
 | ... and the failure is reported as an error | ❌ **fail** | §6.10.5: "The AGV reports errors via the `errors` array" | `errors: []` |
+| An order the robot cannot decode (`nodePosition` without `x`) is rejected with an error, not ignored (added 16 Oct) | ❌ **fail** | §6.1.1: "communicate this within an error message and ... reject the order"; `validationError` §6.6.4.1 | `Ignoring invalid VDA5050 message: 'x'` in the log; `errors: []` |
 | An order on a map the robot does not have is rejected | ❌ fail (*informational*) | §6.7.1 (2.1 only): "Before accepting a new order, the vehicle shall check that there is a map ... for each map identifier" | Accepted, `errors: []`. Map management is new in 2.1; the connector speaks 2.0 |
 
 ## Impact for a fleet manager, most serious first
@@ -71,14 +72,15 @@ Located in the code at the pinned commits (16 Oct, D-55). C = connector (`vda505
 | `positionInitialized` false (05) | A | Never set; the position comes from TF and is correct |
 | `driving` false (08) | A | Kept internally, never reported |
 | Battery 0 % | A | Never filled |
-| Order without `theta` dropped (06) | C | The MQTT bridge reads `theta` as mandatory; the `KeyError` is logged and the order dropped. Order validation is a stub (`order_msg_is_valid` returns valid) |
+| Order without `theta` dropped (06); any undecodable order dropped | C | The MQTT bridge reads `theta` as mandatory; the `KeyError` is logged and the order dropped. Order validation is a stub (`order_msg_is_valid` returns valid) |
 | Unknown map accepted (raw, informational) | C | No map check before accepting an order |
+| MQTT thread dies when the broker refuses the login | C | `logger.error("... %d", rc)` raises `TypeError` in paho's thread |
 | Validation rejections typed `validationOrder` | C | `OrderRejectErrors.VALIDATION_ERROR = "validationOrder"`; VDA 5050's type is `validationError`. Found while testing the map check |
 | Stuck after a goal Nav2 refuses (e.g. unknown frame) | A | When Nav2 rejects a goal, the adapter waits forever; the robot then refuses every new order (`orderUpdateError`) until restarted. Seen running the raw checks twice in a row |
 
 ## Fixes (ros2/patches/)
 
-Three patches ([ros2/patches/](../ros2/patches/README.md)), proposed upstream, applied only with
+Five patches ([ros2/patches/](../ros2/patches/README.md)), proposed upstream, applied only with
 `ACTUNODE_ROS2_PATCHES=1 docker compose --profile ros2 up -d --build ros2-robot`; the default build stays as pinned,
 so the results above remain reproducible.
 
@@ -90,10 +92,12 @@ so the results above remain reproducible.
 - **Connector:** a `known_map_ids` parameter (off by default; the lab sets `map`, `warehouse`): an order with a node on
   another map is rejected before it is taken, as a WARNING `validationError` naming the node and the map. Also fixes
   the `validationOrder` typo.
+- **Connector:** an order the bridge cannot decode is reported as a WARNING `validationError` (with `orderId`) instead
+  of being dropped; a refused broker login is logged and retried instead of killing the MQTT thread.
 
-Results with the patches (16 Oct, final build): **9/9 scenarios, 3/3 raw checks**, on repeated runs back to back; the
-validator finds no issue in the robot's state messages. Unpatched, re-measured the same day: 4/9 and 0/3, as above. Not fixed: an invalid order is still dropped with a log line
-instead of rejected with a `validationError` (an upstream issue, not a patch).
+Results with the patches (16 Oct, final build): **9/9 scenarios, 4/4 raw checks**, on repeated runs back to back; the
+validator finds no issue in the robot's state messages. Unpatched, re-measured the same day: 4/9 and 0/4, as above. A connector whose login the broker refuses: unpatched,
+the `TypeError` and no further attempt; patched, the refusal logged and retried with back-off. Nothing found in this report is left unfixed by the patches.
 
 The raw checks script was corrected while testing the patches: it now cancels any open order before and after, and
 counts only errors raised during the run. Before, a robot that had refused the unknown-map order because the

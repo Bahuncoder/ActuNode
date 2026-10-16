@@ -1,0 +1,13 @@
+diff --git a/vda5050_connector/vda5050_connector_py/mqtt_bridge.py b/vda5050_connector/vda5050_connector_py/mqtt_bridge.py
+index 2979e9c..f67cdcd 100755
+--- a/vda5050_connector/vda5050_connector_py/mqtt_bridge.py
++++ b/vda5050_connector/vda5050_connector_py/mqtt_bridge.py
+@@ -366,7 +366,7 @@ class MQTTBridge(Node):
+             )
+ 
+         else:
+-            self.logger.error("Failed to connect, return code %d\n", rc)
++            self.logger.error(f"Failed to connect, return code {rc}")
+ 
+     def on_message_mqtt(self, client, userdata, msg):
+         """MQTT client message callback."""

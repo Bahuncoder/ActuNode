@@ -990,14 +990,16 @@ never fills `operatingMode`, `positionInitialized`, `driving` or the battery, an
 succeeded (the connector's own failure handling is correct but never triggered). Only the mandatory `theta` and the
 missing map check are in the connector. None of it was our configuration.
 **Decision.** Patches in `ros2/patches/` (adapter: real navigation result and the four state fields; connector:
-`theta` optional, and an opt-in `known_map_ids` check that rejects orders on other maps, VDA 5050 2.1 §6.7.1), applied only when the build argument `ACTUNODE_ROS2_PATCHES=1` is set. The default build stays
+`theta` optional, and an opt-in `known_map_ids` check that rejects orders on other maps, VDA 5050 2.1 §6.7.1; undecodable orders
+rejected with `validationError`; the refused-login `TypeError`), applied only when the build argument `ACTUNODE_ROS2_PATCHES=1` is set. The default build stays
 exactly as pinned, so the published measurements remain reproducible; the weekly ROS 2 workflow runs both variants
-(unpatched: the report's known failures; patched: all nine scenarios). The upstream drafts become three pull-request
-descriptions plus the issues the patches do not fix (invalid orders dropped instead of rejected; the bridge's
-`TypeError`). The report and the drafts name the adapter where it is the cause. `conformance/raw_checks.py` now
+(unpatched: the report's known failures; patched: all nine scenarios). The upstream drafts become five pull requests, one
+per patch, each applying on its own to the current upstream branch; the founder approved opening them ("explicit
+yes"). The report and the drafts name the adapter where it is the cause. `conformance/raw_checks.py` now
 cancels open orders before and after and counts only errors raised during the run: an open order left by the
 previous check had made the unknown-map check pass by accident.
-**Consequences.** With the patches: 9/9 scenarios and 3/3 raw checks, on repeated runs. Testing the map check found
+**Consequences.** With the patches: 9/9 scenarios and 4/4 raw checks (a fourth was added: an undecodable order must
+be rejected with an error), on repeated runs. Testing the map check found
 one more connector bug, fixed in the same patch: validation rejections were typed `validationOrder`, not
 `validationError`. Filing the PRs and issues is public and
 remains the founder's decision. If upstream merges them, the pins move and the patches are deleted.

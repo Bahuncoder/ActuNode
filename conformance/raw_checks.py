@@ -10,6 +10,8 @@ Checks (VDA 5050 2.1):
                (lastNodeId is the last node *reached*, section 6.10.6), and should report an error.
   unknown-map  a node on a map the robot does not have: 2.1 section 6.7.1 requires checking the map before
                accepting (2.0 robots: informational).
+  invalid      a node whose nodePosition lacks x: the robot must reject the order with an error (section 6.1.1),
+               not drop it silently.
 Needs paho-mqtt and a lab at localhost (plain MQTT on 1883; the login must be allowed there).
 """
 
@@ -47,7 +49,7 @@ class Robot:
         if "agvPosition" not in self.state:
             sys.exit(f"no state from {self.prefix} in 40 s")
 
-    def order(self, order_id: str, x: float, y: float, map_id: str) -> None:
+    def order(self, order_id: str, x: float, y: float, map_id: str, drop: str | None = None) -> None:
         here = self.state["agvPosition"]
         start = {"x": here["x"], "y": here["y"], "theta": here.get("theta", 0.0), "mapId": here["mapId"]}
         self.header += 1
@@ -65,6 +67,8 @@ class Robot:
             "edges": [{"edgeId": "here-target", "sequenceId": 1, "released": True, "startNodeId": "here",
                        "endNodeId": "target", "actions": []}],
         }  # fmt: skip
+        if drop:  # make the order invalid: remove a mandatory field from the target's nodePosition
+            del message["nodes"][1]["nodePosition"][drop]
         self.client.publish(f"{self.prefix}/order", json.dumps(message), qos=1)
 
     def cancel(self, seconds: float) -> None:
@@ -141,6 +145,22 @@ def main() -> int:
     results.append(
         report(
             "order on an unknown map is rejected (2.1 section 6.7.1; informational for 2.0)",
+            not taken and bool(errors),
+            f"orderId={seen.get('orderId')!r}, errors={errors}",
+        )
+    )
+
+    # An order the robot cannot read (nodePosition without its mandatory x): rejected with an error, not ignored
+    # (section 6.1.1: "communicate this within an error message and ... reject the order"; validationError, 6.6.4.1).
+    robot.cancel(args.wait)
+    before = [json.dumps(e, sort_keys=True) for e in robot.state.get("errors") or []]
+    robot.order("conformance-undecodable", start["x"] + 1, start["y"], start["mapId"], drop="x")
+    seen = robot.watch(10)
+    errors = [e.get("errorType") for e in seen.get("errors") or [] if json.dumps(e, sort_keys=True) not in before]
+    taken = seen.get("orderId") == "conformance-undecodable"
+    results.append(
+        report(
+            "an invalid order is rejected with an error, not ignored",
             not taken and bool(errors),
             f"orderId={seen.get('orderId')!r}, errors={errors}",
         )

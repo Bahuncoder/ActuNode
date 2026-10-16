@@ -8,22 +8,25 @@ Most failures turned out to be in the example adapter, not the connector (D-55).
 propose a pull request rather than an issue; the patches are in [ros2/patches/](../../../ros2/patches/README.md) and
 run in the lab with `ACTUNODE_ROS2_PATCHES=1`.
 
-## Pull requests (tested together: 9/9 scenarios, 3/3 raw checks)
+## Pull requests (tested together: 9/9 scenarios, 4/4 raw checks; each also applies on its own)
 
 | Draft | Repository | Fixes |
 |---|---|---|
 | [pr-1-adapter-report-nav-result-and-state.md](pr-1-adapter-report-nav-result-and-state.md) | vda5050_adapter_examples | 01, 03, 04 below; stuck after a refused goal |
 | [pr-2-connector-theta-optional.md](pr-2-connector-theta-optional.md) | ros_amr_interop | The `theta` part of 02 |
 | [pr-3-connector-reject-unknown-maps.md](pr-3-connector-reject-unknown-maps.md) | ros_amr_interop | Orders on unknown maps (2.1 §6.7.1, opt-in); `validationOrder` → `validationError` |
+| [pr-4-connector-reject-undecodable-orders.md](pr-4-connector-reject-undecodable-orders.md) | ros_amr_interop | The rest of 02: an order that cannot be decoded is rejected with `validationError`, not dropped |
+| [pr-5-connector-refused-connection-log.md](pr-5-connector-refused-connection-log.md) | ros_amr_interop | 05 |
 
-## Issues (evidence for the PRs, or not fixed by them)
+## Issue drafts (the evidence behind the PRs; every one is fixed by a PR)
 
 | Draft | Repository | Severity for a fleet manager | Status |
 |---|---|---|---|
 | [01-navigation-failure-reported-as-reached.md](01-navigation-failure-reported-as-reached.md) | vda5050_adapter_examples | High | Fixed by PR 1; file only if the PR is not wanted |
-| [02-order-without-theta-silently-ignored.md](02-order-without-theta-silently-ignored.md) | ros_amr_interop | High | `theta` fixed by PR 2; **file**: invalid orders are dropped instead of rejected with `validationError` |
+| [02-order-without-theta-silently-ignored.md](02-order-without-theta-silently-ignored.md) | ros_amr_interop | High | Fixed by PRs 2 and 4 |
 | [03-driving-always-false.md](03-driving-always-false.md) | vda5050_adapter_examples | Medium | Fixed by PR 1 |
 | [04-operating-mode-and-position-initialized.md](04-operating-mode-and-position-initialized.md) | vda5050_adapter_examples | Medium | Fixed by PR 1 |
-| [05-mqtt-bridge-typeerror-on-refused-connection.md](05-mqtt-bridge-typeerror-on-refused-connection.md) | ros_amr_interop | Low | **File** (one-line fix suggested, not tested) |
+| [05-mqtt-bridge-typeerror-on-refused-connection.md](05-mqtt-bridge-typeerror-on-refused-connection.md) | ros_amr_interop | Low | Fixed by PR 5 |
 
-Suggested order: PR 2, PR 3 (builds on PR 2's patch), PR 1 (refers to PR 2), then the two issues.
+Each PR is independent of the others (all apply to the current `humble-devel`); PR 1 and PR 4 refer to their
+companions.
