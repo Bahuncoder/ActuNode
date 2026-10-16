@@ -7,7 +7,7 @@ the lab, so a failing scenario comes with a recording you can replay (D-46).
 
 ```console
 $ actunode test scenarios/
-ActuNode 0.1.0 at http://localhost:8080
+ActuNode 0.2.0 at http://localhost:8080
 
 P-1042 blocked on the way to storage  (scenarios/p1042_blocked_path.yaml)
   ok    1. expect robot_01 status IDLE or COMPLETED or CANCELLED or FAILED within 120 s  [0.0 s]

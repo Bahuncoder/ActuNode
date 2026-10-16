@@ -4,6 +4,23 @@ What changed, per commit, newest first. Status and plans are in [docs/PROGRESS.m
 
 ## Unreleased
 
+Nothing yet.
+
+## 0.2.0 — 2026-10-16
+
+Phase 2 of the plan (weeks 9–16, D-44 to D-54): the lab becomes a test tool. Scenario tests, in CI; testing an
+outside fleet manager; a real ROS 2 robot stack and a VDA 5050 conformance suite for any robot; a full audit of
+every component. Upgrading from 0.1.0: [docs/COMPATIBILITY.md](docs/COMPATIBILITY.md); the user-visible changes
+of the audit are listed under it below (D-50).
+
+### Week 16: ready for outside users (D-54)
+- docs/GETTING_STARTED.md: from clone to a first passing scenario with only Docker.
+- docs/COMPATIBILITY.md: what stays stable between 0.x releases (scenario format 1, session format 1, the
+  `actunode test` command, topics and logins; the HTTP API kept compatible, breaks announced).
+- Scenario files may declare `version: 1`; a later format version is refused instead of half understood.
+- docs/TRIAGE.md, issue templates asking for a reproducing file, a VDA 5050 interpretation template; labels
+  `conformance` and `needs-reproduction`.
+
 ### Week 15: developer credibility (D-53)
 - docs/FAILURE_CATALOGUE.md: failures between fleet managers and robots, how to reproduce or detect each.
 - docs/SCENARIO_GALLERY.md: every shipped scenario (a test keeps it complete).

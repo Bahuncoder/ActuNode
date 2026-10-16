@@ -160,3 +160,9 @@ def test_descriptions_read_like_the_scenario():
     assert "send mission robot_01: RECEIVING_DOOR_2 -> STORAGE_A17 (load P-1042) as p1042" in text
     assert "expect robot_01 status BLOCKED, order p1042, error pathBlocked within 5 s, then for 3 s" in text
     assert "expect no validation errors within 10 s" in text
+
+
+def test_a_scenario_may_declare_the_format_version():
+    assert parse("version: 1\nname: x\nsteps: [{wait: 1}]", P).name == "x"
+    assert "scenario format version 2 is not supported" in errors("version: 2\nname: x\nsteps: [{wait: 1}]")
+    assert "version" in errors("version: true\nname: x\nsteps: [{wait: 1}]")

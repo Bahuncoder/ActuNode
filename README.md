@@ -16,6 +16,9 @@ so you can replay them** against the system under test, with no physical fleet.
 
 ![ActuNode Lab: six simulated robots on the warehouse map, robot table and live message stream](docs/images/lab-overview.png)
 
+**New here?** [docs/GETTING_STARTED.md](docs/GETTING_STARTED.md): from clone to a first passing scenario in about
+10 minutes, with only Docker.
+
 ## Contents
 
 [Features](#features) · [Quick start](#quick-start) · [Five-minute tour](#five-minute-tour) · [Sharing the lab](#sharing-the-lab-on-a-network) · [Connecting a real robot](#connecting-a-real-robot) · [Connecting your fleet manager](#connecting-your-fleet-manager-master-control) · [Configuration](#configuration) ·
@@ -478,27 +481,15 @@ Offline playground with no MQTT at all (one mission through the robot state mach
 
 ## Project status
 
-As of 15 October 2026, **Phase 1 (weeks 1–8) is complete**, with v0.1.0 released on 13 October.
-The lab includes simulated robots, missions, a multi-robot map, message inspection and validation,
-failure injection, record/replay, documentation and demo tooling.
+**v0.2.0 (16 October 2026)** completes Phase 2 of the plan ([docs/PLAN.md](docs/PLAN.md)): scenario tests with timing
+and message expectations, in CI through a Docker runner; testing an outside fleet manager; site capture import; a
+real ROS 2 robot stack (Nav2 behind InOrbit's open-source VDA 5050 connector) and a VDA 5050 conformance suite for
+any robot; a failure catalogue, scenario gallery and message-flow walkthroughs; a full audit of every component
+([docs/AUDIT_2026-10-14.md](docs/AUDIT_2026-10-14.md)). v0.1.0 (13 October) was Phase 1: the lab itself.
 
-**Phase 2 is complete through Week 12:** YAML scenario tests with timing and message expectations,
-recordings and JUnit reports; an example external fleet manager and reaction test; a Docker scenario
-runner and GitHub Actions example; and import of site MQTT captures. The latest quality gate records
-passing unit, end-to-end and load checks after the [weeks 0–12 audit](docs/AUDIT_2026-10-14.md).
-
-**Next planned:** connect an independent ROS 2 / Nav2 robot stack through a VDA 5050 connector and
-run scenarios against it (weeks 13–14). Real robot-stack compatibility and external-user onboarding
-still need validation; user conversations may reorder the remaining work. Week numbers describe
-roadmap milestones, not elapsed calendar weeks. Plan: [docs/PLAN.md](docs/PLAN.md); detailed status and
-measurements: [docs/PROGRESS.md](docs/PROGRESS.md); changes: [CHANGELOG.md](CHANGELOG.md).
-
-**Out of scope** (by design or until users ask):
-
-- `blockingType` has no effect (simulated actions are instant); no retriable actions.
-- Zones, corridors and map management; the 3.0 `zoneSet` and `responses` topics are not used.
-- Traffic management, path planning and collision avoidance: ActuNode detects, it does not steer (D-22).
-- Safety stops (`fieldViolation`) and the `visualization` topic are not simulated.
+What we do not know yet is how teams use it on real projects: user conversations decide what comes next. What
+is stable between 0.x releases: [docs/COMPATIBILITY.md](docs/COMPATIBILITY.md). Detailed status and measurements:
+[docs/PROGRESS.md](docs/PROGRESS.md); changes: [CHANGELOG.md](CHANGELOG.md).
 
 ## Documentation
 
@@ -506,7 +497,11 @@ measurements: [docs/PROGRESS.md](docs/PROGRESS.md); changes: [CHANGELOG.md](CHAN
 |---|---|
 | [Product specification](docs/product/README.md) | PRD, technical requirements, app flow, UI/UX brief, backend schema and implementation plan |
 | [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) | Components, topics, API, WebSocket events, session format, configuration, tests |
-| [docs/DECISIONS.md](docs/DECISIONS.md) | Why things are built the way they are (D-1 to D-50) |
+| [docs/GETTING_STARTED.md](docs/GETTING_STARTED.md) | From clone to a first passing scenario |
+| [docs/CONNECT_YOUR_ROBOT.md](docs/CONNECT_YOUR_ROBOT.md) | Bring your robot into the lab; the conformance suite |
+| [docs/COMPATIBILITY.md](docs/COMPATIBILITY.md) | What stays stable between 0.x releases |
+| [docs/TRIAGE.md](docs/TRIAGE.md) | Reporting a problem; how issues are handled |
+| [docs/DECISIONS.md](docs/DECISIONS.md) | Why things are built the way they are (D-1 to D-54) |
 | [docs/VDA5050_NOTES.md](docs/VDA5050_NOTES.md) | Protocol notes and validator rules |
 | [docs/research/VDA5050_3_0.md](docs/research/VDA5050_3_0.md) | VDA 5050 3.0 compared with 2.1 |
 | [docs/DEMO.md](docs/DEMO.md) | 3-minute demo script and the automated recorder |

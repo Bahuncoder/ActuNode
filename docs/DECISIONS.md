@@ -962,3 +962,21 @@ are filed and the maintainers have had time to respond.
 **Consequences.** docs/FAILURE_CATALOGUE.md, docs/SCENARIO_GALLERY.md, docs/MESSAGE_FLOWS.md (Mermaid diagrams,
 rendered by GitHub); two drafts in docs/company/blog-drafts/.
 
+## D-54 · Week 16: onboarding, a compatibility promise, a triage routine, v0.2.0
+16 Oct 2026 · Accepted (founder: "continue and work on it")
+
+**Context.** Week 16, the last of Phase 2: an onboarding path from the README to a first passing scenario, an
+issue triage routine, release v0.2.0. The architecture review (D-50, A5) asked for a versioned scenario format and
+a written API compatibility promise before outside users depend on them.
+**Decision.** Getting started needs only Docker: the lab, then the runner container on a sample scenario, then a
+deliberately failing copy, then a next step per kind of user; it is verified by following it from a fresh clone.
+docs/COMPATIBILITY.md promises scenario format 1, session format 1, the `actunode test` command (options, exit
+codes, JUnit), topics and logins; the HTTP API is kept compatible with breaks announced a release ahead; ActuNode's
+extension fields, the UI and the WebSocket events are not promised. Scenario files may say `version: 1` (strict
+integer); a runner refuses a later version. docs/TRIAGE.md: a reproducing file first (session, scenario, capture),
+labels, a 3-working-day first response, reproduce before fixing, a test with every fix, conformance questions
+answered with the spec's text. Version 0.2.0 everywhere (backend, frontend, runner); tag `v0.2.0` on the verified
+commit; the CI template pins `ref: v0.2.0`.
+**Consequences.** Outside users have a supported path and know what will not break under them. Publishing
+container images is not part of 0.2.0 (users build locally, as before): it waits until a user asks.
+

@@ -38,7 +38,7 @@ Week 1 started on Friday 9 October 2026 (Day 1). Each week runs Friday to Thursd
 | 13 | 1–7 Jan | ROS 2 robot stack, part 1 | Nav2 robot behind the VDA 5050 connector, optional profile | ✅ Built 15 Oct (D-51) | ✅ Quality gate passed 15 Oct |
 | 14 | 8–14 Jan | ROS 2 robot stack, part 2 | Scenarios against it; conformance report; connect-your-robot guide | ✅ Built 15 Oct (D-52) | ✅ Quality gate passed 15 Oct |
 | 15 | 15–21 Jan | Developer credibility | Failure catalogue, scenario gallery, blog drafts | ✅ Built 16 Oct (D-53) | ✅ Quality gate passed 16 Oct |
-| 16 | 22–28 Jan | Ready for external users | Onboarding path, triage routine, v0.2.0 | ⬜ | ⬜ |
+| 16 | 22–28 Jan | Ready for external users | Onboarding path, triage routine, v0.2.0 | ✅ Built 16 Oct (D-54) | 🟡 Gate in progress |
 
 Legend: ✅ done · 🟡 partly done / known gaps · ⬜ not started
 
@@ -572,9 +572,9 @@ exercised by hand with a real browser and MQTT traffic.
 
 ## Open issues and technical debt
 
-Open from the full audit (D-50): per-user identity and an audit trail in shared labs (A3), metrics (A6),
-versioned scenario format and API, published images (A5, A7: Week 16); merge the two session-id generators;
-remove the simulator's unreachable edge-action code.
+Open from the full audit (D-50): per-user identity and an audit trail in shared labs (A3), metrics (A6);
+published images (A7: deferred until a user asks, D-54); merge the two session-id generators; remove the
+simulator's unreachable edge-action code. (A5, versioned scenario format and a compatibility promise: done, D-54.)
 
 Open from the product audit (D-47), checked 14 Oct, with the recommended order:
 (Items 1 and 2 done in Week 11, D-48.)

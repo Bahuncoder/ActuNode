@@ -1,17 +1,22 @@
 ---
 name: Bug report
-about: Something does not work as expected
+about: Something does not work as documented
 labels: bug
 ---
 
+<!-- Security problems: do not open an issue, see SECURITY.md. How issues are handled: docs/TRIAGE.md -->
+
 **What happened**
 
-**Steps to reproduce**
+**What you expected** (link the doc, or the VDA 5050 section, that says so)
 
-**Expected behavior**
+**A file that reproduces it** (the most useful part)
+- A session file (UI: Sessions → Download) or a converted site capture (`actunode import`): remove anything
+  confidential first, recordings contain every message.
+- Or the scenario file and the `actunode test` command and output.
 
-**VDA 5050 version** (2.1.0 or 3.0.0)
+**Steps to reproduce** (if there is no file)
 
-**Robot count**
+**Versions**: ActuNode (UI header or `GET /api/health`) · VDA 5050 (2.1 / 3.0) · robots (simulated / your own) · OS and Docker
 
-**Logs** (`docker compose logs backend`, browser console, etc.)
+**Logs** (`docker compose logs --tail 200 <service>`, browser console)

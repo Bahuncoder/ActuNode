@@ -287,12 +287,27 @@ class Scenario:
         return tuple(found)
 
 
+FORMAT_VERSION = 1  # the scenario file format (docs/COMPATIBILITY.md, D-54)
+
+
 class _Header(_Strict):
+    # Optional; a file written for a later format is refused instead of half understood.
+    version: StrictInt | None = None
     name: str = Field(min_length=1, max_length=200)
     description: str = Field(default="", max_length=10_000)
     vda_version: Literal["2", "3"] | None = None
     manufacturer: Name | None = None
     steps: list[Any] = Field(min_length=1, max_length=MAX_STEPS)  # each checked by _step, numbered from 1
+
+    @field_validator("version")
+    @classmethod
+    def _known_format(cls, value):
+        if value is not None and value != FORMAT_VERSION:
+            raise ValueError(
+                f"scenario format version {value} is not supported by this runner (it reads version {FORMAT_VERSION}); "
+                "upgrade actunode"
+            )
+        return value
 
     @field_validator("vda_version", mode="before")
     @classmethod
