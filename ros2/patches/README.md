@@ -1,0 +1,18 @@
+# ROS 2 robot conformance patches
+
+Optional patches to the two pinned upstream repos (see `ros2/Dockerfile`) that make the ROS 2 robot
+pass more of the VDA 5050 conformance suite (`docs/CONFORMANCE_ROS2_CONNECTOR.md`). Default build = upstream as pinned, unpatched.
+
+Enable: `ACTUNODE_ROS2_PATCHES=1 docker compose --profile ros2 up -d --build ros2-robot`
+The build fails if a patch does not apply; the log shows `applying ...` per patch.
+
+| Patch | Fixes | Scenario / check |
+|---|---|---|
+| `vda5050_adapter_examples/0001-...` state | adapter reports `operatingMode=AUTOMATIC`, `positionInitialized` once odometry is seen, `driving`, and a fixed battery (`battery_charge` parameter, default 100; the fake TurtleBot3 has no battery) | 02, 04, 05 (operatingMode, positionInitialized), 08 (driving) |
+| `vda5050_adapter_examples/0001-...` nav result | Nav2's terminal status is propagated: succeeded, canceled, else aborted (also a rejected goal), instead of always succeeding | raw checks: unreachable-node, failure-as-error |
+| `vda5050_adapter_examples/0001-...` theta | a NaN theta heads toward the goal (current yaw if under 1 mm away) | 06 |
+| `ros_amr_interop/0001-theta-optional.patch` | `nodePosition.theta` is optional in VDA 5050 2.x; absent = NaN. Stitch-node comparison treats NaN as equal; NaN is omitted from published JSON (it is not valid JSON) | 06 |
+
+Patches are `git diff` output against the pinned commits; apply with `git apply` from each repo root.
+
+Proposed upstream as pull requests: [docs/research/upstream/](../../docs/research/upstream/README.md).

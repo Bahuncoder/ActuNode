@@ -980,3 +980,23 @@ commit; the CI template pins `ref: v0.2.0`.
 **Consequences.** Outside users have a supported path and know what will not break under them. Publishing
 container images is not part of 0.2.0 (users build locally, as before): it waits until a user asks.
 
+
+## D-55 · Fix the ROS 2 robot's conformance failures as optional patches, proposed upstream
+16 Oct 2026 · Accepted (founder: "can't we fix it", then "yeah")
+
+**Context.** The Week 14 report (D-52) measured InOrbit's connector at 4/9 scenarios and 0/3 raw checks. Locating
+each failure in the code showed that most are in the *example* TurtleBot3 adapter, not the connector: the adapter
+never fills `operatingMode`, `positionInitialized`, `driving` or the battery, and reports every Nav2 goal as
+succeeded (the connector's own failure handling is correct but never triggered). Only the mandatory `theta` and the
+missing map check are in the connector. None of it was our configuration.
+**Decision.** Two patches in `ros2/patches/` (adapter: real navigation result and the four state fields; connector:
+`theta` optional), applied only when the build argument `ACTUNODE_ROS2_PATCHES=1` is set. The default build stays
+exactly as pinned, so the published measurements remain reproducible; the weekly ROS 2 workflow runs both variants
+(unpatched: the report's known failures; patched: all nine scenarios). The upstream drafts become two pull-request
+descriptions plus the issues the patches do not fix (invalid orders dropped instead of rejected; the bridge's
+`TypeError`). The report and the drafts name the adapter where it is the cause. `conformance/raw_checks.py` now
+cancels open orders before and after and counts only errors raised during the run: an open order left by the
+previous check had made the unknown-map check pass by accident.
+**Consequences.** With the patches: 9/9 scenarios, both navigation-failure checks pass, the robot survives repeated
+runs. The unknown-map check still fails (2.1 map management; not patched). Filing the PRs and issues is public and
+remains the founder's decision. If upstream merges them, the pins move and the patches are deleted.

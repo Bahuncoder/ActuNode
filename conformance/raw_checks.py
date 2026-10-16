@@ -67,6 +67,26 @@ class Robot:
         }  # fmt: skip
         self.client.publish(f"{self.prefix}/order", json.dumps(message), qos=1)
 
+    def cancel(self, seconds: float) -> None:
+        """cancelOrder, then wait until the order is gone: a robot refuses a new order while one is still open."""
+        self.header += 1
+        action = {"actionId": f"conformance-cancel-{self.header}", "actionType": "cancelOrder", "blockingType": "HARD",
+                  "actionParameters": []}  # fmt: skip
+        message = {
+            "headerId": self.header, "timestamp": now(), "version": self.version,
+            "manufacturer": self.manufacturer, "serialNumber": self.serial, "actions": [action],
+        }  # fmt: skip
+        self.client.publish(f"{self.prefix}/instantActions", json.dumps(message), qos=1)
+        # Wait for the robot to report the cancel done (FINISHED, or FAILED when nothing was open): until then it may
+        # still cancel the next order, e.g. while Nav2 is retrying a goal it cannot reach.
+        deadline = time.monotonic() + seconds
+        while time.monotonic() < deadline:
+            done = [a for a in self.state.get("actionStates") or [] if a.get("actionId") == action["actionId"]]
+            if done and done[0].get("actionStatus") in ("FINISHED", "FAILED"):
+                break
+            time.sleep(0.2)
+        time.sleep(1)
+
     def watch(self, seconds: float) -> dict:
         time.sleep(seconds)
         return dict(self.state)
@@ -91,6 +111,9 @@ def main() -> int:
     robot = Robot(args)
     results = []
 
+    # Start clean (an order left open by an earlier run would make the robot refuse ours); count only new errors.
+    robot.cancel(args.wait)
+    before = [json.dumps(e, sort_keys=True) for e in robot.state.get("errors") or []]
     start = robot.state["agvPosition"]
     robot.order("conformance-unreachable", *INSIDE_A_RACK, start["mapId"])
     seen = robot.watch(args.wait)
@@ -98,7 +121,7 @@ def main() -> int:
     moved = math.dist((start["x"], start["y"]), (position["x"], position["y"]))
     at_target = math.dist((position["x"], position["y"]), INSIDE_A_RACK) < 1.0
     claims = seen.get("orderId") == "conformance-unreachable" and seen.get("lastNodeId") == "target"
-    errors = [e.get("errorType") for e in seen.get("errors") or []]
+    errors = [e.get("errorType") for e in seen.get("errors") or [] if json.dumps(e, sort_keys=True) not in before]
     results.append(
         report(
             "unreachable node is not reported reached",
@@ -108,9 +131,12 @@ def main() -> int:
     )
     results.append(report("unreachable node is reported as an error", bool(errors), f"errors={errors}"))
 
+    # Close the first order as a fleet manager would; only errors raised by this order count.
+    robot.cancel(args.wait)
+    before = [json.dumps(e, sort_keys=True) for e in robot.state.get("errors") or []]
     robot.order("conformance-unknown-map", start["x"] + 1, start["y"], "no_such_map")
     seen = robot.watch(10)
-    errors = [e.get("errorType") for e in seen.get("errors") or []]
+    errors = [e.get("errorType") for e in seen.get("errors") or [] if json.dumps(e, sort_keys=True) not in before]
     taken = seen.get("orderId") == "conformance-unknown-map"
     results.append(
         report(
@@ -119,6 +145,7 @@ def main() -> int:
             f"orderId={seen.get('orderId')!r}, errors={errors}",
         )
     )
+    robot.cancel(args.wait)
     robot.client.loop_stop()
     robot.client.disconnect()
     print(f"\n{sum(results)}/{len(results)} passed")

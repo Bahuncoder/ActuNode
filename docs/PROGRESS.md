@@ -58,6 +58,20 @@ the 8-week plan; the 8-week plan is the full roadmap. All of Days 1–7 were bui
 | Days 6–7 | Record to JSONL, replay | Week 7 |
 | 10 Oct | 10 robots; validator, schemas, VDA 5050 notes | Weeks 4, 5, 1 (rest) |
 
+## After Phase 2: fixing the ROS 2 robot's conformance failures (16 Oct, D-55)
+
+Asked "can't we fix it" about the connector's 4/9. Located every failure in the pinned code: none is our
+configuration; most are in InOrbit's *example* TurtleBot3 adapter (state fields never filled; every Nav2 goal
+reported succeeded, so the connector's correct failure handling never runs), two in the connector (`theta`
+mandatory; no map check). Built two optional patches (`ros2/patches/`, `ACTUNODE_ROS2_PATCHES=1`; default build
+unchanged).
+
+Verified in the lab: patched 9/9 scenarios, raw checks 2/3 (both navigation-failure checks pass; the unknown-map check
+is not patched), repeated runs back to back; unpatched still 4/9 and 0/3, as published. Testing found and fixed two
+false results in `conformance/raw_checks.py` (an order left open made the unknown-map check pass; a pending cancel
+could cancel the next order). Report, upstream drafts (now two PRs plus two issues), CHANGELOG, D-55 updated; the
+ROS 2 workflow runs both variants. Filing upstream is still the founder's call.
+
 ## Week 16: ready for outside users (16 Oct, D-54)
 
 Built: docs/GETTING_STARTED.md (clone to a first passing and a first failing scenario, Docker only),
@@ -620,6 +634,10 @@ Numbered so they can be referenced from commits. Remove an item only when it is 
 ## Session log
 
 Newest first. One entry per work session: what was done, what was learned, what is next.
+
+### Fri 16 Oct 2026 (evening): ROS 2 robot fixes (D-55)
+Patches for the example adapter and the connector; 9/9 with them; raw checks script corrected; upstream drafts
+reworked into PRs.
 
 ### Fri 16 Oct 2026 (later): Week 16 and the 0.2.0 release candidate (D-54)
 Getting started, compatibility promise, triage routine, scenario format version, version 0.2.0 (6c234f2). Gate passed:

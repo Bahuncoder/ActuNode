@@ -6,6 +6,8 @@ FROM ros:humble-ros-base
 
 ARG INTEROP_COMMIT=de36489cb2abdc8b49a804de54f6702a8d6931ce
 ARG EXAMPLES_COMMIT=a7ad9a755ad446286420c86a56c14bbb493c1b7c
+# 1 applies ros2/patches (VDA 5050 conformance fixes); 0 builds upstream as pinned
+ARG ACTUNODE_ROS2_PATCHES=0
 
 RUN apt-get update \
     && apt-get install -y --no-install-recommends \
@@ -21,6 +23,7 @@ RUN apt-get update \
     && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /ws
+COPY patches /actunode-patches
 RUN git init -q src/ros_amr_interop \
     && git -C src/ros_amr_interop fetch -q --depth 1 https://github.com/inorbit-ai/ros_amr_interop "$INTEROP_COMMIT" \
     && git -C src/ros_amr_interop checkout -q FETCH_HEAD \
@@ -28,6 +31,13 @@ RUN git init -q src/ros_amr_interop \
     && git -C src/vda5050_adapter_examples fetch -q --depth 1 \
         https://github.com/inorbit-ai/vda5050_adapter_examples "$EXAMPLES_COMMIT" \
     && git -C src/vda5050_adapter_examples checkout -q FETCH_HEAD \
+    && if [ "$ACTUNODE_ROS2_PATCHES" = 1 ]; then \
+        for repo in ros_amr_interop vda5050_adapter_examples; do \
+            for p in /actunode-patches/$repo/*.patch; do \
+                echo "applying $p" && git -C src/$repo apply "$p" || exit 1; \
+            done; \
+        done; \
+    fi \
     && . /opt/ros/humble/setup.sh \
     && colcon build --packages-up-to vda5050_connector vda5050_tb3_adapter --event-handlers console_direct- \
         --cmake-args -DBUILD_TESTING=OFF \

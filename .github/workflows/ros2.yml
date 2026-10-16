@@ -15,6 +15,10 @@ jobs:
   ros2-robot:
     runs-on: ubuntu-24.04
     timeout-minutes: 60
+    strategy:
+      fail-fast: false
+      matrix:
+        patches: ["0", "1"]  # the connector as pinned (the report), and with ros2/patches/ applied
     permissions:
       contents: read
     steps:
@@ -28,9 +32,10 @@ jobs:
       - run: pytest tests/e2e/test_13_ros2_robot.py -v
         env:
           ACTUNODE_E2E_ROS2: "1"
+          ACTUNODE_ROS2_PATCHES: ${{ matrix.patches }}
       - if: failure()
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
         with:
-          name: ros2-robot-logs
+          name: ros2-robot-logs-patches-${{ matrix.patches }}
           path: tests/e2e/last-run.log
           if-no-files-found: warn

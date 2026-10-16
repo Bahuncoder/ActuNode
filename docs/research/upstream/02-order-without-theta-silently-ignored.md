@@ -11,5 +11,7 @@ expected behavior is to communicate this within an error message and to reject t
 **Actual.** `mqtt_bridge` logs `Ignoring invalid VDA5050 message: 'theta'` (a `KeyError` during
 deserialisation). The order is not taken, and the state shows no error.
 
-**Suggested fix.** Treat `theta` as optional in the deserialiser (and pass "no orientation" to the adapter); in any
-case, report a rejected order as `validationError` instead of dropping it.
+**Suggested fix.** Treat `theta` as optional in the deserialiser (PR 2 does this). The general problem remains
+after it: any order the bridge cannot deserialise is dropped with a log line, and `order_msg_is_valid` is a stub
+that accepts everything. A rejected order should appear in the state as `validationError` (with the offending field
+in `errorReferences`) instead of disappearing.

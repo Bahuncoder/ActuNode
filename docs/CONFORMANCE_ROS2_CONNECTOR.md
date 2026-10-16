@@ -4,6 +4,12 @@ What a VDA 5050 master control meets when it drives a ROS 2 robot through InOrbi
 measured in the ActuNode lab. Written for robot and connector developers, integrators choosing a connector, and
 the connector's maintainers (upstream reports: [research/upstream/](research/upstream/)).
 
+**Most failures are in the example adapter, not the connector** (16 Oct, D-55): the connector passes the robot's
+state through and handles navigation failure correctly; InOrbit's example TurtleBot3 adapter never fills four state
+fields and reports every Nav2 goal as succeeded. A real robot's vendor writes its own adapter. See
+[Where each failure is](#where-each-failure-is) and [Fixes](#fixes-ros2patches) (all checks pass with them except
+the informational map check).
+
 ## Robot under test
 
 | | |
@@ -18,7 +24,8 @@ the connector's maintainers (upstream reports: [research/upstream/](research/ups
 Reproduce: `docker compose --profile ros2 up -d --build`, then
 `actunode test conformance/vda5050-2 --vda-version 2 --junit conformance.xml`, and for the raw checks
 `python conformance/raw_checks.py --password-file <master login>` (both in [CONNECT_YOUR_ROBOT.md](CONNECT_YOUR_ROBOT.md)).
-The opt-in e2e test (`tests/e2e/test_13_ros2_robot.py`) runs the suite weekly and fails if any result below changes.
+The opt-in e2e test (`tests/e2e/test_13_ros2_robot.py`) runs the suite weekly, without and with the patches, and
+fails if any result changes.
 
 ## Results
 
@@ -52,6 +59,42 @@ Raw checks (orders ActuNode's mission sender would never build, sent with a mast
    moving robots, get it wrong.
 4. **Schema-invalid state** (02, 04) and **`positionInitialized: false`** (05): strict fleet managers may reject
    the state or refuse to dispatch to a robot they think is not localised.
+
+## Where each failure is
+
+Located in the code at the pinned commits (16 Oct, D-55). C = connector (`vda5050_connector_py/`), A = adapter
+(`vda5050_tb3_adapter/tb3_adapter.py`).
+
+| Failure | Where | Why |
+|---|---|---|
+| Node reported reached, no error (raw checks) | A | The adapter calls `goal_handle.succeed()` whatever Nav2's result. The connector has the right failure path (on ABORTED: FATAL `noRouteError` "Failed to reach current node", `lastNodeId` unchanged); it is never taken |
+| `operatingMode` "" (02, 04) | A | Never set in the adapter's state; the connector passes it through |
+| `positionInitialized` false (05) | A | Never set; the position comes from TF and is correct |
+| `driving` false (08) | A | Kept internally, never reported |
+| Battery 0 % | A | Never filled |
+| Order without `theta` dropped (06) | C | The MQTT bridge reads `theta` as mandatory; the `KeyError` is logged and the order dropped. Order validation is a stub (`order_msg_is_valid` returns valid) |
+| Unknown map accepted (raw, informational) | C | No map check before accepting an order |
+| Stuck after a goal Nav2 refuses (e.g. unknown frame) | A | When Nav2 rejects a goal, the adapter waits forever; the robot then refuses every new order (`orderUpdateError`) until restarted. Seen running the raw checks twice in a row |
+
+## Fixes (ros2/patches/)
+
+Two patches ([ros2/patches/](../ros2/patches/README.md)), proposed upstream, applied only with
+`ACTUNODE_ROS2_PATCHES=1 docker compose --profile ros2 up -d --build ros2-robot`; the default build stays as pinned,
+so the results above remain reproducible.
+
+- **Adapter:** reports Nav2's real result (succeeded, cancelled, aborted; a refused goal counts as aborted) and fills
+  `operatingMode` AUTOMATIC, `positionInitialized`, `driving` and the battery (a `battery_charge` parameter, 100 by
+  default: the fake TurtleBot3 has none). Without `theta`, the goal faces the direction of travel.
+- **Connector:** `theta` optional (absent becomes NaN internally, omitted again in JSON; order stitching compares it
+  as "not given").
+
+Results with the patches (16 Oct, final build): **9/9 scenarios**; raw checks: the unreachable node is not reported reached and is reported as `noRouteError` (both **pass**), on repeated runs back to back. The unknown-map check still fails (not patched: map management
+is a 2.1 feature; the connector speaks 2.0). Not fixed either: an invalid order is still dropped with a log line
+instead of rejected with a `validationError` (an upstream issue, not a patch).
+
+The raw checks script was corrected while testing the patches: it now cancels any open order before and after, and
+counts only errors raised during the run. Before, a robot that had refused the unknown-map order because the
+previous order was still open would have passed that check.
 
 ## Other observations
 

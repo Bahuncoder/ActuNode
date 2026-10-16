@@ -17,6 +17,9 @@ from test_09_scenarios import actunode_test
 
 pytestmark = pytest.mark.skipif(os.environ.get("ACTUNODE_E2E_ROS2") != "1", reason="set ACTUNODE_E2E_ROS2=1")
 
+# ACTUNODE_ROS2_PATCHES=1 builds the robot with ros2/patches/ (the fixes we propose upstream); the default is the
+# connector and adapter exactly as pinned, as measured in docs/CONFORMANCE_ROS2_CONNECTOR.md.
+PATCHED = os.environ.get("ACTUNODE_ROS2_PATCHES") == "1"
 KEY = "v2/ROS2/nav2_01"
 STORAGE_A17 = (14.0, 18.0)
 
@@ -80,14 +83,18 @@ def test_its_traffic_is_validated(stack, ros2_robot):
     assert messages, "no messages from the ROS 2 robot in the inspector"
     states = [m for m in messages if m["topic"].endswith("/state")]
     assert states
-    # Known deviation, reported in the Week 14 conformance report: operatingMode "" in every state.
     rules = {(i["rule"], i["path"]) for m in states for i in m["issues"]}
-    assert ("schema", "/operatingMode") in rules
+    if PATCHED:
+        assert ("schema", "/operatingMode") not in rules
+    else:
+        # Known deviation, reported in the Week 14 conformance report: operatingMode "" in every state.
+        assert ("schema", "/operatingMode") in rules
 
 
 # docs/CONFORMANCE_ROS2_CONNECTOR.md (D-52): the scenarios the connector fails. If this changes (a connector fix, a
 # new commit), update the report and the upstream drafts, then this set.
-KNOWN_FAILURES = {"02", "04", "05", "06", "08"}
+# With ros2/patches/ applied, all pass.
+KNOWN_FAILURES = set() if PATCHED else {"02", "04", "05", "06", "08"}
 
 
 def test_the_conformance_report_still_holds(stack, ros2_robot, tmp_path):

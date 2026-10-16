@@ -238,7 +238,10 @@ services:
   ros2-robot:
     profiles: ["ros2"]
     logging: *logging
-    build: ./ros2
+    build:
+      context: ./ros2
+      args:
+        ACTUNODE_ROS2_PATCHES: ${ACTUNODE_ROS2_PATCHES:-0}
     environment:
       ACTUNODE_ROS2_MANUFACTURER: ROS2
       ACTUNODE_ROS2_SERIAL: nav2_01

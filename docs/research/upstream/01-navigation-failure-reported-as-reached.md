@@ -11,6 +11,7 @@ is traversed (§6.10.2). A robot that cannot reach a node does not report it rea
 
 **Actual.** Nav2 aborts (`planner_server`: "Aborting handle"; or "No Transform available ... target frame"), the
 robot moves 0.3 m, and the state then reports `lastNodeId` = the unreachable node with `errors: []`. The
-adapter's `navigate_to_node_callback` appears to treat any `NavigateToPose` result as success.
+adapter's `navigate_to_node_callback` calls `goal_handle.succeed()` whatever `NavigateToPose` returned, so the
+connector's own failure handling (`noRouteError` on `STATUS_ABORTED`) never runs. Fix: PR 1.
 
 **Why it matters.** A fleet manager believes the robot arrived (a load delivered) when it never left.
