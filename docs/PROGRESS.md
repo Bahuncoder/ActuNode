@@ -13,8 +13,8 @@ the status line, the schedule table, the session log, and the open issues.
 | | |
 |---|---|
 | **Calendar** | Week 1 of 8 by date (Fri 9 Oct – Thu 15 Oct 2026); dates no longer gate the work (D-30) |
-| **Last updated** | Wed 14 Oct 2026 |
-| **Status** | **Phase 1 (weeks 1–8) complete; v0.1.0 released 13 Oct 2026** (D-43). Phase 2 (weeks 9–16, D-44) under way: **Weeks 9 and 10 done** (D-45, D-46: `actunode test`, timing and message expectations, every run recorded, five sample scenarios). **Decision point** (D-44): the founder's first user conversations decide the order of weeks 11–16; without new input, Week 11 is next. **Product audit 14 Oct (D-47):** outside fleet managers can now connect; security headers added. **Week 11 done (D-48):** the plan's demo question runs as a scenario against a fleet manager; `UNRESPONSIVE`; replay with current time. **Week 12 done (D-49).** **Full audit of weeks 0–12 done (D-50, docs/AUDIT_2026-10-14.md):** six reviews, ~95 findings (13 High), all fixed with tests; gate green. **Week 13 done (D-51):** a real ROS 2 stack (Nav2 + InOrbit's VDA 5050 connector) in the lab; eight deviations found. **Week 14 done (D-52):** conformance suite, the connector's report (4/9), five upstream drafts (not filed: founder's call), robot guide. **Week 15 done (D-53):** failure catalogue, scenario gallery, message flows from real recordings; two blog drafts (private, for the founder). Next: Week 16 (onboarding, triage routine, v0.2.0). No open issues. |
+| **Last updated** | Fri 16 Oct 2026 |
+| **Status** | **Phase 1 (weeks 1–8) complete; v0.1.0 released 13 Oct 2026** (D-43). Phase 2 (weeks 9–16, D-44) under way: **Weeks 9 and 10 done** (D-45, D-46: `actunode test`, timing and message expectations, every run recorded, five sample scenarios). **Decision point** (D-44): the founder's first user conversations decide the order of weeks 11–16; without new input, Week 11 is next. **Product audit 14 Oct (D-47):** outside fleet managers can now connect; security headers added. **Week 11 done (D-48):** the plan's demo question runs as a scenario against a fleet manager; `UNRESPONSIVE`; replay with current time. **Week 12 done (D-49).** **Full audit of weeks 0–12 done (D-50, docs/AUDIT_2026-10-14.md):** six reviews, ~95 findings (13 High), all fixed with tests; gate green. **Week 13 done (D-51):** a real ROS 2 stack (Nav2 + InOrbit's VDA 5050 connector) in the lab; eight deviations found. **Week 14 done (D-52):** conformance suite, the connector's report (4/9), five upstream drafts (not filed: founder's call), robot guide. **Week 15 done (D-53):** failure catalogue, scenario gallery, message flows from real recordings; two blog drafts (private, for the founder). **Week 16 done (D-54):** getting started guide, compatibility promise, triage routine; 0.2.0 built and verified (fresh clone, CI green); the `v0.2.0` tag and GitHub release are the founder's step. **Phase 2 complete.** No open issues. |
 | **Working rule** | A week is done when its work is fully done (D-30): features, then a quality gate (independent bug and security review, scans, a test for every fix, all suites and e2e green, docs). Then the next week starts, whatever the date. |
 
 ## Schedule
@@ -38,7 +38,7 @@ Week 1 started on Friday 9 October 2026 (Day 1). Each week runs Friday to Thursd
 | 13 | 1–7 Jan | ROS 2 robot stack, part 1 | Nav2 robot behind the VDA 5050 connector, optional profile | ✅ Built 15 Oct (D-51) | ✅ Quality gate passed 15 Oct |
 | 14 | 8–14 Jan | ROS 2 robot stack, part 2 | Scenarios against it; conformance report; connect-your-robot guide | ✅ Built 15 Oct (D-52) | ✅ Quality gate passed 15 Oct |
 | 15 | 15–21 Jan | Developer credibility | Failure catalogue, scenario gallery, blog drafts | ✅ Built 16 Oct (D-53) | ✅ Quality gate passed 16 Oct |
-| 16 | 22–28 Jan | Ready for external users | Onboarding path, triage routine, v0.2.0 | ✅ Built 16 Oct (D-54) | 🟡 Gate in progress |
+| 16 | 22–28 Jan | Ready for external users | Onboarding path, triage routine, v0.2.0 | ✅ Built 16 Oct (D-54) | ✅ Gate passed 16 Oct (fresh clone, CI green); v0.2.0 tag pending |
 
 Legend: ✅ done · 🟡 partly done / known gaps · ⬜ not started
 
@@ -57,6 +57,25 @@ the 8-week plan; the 8-week plan is the full roadmap. All of Days 1–7 were bui
 | Day 5 | `BLOCKED_PATH` failure | Week 6 (1 of 4 failures) |
 | Days 6–7 | Record to JSONL, replay | Week 7 |
 | 10 Oct | 10 robots; validator, schemas, VDA 5050 notes | Weeks 4, 5, 1 (rest) |
+
+## Week 16: ready for outside users (16 Oct, D-54)
+
+Built: docs/GETTING_STARTED.md (clone to a first passing and a first failing scenario, Docker only),
+docs/COMPATIBILITY.md (what stays stable in 0.x: scenario format 1, session formatVersion 1, the `actunode test`
+command and exit codes, topics and logins), docs/TRIAGE.md (reports, labels, 3-working-day first response, reproduce
+before fixing), issue templates (bug asks for a session or scenario file; new conformance template), labels
+`conformance` and `needs-reproduction`. Scenario files may declare `version: 1`; a later version is refused (StrictInt,
+tests). Version 0.2.0 everywhere; CHANGELOG 0.2.0; the CI template pins `ref: v0.2.0`.
+
+Gate (16 Oct):
+- Fresh clone from GitHub at 6c234f2, followed GETTING_STARTED exactly: lab healthy (`--wait`), UI 200, health
+  0.2.0; step 3 `p1042_blocked_path` passed, exit 0, JUnit written as uid 1000, session recorded; step 4 failing copy
+  printed `robot_01 pathBlocked is WARNING (expected FATAL)`, exit 1, cleanup cancelled the order. Clone torn down
+  (`down -v`, its own project only); the lab here rebuilt on 0.2.0.
+- CI on 6c234f2 green: lint, simulator, backend (595), frontend, cli (228), e2e (2,0) (2,1) (3,0), scenarios 2 and 3;
+  security scans green.
+- Not yet done: tag `v0.2.0` and the GitHub release (publishing is the founder's step; notes generated from
+  CHANGELOG 0.2.0). Until the tag exists, the CI template's `ref: v0.2.0` does not resolve.
 
 ## Week 15: developer credibility (16 Oct, D-53)
 
@@ -601,6 +620,11 @@ Numbered so they can be referenced from commits. Remove an item only when it is 
 ## Session log
 
 Newest first. One entry per work session: what was done, what was learned, what is next.
+
+### Fri 16 Oct 2026 (later): Week 16 and the 0.2.0 release candidate (D-54)
+Getting started, compatibility promise, triage routine, scenario format version, version 0.2.0 (6c234f2). Gate passed:
+fresh clone followed the guide (pass and fail both as documented), CI green in every configuration. Tag and release
+left for the founder.
 
 ### Fri 16 Oct 2026: Week 15 (D-53)
 - Failure catalogue, scenario gallery, message flows from recordings; two private blog drafts.
