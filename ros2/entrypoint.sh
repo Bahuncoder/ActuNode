@@ -31,10 +31,14 @@ bridge = {
     "vda5050_protocol_version": "2.0.0",
     "interface_name": "uagv",
 }
+if "${ACTUNODE_ROS2_PATCHES:-0}" == "1":
+    bridge_controller = {"known_map_ids": ["map", "warehouse"]}  # patch 0002: reject orders on other maps
+else:
+    bridge_controller = {}
 # One key per node, as the connector's own example: its launch files put the namespace in front of each.
 print(yaml.safe_dump({
     "mqtt_bridge": {"ros__parameters": bridge},
-    "controller": {"ros__parameters": dict(common)},
+    "controller": {"ros__parameters": {**common, **bridge_controller}},
     "tb3_adapter": {"ros__parameters": dict(common)},
 }, sort_keys=False))
 EOF

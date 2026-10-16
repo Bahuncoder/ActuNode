@@ -12,6 +12,7 @@ The build fails if a patch does not apply; the log shows `applying ...` per patc
 | `vda5050_adapter_examples/0001-...` nav result | Nav2's terminal status is propagated: succeeded, canceled, else aborted (also a rejected goal), instead of always succeeding | raw checks: unreachable-node, failure-as-error |
 | `vda5050_adapter_examples/0001-...` theta | a NaN theta heads toward the goal (current yaw if under 1 mm away) | 06 |
 | `ros_amr_interop/0001-theta-optional.patch` | `nodePosition.theta` is optional in VDA 5050 2.x; absent = NaN. Stitch-node comparison treats NaN as equal; NaN is omitted from published JSON (it is not valid JSON) | 06 |
+| `ros_amr_interop/0002-reject-orders-on-unknown-maps.patch` | VDA 5050 2.1 6.7.1: new connector parameter `known_map_ids` (string array, default empty = no check). An order with a node on another `mapId` is rejected (`validationError`, WARNING, references `node_id` and `map_id`) and not taken. Also fixes the rejection type (`validationOrder` → `validationError`). `entrypoint.sh` sets `["map", "warehouse"]` when patches are enabled | raw check: order on an unknown map rejected |
 
 Patches are `git diff` output against the pinned commits; apply with `git apply` from each repo root.
 

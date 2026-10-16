@@ -8,10 +8,12 @@ What changed, per commit, newest first. Status and plans are in [docs/PROGRESS.m
 
 - **Optional patches** for the ROS 2 robot (`ros2/patches/`, `ACTUNODE_ROS2_PATCHES=1`): InOrbit's example adapter
   reports Nav2's real result (a failed goal is no longer reported reached) and fills `operatingMode`,
-  `positionInitialized`, `driving` and the battery; the connector accepts nodes without `theta`. With them the robot
-  passes all nine conformance scenarios and both navigation-failure checks. The default build is unchanged.
+  `positionInitialized`, `driving` and the battery; the connector accepts nodes without `theta`, can reject orders
+  on maps the robot does not have (`known_map_ids`), and reports `validationError` instead of `validationOrder`.
+  With them the robot passes all nine conformance scenarios and all three raw checks. The default build is
+  unchanged.
 - **Conformance report** says where each failure is: mostly the example adapter, not the connector. Upstream drafts
-  are now two pull requests plus two issues (not filed).
+  are now three pull requests plus two issues (not filed).
 - **Fixed:** `conformance/raw_checks.py` could pass the unknown-map check because the previous check's order was
   still open; it now cancels open orders and counts only errors raised during the run.
 - The ROS 2 workflow runs the robot unpatched and patched.

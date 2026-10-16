@@ -7,8 +7,7 @@ the connector's maintainers (upstream reports: [research/upstream/](research/ups
 **Most failures are in the example adapter, not the connector** (16 Oct, D-55): the connector passes the robot's
 state through and handles navigation failure correctly; InOrbit's example TurtleBot3 adapter never fills four state
 fields and reports every Nav2 goal as succeeded. A real robot's vendor writes its own adapter. See
-[Where each failure is](#where-each-failure-is) and [Fixes](#fixes-ros2patches) (all checks pass with them except
-the informational map check).
+[Where each failure is](#where-each-failure-is) and [Fixes](#fixes-ros2patches): with them, every check passes.
 
 ## Robot under test
 
@@ -74,11 +73,12 @@ Located in the code at the pinned commits (16 Oct, D-55). C = connector (`vda505
 | Battery 0 % | A | Never filled |
 | Order without `theta` dropped (06) | C | The MQTT bridge reads `theta` as mandatory; the `KeyError` is logged and the order dropped. Order validation is a stub (`order_msg_is_valid` returns valid) |
 | Unknown map accepted (raw, informational) | C | No map check before accepting an order |
+| Validation rejections typed `validationOrder` | C | `OrderRejectErrors.VALIDATION_ERROR = "validationOrder"`; VDA 5050's type is `validationError`. Found while testing the map check |
 | Stuck after a goal Nav2 refuses (e.g. unknown frame) | A | When Nav2 rejects a goal, the adapter waits forever; the robot then refuses every new order (`orderUpdateError`) until restarted. Seen running the raw checks twice in a row |
 
 ## Fixes (ros2/patches/)
 
-Two patches ([ros2/patches/](../ros2/patches/README.md)), proposed upstream, applied only with
+Three patches ([ros2/patches/](../ros2/patches/README.md)), proposed upstream, applied only with
 `ACTUNODE_ROS2_PATCHES=1 docker compose --profile ros2 up -d --build ros2-robot`; the default build stays as pinned,
 so the results above remain reproducible.
 
@@ -87,9 +87,12 @@ so the results above remain reproducible.
   default: the fake TurtleBot3 has none). Without `theta`, the goal faces the direction of travel.
 - **Connector:** `theta` optional (absent becomes NaN internally, omitted again in JSON; order stitching compares it
   as "not given").
+- **Connector:** a `known_map_ids` parameter (off by default; the lab sets `map`, `warehouse`): an order with a node on
+  another map is rejected before it is taken, as a WARNING `validationError` naming the node and the map. Also fixes
+  the `validationOrder` typo.
 
-Results with the patches (16 Oct, final build): **9/9 scenarios**; raw checks: the unreachable node is not reported reached and is reported as `noRouteError` (both **pass**), on repeated runs back to back. The unknown-map check still fails (not patched: map management
-is a 2.1 feature; the connector speaks 2.0). Not fixed either: an invalid order is still dropped with a log line
+Results with the patches (16 Oct, final build): **9/9 scenarios, 3/3 raw checks**, on repeated runs back to back; the
+validator finds no issue in the robot's state messages. Unpatched, re-measured the same day: 4/9 and 0/3, as above. Not fixed: an invalid order is still dropped with a log line
 instead of rejected with a `validationError` (an upstream issue, not a patch).
 
 The raw checks script was corrected while testing the patches: it now cancels any open order before and after, and

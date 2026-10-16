@@ -989,14 +989,15 @@ each failure in the code showed that most are in the *example* TurtleBot3 adapte
 never fills `operatingMode`, `positionInitialized`, `driving` or the battery, and reports every Nav2 goal as
 succeeded (the connector's own failure handling is correct but never triggered). Only the mandatory `theta` and the
 missing map check are in the connector. None of it was our configuration.
-**Decision.** Two patches in `ros2/patches/` (adapter: real navigation result and the four state fields; connector:
-`theta` optional), applied only when the build argument `ACTUNODE_ROS2_PATCHES=1` is set. The default build stays
+**Decision.** Patches in `ros2/patches/` (adapter: real navigation result and the four state fields; connector:
+`theta` optional, and an opt-in `known_map_ids` check that rejects orders on other maps, VDA 5050 2.1 §6.7.1), applied only when the build argument `ACTUNODE_ROS2_PATCHES=1` is set. The default build stays
 exactly as pinned, so the published measurements remain reproducible; the weekly ROS 2 workflow runs both variants
-(unpatched: the report's known failures; patched: all nine scenarios). The upstream drafts become two pull-request
+(unpatched: the report's known failures; patched: all nine scenarios). The upstream drafts become three pull-request
 descriptions plus the issues the patches do not fix (invalid orders dropped instead of rejected; the bridge's
 `TypeError`). The report and the drafts name the adapter where it is the cause. `conformance/raw_checks.py` now
 cancels open orders before and after and counts only errors raised during the run: an open order left by the
 previous check had made the unknown-map check pass by accident.
-**Consequences.** With the patches: 9/9 scenarios, both navigation-failure checks pass, the robot survives repeated
-runs. The unknown-map check still fails (2.1 map management; not patched). Filing the PRs and issues is public and
+**Consequences.** With the patches: 9/9 scenarios and 3/3 raw checks, on repeated runs. Testing the map check found
+one more connector bug, fixed in the same patch: validation rejections were typed `validationOrder`, not
+`validationError`. Filing the PRs and issues is public and
 remains the founder's decision. If upstream merges them, the pins move and the patches are deleted.

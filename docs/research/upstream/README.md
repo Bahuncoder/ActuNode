@@ -8,12 +8,13 @@ Most failures turned out to be in the example adapter, not the connector (D-55).
 propose a pull request rather than an issue; the patches are in [ros2/patches/](../../../ros2/patches/README.md) and
 run in the lab with `ACTUNODE_ROS2_PATCHES=1`.
 
-## Pull requests (tested: 9/9 scenarios, both failure checks pass)
+## Pull requests (tested together: 9/9 scenarios, 3/3 raw checks)
 
 | Draft | Repository | Fixes |
 |---|---|---|
 | [pr-1-adapter-report-nav-result-and-state.md](pr-1-adapter-report-nav-result-and-state.md) | vda5050_adapter_examples | 01, 03, 04 below; stuck after a refused goal |
 | [pr-2-connector-theta-optional.md](pr-2-connector-theta-optional.md) | ros_amr_interop | The `theta` part of 02 |
+| [pr-3-connector-reject-unknown-maps.md](pr-3-connector-reject-unknown-maps.md) | ros_amr_interop | Orders on unknown maps (2.1 §6.7.1, opt-in); `validationOrder` → `validationError` |
 
 ## Issues (evidence for the PRs, or not fixed by them)
 
@@ -25,7 +26,4 @@ run in the lab with `ACTUNODE_ROS2_PATCHES=1`.
 | [04-operating-mode-and-position-initialized.md](04-operating-mode-and-position-initialized.md) | vda5050_adapter_examples | Medium | Fixed by PR 1 |
 | [05-mqtt-bridge-typeerror-on-refused-connection.md](05-mqtt-bridge-typeerror-on-refused-connection.md) | ros_amr_interop | Low | **File** (one-line fix suggested, not tested) |
 
-Not drafted: the connector accepts an order on a map the robot does not have. That check is a VDA 5050 2.1
-requirement (§6.7.1) and the connector speaks 2.0.
-
-Suggested order: PR 2, then PR 1 (it refers to PR 2), then the two issues.
+Suggested order: PR 2, PR 3 (builds on PR 2's patch), PR 1 (refers to PR 2), then the two issues.

@@ -8,6 +8,8 @@ ARG INTEROP_COMMIT=de36489cb2abdc8b49a804de54f6702a8d6931ce
 ARG EXAMPLES_COMMIT=a7ad9a755ad446286420c86a56c14bbb493c1b7c
 # 1 applies ros2/patches (VDA 5050 conformance fixes); 0 builds upstream as pinned
 ARG ACTUNODE_ROS2_PATCHES=0
+# the entrypoint enables the patched connector's known_map_ids check only when patched
+ENV ACTUNODE_ROS2_PATCHES=$ACTUNODE_ROS2_PATCHES
 
 RUN apt-get update \
     && apt-get install -y --no-install-recommends \
