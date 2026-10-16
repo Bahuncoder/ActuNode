@@ -1,6 +1,6 @@
 import { memo } from 'react'
 import type { Location, MapInfo } from './api'
-import { get, isOnline, missionStatus, robotPose, routePoints, statusClass, type ProximityPair, type Robot } from './live'
+import { get, isOnline, missionStatus, missionStatusOf, robotPose, routePoints, statusClass, type ProximityPair, type Robot } from './live'
 
 // Built-in floor in meters, origin bottom-left (same frame as the simulator); used until /api/map answers.
 const FALLBACK_MAP: MapInfo = {
@@ -158,7 +158,7 @@ const RobotMarker = memo(function RobotMarker({ robot, near, width, height }: { 
       className={`robot ${statusClass(missionStatus(robot))} ${isOnline(robot) ? '' : 'offline'} ${near ? 'near' : ''} ${offMap ? 'off-map' : ''} ${otherMap ? 'other-map' : ''}`}
       style={{ transform: `translate(${px(x)}px, ${py(y, height)}px)` }}
     >
-      <title>{`${robot.robotId}: ${missionStatus(robot)}${get(robot.state, 'paused') === true ? ' (paused)' : ''}${offMap ? ` - off map (${position.x.toFixed(1)}, ${position.y.toFixed(1)})` : ''}${otherMap ? ` - on map ${position.mapId}` : ''}`}</title>
+      <title>{`${robot.robotId}: ${missionStatus(robot)}${missionStatusOf(robot.state).derived ? ' (derived from VDA 5050 fields)' : ''}${get(robot.state, 'paused') === true ? ' (paused)' : ''}${offMap ? ` - off map (${position.x.toFixed(1)}, ${position.y.toFixed(1)})` : ''}${otherMap ? ` - on map ${position.mapId}` : ''}`}</title>
       <circle r={9} />
       <line x1={0} y1={0} x2={13} y2={0} transform={`rotate(${heading})`} />
       <text y={-14}>{shortLabel(robot.robotId)}</text>

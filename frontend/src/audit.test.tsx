@@ -32,7 +32,7 @@ const throwing = {
 }
 
 function robot(state: unknown, extra: Partial<Robot> = {}): Robot {
-  return { key: 'v2/ActuNode/r1', robotId: 'r1', connection: 'ONLINE', lastSeen: null, state: state as Robot['state'], ...extra }
+  return { key: 'v2/ActuNode/r1', robotId: 'r1', manufacturer: 'ActuNode', connection: 'ONLINE', lastSeen: null, state: state as Robot['state'], ...extra }
 }
 
 function msg(topic: string, payload: unknown, id = 1): MqttMessage {
@@ -539,5 +539,23 @@ describe('F11/F12 nginx.conf', () => {
     expect(conf).toContain('ssl_session_tickets off;')
     expect(conf).toMatch(/ssl_ciphers ECDHE-ECDSA-AES128-GCM-SHA256:ECDHE-ECDSA-AES256-GCM-SHA384:ECDHE-ECDSA-CHACHA20-POLY1305/)
     expect(conf).not.toMatch(/ssl_ciphers[^;]*(CBC|SHA:|SHA;)/)
+  })
+})
+
+describe('visualization messages', () => {
+  const row = (payload: unknown, topic = 'uagv/v2/ROS2/nav2_01/visualization') => {
+    cleanup()
+    render(<MessageStream messages={[msg(topic, payload)]} />)
+    return screen.getByRole('button', { expanded: false })
+  }
+
+  it('summarise position and speed for 2.x and 3.0', () => {
+    expect(row({ agvPosition: { x: 1.26, y: 2, theta: 0 }, velocity: { vx: 0.6, vy: 0.8 } }).textContent).toMatch(/vis.*\(1\.3, 2\.0\)\s+1\.0 m\/s/)
+    expect(row({ mobileRobotPosition: { x: 3, y: 4 } }).textContent).toMatch(/vis.*\(3\.0, 4\.0\)/)
+  })
+
+  it('survive hostile values', () => {
+    expect(() => row({ agvPosition: 'x', velocity: { vx: 'fast', vy: {} } })).not.toThrow()
+    expect(row({ agvPosition: 'x', velocity: { vx: 'fast', vy: {} } }).textContent).not.toMatch(/m\/s/)
   })
 })

@@ -61,6 +61,7 @@ Raw checks (orders ActuNode's mission sender would never build, sent with a mast
 | Refused broker login | The MQTT bridge's error log line raises `TypeError` (`logger.error("...%d", rc)`); its thread dies instead of retrying. Robustness, not protocol |
 | TLS | Always on when a username is set; CA from `VDA5050_CONNECTOR_TLS_CA_CERT`. Plain MQTT with a login is not possible |
 | Map name | The adapter always reports `mapId: "map"` |
+| Battery | `batteryState` is never filled: `batteryCharge: 0.0` (mandatory, "State of Charge", §6.10.6), voltage, health and reach all 0. To a fleet manager this is an empty battery: it may refuse to dispatch the robot or send it to charge. (The fake TurtleBot3 has no battery topic; a real robot's adapter must report one.) |
 
 ## What this means for ActuNode
 

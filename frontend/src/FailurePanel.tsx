@@ -21,7 +21,9 @@ function time(iso: string): string {
   return new Date(iso).toLocaleTimeString([], { hour12: false })
 }
 
-function FailurePanel({ robots, failures }: { robots: Robot[]; failures: FailureEntry[] }) {
+function FailurePanel({ robots: allRobots, failures }: { robots: Robot[]; failures: FailureEntry[] }) {
+  // Only ActuNode's simulated robots can be failed (the backend refuses others with 409).
+  const robots = allRobots.filter((robot) => robot.manufacturer === 'ActuNode')
   const [chosen, setChosen] = useState('')
   const [failure, setFailure] = useState('BLOCKED_PATH')
   const [level, setLevel] = useState('15')

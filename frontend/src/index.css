@@ -553,6 +553,18 @@ code,
   background: #ffb86b;
 }
 
+.badge.status-error {
+  color: var(--node-navy);
+  background: var(--danger);
+}
+
+.derived {
+  margin-left: 3px;
+  font-size: 9px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+}
+
 .badge.status-cancelled {
   color: var(--fog-white);
   background: #3a4b5c;

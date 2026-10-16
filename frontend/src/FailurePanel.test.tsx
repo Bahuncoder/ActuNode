@@ -13,6 +13,7 @@ function robot(missionStatus: string, errors: unknown[] = [], injectedFailures?:
   return {
     key: 'v2/X/robot_01',
     robotId: 'robot_01',
+    manufacturer: 'ActuNode',
     connection: 'ONLINE',
     lastSeen: null,
     state: { errors, nodeStates: [], actunode: { missionStatus, injectedFailures } } as unknown as Robot['state'],
@@ -211,5 +212,16 @@ describe('robot errors with levels', () => {
     render(<RobotTable robots={[robot('IDLE', errors)]} />)
     expect(screen.getByText(/Battery low.*URGENT/)).toBeTruthy()
     expect(screen.getByText(/Bad thing.*CRITICAL/)).toBeTruthy()
+  })
+
+  it('offers only ActuNode robots and defaults past others', () => {
+    const ros: Robot = { ...robot('MOVING'), key: 'v2/ROS2/nav2_01', robotId: 'nav2_01', manufacturer: 'ROS2' }
+    render(<FailurePanel robots={[ros, robot('IDLE')]} failures={[]} />)
+    const select = screen.getByLabelText('Robot') as HTMLSelectElement
+    expect(Array.from(select.options).map((o) => o.value)).toEqual(['robot_01'])
+    expect(select.value).toBe('robot_01')
+    cleanup()
+    render(<FailurePanel robots={[ros]} failures={[]} />)
+    expect((screen.getByLabelText('Robot') as HTMLSelectElement).options).toHaveLength(0)
   })
 })

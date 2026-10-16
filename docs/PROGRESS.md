@@ -76,6 +76,12 @@ Built: `conformance/vda5050-2/` (nine scenarios, plain VDA 5050 only, for any 2.
 
 Verified: the suite against the ROS 2 robot (4 of 9 pass), raw checks 0 of 3, ROS 2 e2e 4/4 on an isolated stack.
 
+Then, from looking at the lab with the ROS 2 robot in it: real robots showed "Mission: UNKNOWN" (the UI read only
+ActuNode's own field), the failure panel offered robots that cannot take failures, visualization messages were raw
+JSON, and the connector reports 0 % battery. Fixed: a status derived from plain VDA 5050 fields (marked "VDA"),
+the panel lists simulated robots only, a visualization summary; the battery is in the report. Frontend 144 tests;
+checked on the running lab (the ROS 2 robot shows MOVING from its velocity, as its `driving` flag is wrong).
+
 ## Week 13: a real ROS 2 robot stack (15 Oct, D-51)
 
 Built: the optional `ros2` profile (`ros2/`): ROS 2 Humble, Nav2 with a fake TurtleBot3 (odometry only, headless)

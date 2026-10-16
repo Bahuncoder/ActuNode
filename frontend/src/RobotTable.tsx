@@ -3,12 +3,14 @@ import { cancelMission } from './api'
 import {
   batteryCharge,
   CANCELLABLE_STATUSES,
+  DERIVED_TITLE,
   display,
   failureLabel,
   get,
   injectedFailures,
   isOnline,
   missionStatus,
+  missionStatusOf,
   num,
   type Robot,
   robotErrors,
@@ -118,6 +120,7 @@ const RobotRow = memo(function RobotRow({
   onCancel: (robot: Robot) => void
 }) {
   const status = missionStatus(robot)
+  const { derived } = missionStatusOf(robot.state)
   const battery = batteryCharge(robot)
   const pose = robotPose(robot)
   const errors = robotErrors(robot)
@@ -135,9 +138,12 @@ const RobotRow = memo(function RobotRow({
           </td>
           <td className="mono">{text(get(robot.state, 'version'))}</td>
           <td>
-            <span className={`badge ${statusClass(status)}`}>{status}</span>
+            <span className={`badge ${statusClass(status)}`} title={derived ? DERIVED_TITLE : undefined}>
+              {status}
+              {derived && <sup className="derived">VDA</sup>}
+            </span>
             {injected.length > 0 && <div className="muted">{`injected: ${injected.map(failureLabel).join(', ')}`}</div>}
-            {get(robot.state, 'paused') === true && <span className="badge status-paused">PAUSED</span>}
+            {get(robot.state, 'paused') === true && status !== 'PAUSED' && <span className="badge status-paused">PAUSED</span>}
             {!!get(robot.state, '_truncated') && (
               <span className="muted" title={trimmedTitle(get(robot.state, '_truncated'))}>
                 {' '}

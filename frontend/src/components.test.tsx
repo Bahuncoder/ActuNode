@@ -44,7 +44,7 @@ describe('RobotTable', () => {
     render(<RobotTable robots={[malformed, healthy]} />)
 
     expect(screen.getByText('amr_7')).toBeTruthy()
-    expect(screen.getByText('UNKNOWN')).toBeTruthy()
+    expect(screen.getByText('IDLE')).toBeTruthy()
     expect(screen.getByText('97.5%')).toBeTruthy()
     expect(screen.getByText('1.3, 2.0')).toBeTruthy()
   })
@@ -162,7 +162,7 @@ describe('robots sharing a serial', () => {
 
   it('are listed once in the failure injection select', async () => {
     const { default: FailurePanel } = await import('./FailurePanel')
-    render(<FailurePanel robots={[vendorA, vendorB]} failures={[]} />)
+    render(<FailurePanel robots={[{ ...vendorA, manufacturer: 'ActuNode' }, { ...vendorB, manufacturer: 'ActuNode' }]} failures={[]} />)
 
     expect(within(screen.getByLabelText('Robot')).getAllByRole('option')).toHaveLength(1)
   })
@@ -304,5 +304,15 @@ describe('RobotTable cancel and load (D-35)', () => {
     const p = withState(healthy, { paused: true })
     const { container } = render(<WarehouseMap robots={[p]} locations={{}} />)
     expect(container.querySelector('title')?.textContent).toContain('paused')
+  })
+})
+
+describe('derived mission status', () => {
+  it('is marked in the table for robots that do not report ActuNode status', () => {
+    const ros: Robot = { key: 'v2/ROS2/nav2_01', robotId: 'nav2_01', manufacturer: 'ROS2', connection: 'ONLINE', lastSeen: null, state: { nodeStates: [{}], driving: true } as unknown as Robot['state'] }
+    render(<RobotTable robots={[ros]} />)
+    const badge = screen.getByText('MOVING')
+    expect(badge.getAttribute('title')).toMatch(/Derived from VDA 5050/)
+    expect(badge.querySelector('.derived')?.textContent).toBe('VDA')
   })
 })

@@ -6,6 +6,7 @@ import {
   batteryCharge,
   identitiesOf,
   missionStatus,
+  missionStatusOf,
   num,
   point,
   reducer,
@@ -80,7 +81,7 @@ describe('defensive readers for robot data', () => {
     expect(batteryCharge(robot)).toBeUndefined()
     expect(routePoints(robot)).toEqual([])
     expect(robotErrors(robot)).toEqual([])
-    expect(missionStatus(robot)).toBe('UNKNOWN')
+    expect(missionStatus(robot)).toBe('IDLE')
     expect(text(robot.state?.orderId)).toBe('—')
   })
 
@@ -378,5 +379,36 @@ describe('sessions event', () => {
     const once = reducer(empty, { type: 'event', event: { type: 'sessions' } })
     const twice = reducer(once, { type: 'events', events: [{ type: 'sessions' }] })
     expect([once.sessionsVersion, twice.sessionsVersion]).toEqual([1, 2])
+  })
+})
+
+describe('missionStatusOf', () => {
+  const of = (state: unknown) => missionStatusOf(state)
+  const node = [{ nodeId: 'n1' }]
+
+  it('keeps the status ActuNode reports', () => {
+    expect(of({ actunode: { missionStatus: 'BLOCKED' }, paused: true })).toEqual({ status: 'BLOCKED', derived: false })
+  })
+
+  it('derives each status from VDA 5050 fields', () => {
+    expect(of({ errors: [{ errorLevel: 'WARNING' }, { errorLevel: 'FATAL' }], paused: true, nodeStates: node })).toEqual({ status: 'ERROR', derived: true })
+    expect(of({ paused: true, nodeStates: node, driving: true }).status).toBe('PAUSED')
+    expect(of({ nodeStates: node, driving: true }).status).toBe('MOVING')
+    expect(of({ edgeStates: [{}], velocity: { vx: 0.5 } }).status).toBe('MOVING')
+    expect(of({ nodeStates: node, velocity: { omega: -0.2 } }).status).toBe('MOVING')
+    expect(of({ nodeStates: node, velocity: { vx: 0, vy: 0.005 } }).status).toBe('WAITING')
+    expect(of({ actionStates: [{ actionStatus: 'RUNNING' }] }).status).toBe('WAITING')
+    expect(of({ nodeStates: [], edgeStates: [], actionStates: [{ actionStatus: 'FINISHED' }, { actionStatus: 'FAILED' }] })).toEqual({ status: 'IDLE', derived: true })
+    expect(of({ driving: true }).status).toBe('IDLE')
+    expect(of(null)).toEqual({ status: 'UNKNOWN', derived: true })
+  })
+
+  it('never throws on hostile values', () => {
+    expect(() =>
+      of({ errors: 'x', nodeStates: 'y', edgeStates: { a: 1 }, actionStates: [null, 7], velocity: 'fast', paused: 'yes', actunode: 5 }),
+    ).not.toThrow()
+    expect(of({ nodeStates: 'y', velocity: { vx: 'fast' }, errors: [null, 3] }).status).toBe('IDLE')
+    expect(of({ actionStates: [null] }).status).toBe('WAITING')
+    expect(of({ nodeStates: node, velocity: { get vx(): number { throw new Error('boom') } } }).status).toBe('WAITING')
   })
 })

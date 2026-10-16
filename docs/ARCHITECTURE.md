@@ -214,6 +214,8 @@ One JSON object per line; see [recorder.py](../backend/app/recorder.py).
 | [App.tsx](../frontend/src/App.tsx) | Layout; health polling; each panel wrapped in `PanelBoundary` |
 | `WarehouseMap`, `RobotTable`, `MissionSender`, `FailurePanel`, `RecorderPanel`, `ReplayBanner`, `ValidationPanel`, `MessageStream` | One panel each |
 
+Robots that do not report `actunode.missionStatus` (real VDA 5050 robots) get a status derived from plain state fields (`missionStatusOf` in live.ts: FATAL error, paused, work left in nodeStates/edgeStates/actionStates, driving or velocity) and shown with a `VDA` marker.
+
 Robot data is **untrusted** (any MQTT client can publish anything), so components read it through
 helpers in `live.ts` rather than trusting the TypeScript types.
 

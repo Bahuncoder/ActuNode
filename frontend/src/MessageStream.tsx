@@ -3,11 +3,11 @@ import { display, get, num, point, type MqttMessage } from './live'
 
 const SHOWN = 200
 
-type Kind = 'state' | 'connection' | 'order' | 'inject' | 'other'
+type Kind = 'state' | 'connection' | 'order' | 'inject' | 'vis' | 'other'
 
 function kindOf(topic: string): Kind {
   const last = topic.split('/').at(-1)
-  return last === 'state' || last === 'connection' || last === 'order' || last === 'inject' ? last : 'other'
+  return last === 'state' || last === 'connection' || last === 'order' || last === 'inject' ? last : last === 'visualization' ? 'vis' : 'other'
 }
 
 function robotOf(topic: string): string {
@@ -45,6 +45,14 @@ function summary(message: MqttMessage): string {
           : '',
       ]
       return parts.filter(Boolean).join('  ')
+    }
+    case 'vis': {
+      const pos = point(get(p, 'agvPosition') ?? get(p, 'mobileRobotPosition')) // 2.x or 3.0
+      const velocity = get(p, 'velocity')
+      const vx = num(get(velocity, 'vx'))
+      const vy = num(get(velocity, 'vy'))
+      const speed = vx === undefined && vy === undefined ? undefined : Math.hypot(vx ?? 0, vy ?? 0)
+      return [pos ? `(${pos.x.toFixed(1)}, ${pos.y.toFixed(1)})` : '', speed !== undefined ? `${speed.toFixed(1)} m/s` : ''].filter(Boolean).join('  ')
     }
     case 'connection':
       return display(get(p, 'connectionState'))

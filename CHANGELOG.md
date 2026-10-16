@@ -4,6 +4,13 @@ What changed, per commit, newest first. Status and plans are in [docs/PROGRESS.m
 
 ## Unreleased
 
+### UI for real robots (D-52)
+- Robots that do not report ActuNode's mission status (real robots, ROS 2 stacks) show a status derived from plain
+  VDA 5050 fields (IDLE, MOVING, WAITING, PAUSED, ERROR), marked "VDA".
+- The failure panel offers only ActuNode's simulated robots (the only ones that take failures).
+- Visualization messages get a one-line summary (position, speed) in the message stream.
+- Conformance report: the connector never fills `batteryState` (0 % reads as an empty battery).
+
 ### Week 14: conformance (D-52)
 - `conformance/vda5050-2/`: a VDA 5050 2.x conformance suite for any robot (nine scenarios), and
   `conformance/raw_checks.py` for orders the mission sender never builds.

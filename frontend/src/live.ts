@@ -473,12 +473,39 @@ export function text(value: unknown): string {
   return typeof value === 'string' && value ? value : '—'
 }
 
-export function missionStatus(robot: Robot): string {
-  const status = get(get(robot.state, 'actunode'), 'missionStatus')
-  return typeof status === 'string' ? status : 'UNKNOWN'
+/**
+ * ActuNode's own mission status when the robot reports it; otherwise derived from plain VDA 5050 state fields
+ * (idle = no nodeStates, no edgeStates, every action finished or failed), flagged derived.
+ */
+export function missionStatusOf(state: unknown): { status: string; derived: boolean } {
+  if (state === null || typeof state !== 'object') return { status: 'UNKNOWN', derived: true }
+  const reported = get(get(state, 'actunode'), 'missionStatus')
+  if (typeof reported === 'string') return { status: reported, derived: false }
+  const list = (key: string) => {
+    const value = get(state, key)
+    return Array.isArray(value) ? value : []
+  }
+  const derived = (status: string) => ({ status, derived: true })
+  if (list('errors').some((error) => get(error, 'errorLevel') === 'FATAL')) return derived('ERROR')
+  if (get(state, 'paused') === true) return derived('PAUSED')
+  const workLeft =
+    list('nodeStates').length > 0 ||
+    list('edgeStates').length > 0 ||
+    list('actionStates').some((action) => !['FINISHED', 'FAILED'].includes(get(action, 'actionStatus') as string))
+  if (!workLeft) return derived('IDLE')
+  const velocity = get(state, 'velocity')
+  const moving =
+    get(state, 'driving') === true || ['vx', 'vy', 'omega'].some((axis) => Math.abs(num(get(velocity, axis)) ?? 0) > 0.01)
+  return derived(moving ? 'MOVING' : 'WAITING')
 }
 
-const KNOWN_STATUSES = ['idle', 'accepted', 'moving', 'waiting', 'blocked', 'failed', 'completed', 'cancelled', 'paused', 'unknown']
+export const DERIVED_TITLE = "Derived from VDA 5050 fields: this robot does not report ActuNode's mission status"
+
+export function missionStatus(robot: Robot): string {
+  return missionStatusOf(robot.state).status
+}
+
+const KNOWN_STATUSES = ['idle', 'accepted', 'moving', 'waiting', 'blocked', 'failed', 'completed', 'cancelled', 'paused', 'error', 'unknown']
 
 /** CSS class for a mission status. The status is robot text, so only known values reach a class name (F8). */
 export function statusClass(status: string): string {
