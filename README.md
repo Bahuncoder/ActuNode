@@ -531,7 +531,12 @@ Offline playground with no MQTT at all (one mission through the robot state mach
 
 ## Project status
 
-**v0.2.0 (16 October 2026)** completes Phase 2 of the plan ([docs/PLAN.md](docs/PLAN.md)): scenario tests with timing
+**v0.3.0 (17 October 2026)** closes the full audit: one web login per person with viewer and operator roles and
+an audit trail of who changed what; Prometheus metrics, including the broker's own load; published multi-architecture
+images with provenance; fixes for every conformance failure of the ROS 2 robot, proposed upstream as pull requests;
+scenario checks scoped to one robot for shared labs.
+
+**v0.2.0 (16 October 2026)** completed Phase 2 of the plan ([docs/PLAN.md](docs/PLAN.md)): scenario tests with timing
 and message expectations, in CI through a Docker runner; testing an outside fleet manager; site capture import; a
 real ROS 2 robot stack (Nav2 behind InOrbit's open-source VDA 5050 connector) and a VDA 5050 conformance suite for
 any robot; a failure catalogue, scenario gallery and message-flow walkthroughs; a full audit of every component

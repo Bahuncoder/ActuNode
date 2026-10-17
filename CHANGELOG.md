@@ -4,6 +4,19 @@ What changed, per commit, newest first. Status and plans are in [docs/PROGRESS.m
 
 ## Unreleased
 
+Nothing yet.
+
+## 0.3.0 — 2026-10-17
+
+The full audit closed (D-50: A3, A6, A7 done), the ROS 2 robot's conformance failures fixed and proposed upstream.
+
+**Upgrading from 0.2.0:**
+- The broker permissions changed (the backend reads `$SYS` for metrics). After pulling:
+  `docker compose up -d --build && docker compose up -d --force-recreate mqtt-init && docker compose kill -s HUP mosquitto && docker compose restart backend`.
+- Locally built images are now tagged `actunode-<name>:local`; the old `actunode-<name>:latest` images can go
+  (`docker image rm actunode-backend actunode-simulator actunode-frontend actunode-runner`).
+- Nothing else: scenario files, recordings and the `actunode test` command are unchanged (docs/COMPATIBILITY.md).
+
 ### Scenarios: validation checks for one robot (D-59)
 
 - `validation: {no_errors: true, robot: robot_01}` (and `rule:` with `robot:`) counts only that robot's messages,

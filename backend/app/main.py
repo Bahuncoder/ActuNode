@@ -11,7 +11,7 @@ from app.live import LAGGED, TooManyClients, hub
 from app.mqtt_state import mqtt_bridge
 from app.security import LocalWebGuard
 
-VERSION = "0.2.0"
+VERSION = "0.3.0"
 
 # uvicorn only configures its own loggers; this makes ActuNode's (failures, replay, ...) visible too.
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s")

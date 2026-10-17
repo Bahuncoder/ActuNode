@@ -19,12 +19,12 @@ jobs:
         with:
           persist-credentials: false
       # The lab. Pin `ref` to a release tag (or a commit SHA) once you depend on it: `main` moves, and this job
-      # builds and runs whatever it points to. Kept at main until v0.2.0 exists.
+      # builds and runs whatever it points to.
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
           persist-credentials: false
           repository: Bahuncoder/ActuNode
-          ref: v0.2.0
+          ref: v0.3.0
           path: actunode
       - name: Start the lab (simulated robots, broker, inspector)
         working-directory: actunode
