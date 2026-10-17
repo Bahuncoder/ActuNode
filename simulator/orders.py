@@ -37,7 +37,6 @@ class OrderBook:
         if self.v.new_order_clears_instant_states:
             self.instant_action_states = [a for a in self.instant_action_states if a["actionStatus"] == "RUNNING"]
         self._node_actions = {}
-        self._edge_actions = {}
         self._load_ids = {}
         self._add_to_order(nodes, sorted(order.get("edges", []), key=lambda edge: edge["sequenceId"]))
         self._last_order = self._comparable(order)
@@ -85,7 +84,6 @@ class OrderBook:
                 self.mission_status = ACCEPTED if self.mission_status == COMPLETED else MOVING
             else:
                 self.mission_status = WAITING
-            self._enter_edge()
         return True
 
     def _size_after_update(self, sequence_id: int, nodes: list[dict], edges: list[dict]) -> Problem | None:
@@ -99,14 +97,9 @@ class OrderBook:
         return Problem(*pair) if pair else None
 
     def _horizon_action_ids(self, sequence_id: int) -> set[str]:
-        """The actions of the nodes and edges after `sequence_id`: what an update replaces."""
-        return {
-            action_id
-            for actions in (self._node_actions, self._edge_actions)
-            for s, ids in actions.items()
-            if s > sequence_id
-            for action_id in ids
-        }
+        """The actions of the nodes after `sequence_id`: what an update replaces (edge actions are rejected, see
+        validation._check_action_types, so orders carry node actions only)."""
+        return {action_id for s, ids in self._node_actions.items() if s > sequence_id for action_id in ids}
 
     def _reused_action_id(self, sequence_id: int, nodes: list[dict]) -> Problem | None:
         """An update may not give an action the id of one the order keeps (it would run twice, at the first node
@@ -124,9 +117,8 @@ class OrderBook:
 
     def _drop_after(self, sequence_id: int) -> None:
         """Forget the nodes, edges and actions after `sequence_id` (the horizon an update replaces)."""
-        for actions in (self._node_actions, self._edge_actions):
-            for sequence in [s for s in actions if s > sequence_id]:
-                self._forget_actions(actions.pop(sequence))
+        for sequence in [s for s in self._node_actions if s > sequence_id]:
+            self._forget_actions(self._node_actions.pop(sequence))
         self.node_states = [node for node in self.node_states if node["sequenceId"] <= sequence_id]
         self.edge_states = [edge for edge in self.edge_states if edge["sequenceId"] <= sequence_id]
 
@@ -151,8 +143,6 @@ class OrderBook:
             self.edge_states.append(
                 {"edgeId": edge["edgeId"], "sequenceId": edge["sequenceId"], "released": edge["released"]}
             )
-            if edge.get("actions"):
-                self._edge_actions[edge["sequenceId"]] = self._add_actions(edge["actions"])
 
     def _add_actions(self, actions: list[dict]) -> list[str]:
         for action in actions:

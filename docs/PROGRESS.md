@@ -609,8 +609,8 @@ exercised by hand with a real browser and MQTT traffic.
 ## Open issues and technical debt
 
 Open from the full audit (D-50): per-user identity and an audit trail in shared labs (A3), metrics (A6);
-published images (A7: deferred until a user asks, D-54); merge the two session-id generators; remove the
-simulator's unreachable edge-action code. (A5, versioned scenario format and a compatibility promise: done, D-54.)
+published images (A7: deferred until a user asks, D-54). (A5, versioned scenario format and a compatibility promise:
+done, D-54. The session-id generators merged and the simulator's unreachable edge-action code removed: done 17 Oct.)
 
 Open from the product audit (D-47), checked 14 Oct, with the recommended order:
 (Items 1 and 2 done in Week 11, D-48.)

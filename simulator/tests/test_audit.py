@@ -125,11 +125,11 @@ def test_accepting_an_order_does_not_copy_the_whole_robot(major):
 def test_no_empty_entries_and_actions_leave_the_maps_when_traversed():
     robot = Robot("robot_01")
     robot.accept_order(make_order(points=((0, 0), (3, 0))))
-    assert robot._node_actions == {2: ["a-drop"]} and robot._edge_actions == {}
+    assert robot._node_actions == {2: ["a-drop"]}
 
     run(robot, 5)
 
-    assert robot._node_actions == {} and robot._edge_actions == {}
+    assert robot._node_actions == {}
     assert [a["actionStatus"] for a in robot.action_states] == ["FINISHED", "FINISHED"]
 
 
@@ -150,7 +150,7 @@ def test_3000_updates_of_one_order_cost_the_same_each():
         seq += 6
 
     assert sum(durations[-100:]) / 100 < 0.005
-    assert len(robot._node_actions) + len(robot._edge_actions) <= 4
+    assert len(robot._node_actions) <= 4
 
 
 # --- S3, S11, S13: the order graph and the header ---------------------------------------------------------------

@@ -4,6 +4,13 @@ What changed, per commit, newest first. Status and plans are in [docs/PROGRESS.m
 
 ## Unreleased
 
+### Clean-up from the full audit (D-50)
+
+- **One session-id rule** for recordings and uploads (`make_session_id`): a second session with the same name in
+  the same second is now `<stamp>_<name>_2` for both (recordings used `-2`). Existing ids stay valid.
+- **Simulator:** removed the code that stored and ran actions on edges. It could never run: the simulator rejects
+  edge actions (only node actions are supported, as before).
+
 ### ROS 2 robot: fixes for its conformance failures (D-55)
 
 - **Optional patches** for the ROS 2 robot (`ros2/patches/`, `ACTUNODE_ROS2_PATCHES=1`): InOrbit's example adapter

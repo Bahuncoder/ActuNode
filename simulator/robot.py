@@ -153,9 +153,8 @@ class Robot(OrderBook, InstantActions):
         self._battery_before_injection: float | None = None
         # Loads the robot carries, as reported in `loads`.
         self.loads: list[dict] = []
-        # Per sequenceId: the actions attached to a node/edge, and where the robot last stood.
+        # Per sequenceId: the actions attached to a node (edge actions are rejected), and where the robot last stood.
         self._node_actions: dict[int, list[str]] = {}
-        self._edge_actions: dict[int, list[str]] = {}
         self._load_ids: dict[str, str] = {}
         self._last_node_xy = (x, y)
         # The last order/update accepted, without headerId and timestamp, to recognise duplicates.
@@ -245,7 +244,6 @@ class Robot(OrderBook, InstantActions):
         "action_states",
         "instant_action_states",
         "_node_actions",
-        "_edge_actions",
         "_load_ids",
     )
 
@@ -510,7 +508,6 @@ class Robot(OrderBook, InstantActions):
 
     def _drive(self, budget: float) -> None:
         """Move up to `budget` meters along the released nodes."""
-        self._enter_edge()
         while budget > 0 and self._can_drive():
             node = self.node_states[0]
             target_x, target_y = node["nodePosition"]["x"], node["nodePosition"]["y"]
@@ -560,24 +557,15 @@ class Robot(OrderBook, InstantActions):
     def _arrive(self) -> None:
         node = self.node_states.pop(0)
         if self.edge_states and self.edge_states[0]["sequenceId"] < node["sequenceId"]:
-            edge = self.edge_states.pop(0)
-            self._run_actions(self._edge_actions.pop(edge["sequenceId"], []))
+            self.edge_states.pop(0)
         self._traverse(node)
 
     def _traverse(self, node: dict) -> None:
-        """The robot is at `node` (already removed from nodeStates): run its actions, enter the next edge."""
+        """The robot is at `node` (already removed from nodeStates): run its actions."""
         self.last_node_id = node["nodeId"]
         self.last_node_sequence_id = node["sequenceId"]
         self._last_node_xy = (node["nodePosition"]["x"], node["nodePosition"]["y"])
         self._run_actions(self._node_actions.pop(node["sequenceId"], []))
-        self._enter_edge()
-
-    def _enter_edge(self) -> None:
-        """Edge actions start (RUNNING) when the edge is entered, i.e. its start node is traversed."""
-        if self.edge_states and self.edge_states[0]["released"]:
-            for action in self._states_of(self._edge_actions.get(self.edge_states[0]["sequenceId"], [])):
-                if action["actionStatus"] == "WAITING":
-                    action["actionStatus"] = "RUNNING"
 
     def _states_of(self, ids: list[str]) -> list[dict]:
         return [action for action in self.action_states if action["actionId"] in ids]

@@ -11,7 +11,7 @@ from pathlib import Path
 from app import vda5050
 from app.jsonsafe import MAX_DEPTH, MAX_VALUES, REJECTED_RULES, loads, shape_rule
 from app.live import MAX_ROBOTS
-from app.recorder import FORMAT_VERSION, SESSION_ID
+from app.recorder import FORMAT_VERSION, SESSION_ID, make_session_id
 from app.session_records import (
     MAX_T,
     MESSAGE_LINE_BYTES,
@@ -227,12 +227,9 @@ def new_session_id(directory: Path, name: str, clock: Callable[[], datetime], fi
     number it was found at."""
     stamp = clock().strftime("%Y%m%d-%H%M%S")
     n = first
-    while True:
-        suffix = f"_{n}" if n > 1 else ""
-        session_id = f"{stamp}_{name[: 40 - len(suffix)]}{suffix}"
-        if not (directory / f"{session_id}.jsonl").exists():
-            return session_id, n
+    while (directory / f"{make_session_id(stamp, name, n)}.jsonl").exists():
         n += 1
+    return make_session_id(stamp, name, n), n
 
 
 class UploadWriter:

@@ -44,6 +44,16 @@ MAX_FIELD_CHARS = 200
 SESSION_ID = re.compile(r"^[0-9]{8}-[0-9]{6}(_[A-Za-z0-9_-]{1,40})?$")
 
 
+def make_session_id(stamp: str, name: str | None, attempt: int = 1) -> str:
+    """The one naming rule for recordings and uploads: the start time (to the second) and the name, then `_2`,
+    `_3`, ... on later attempts, so two sessions started in the same second stay apart. The name is cut so the id
+    always fits SESSION_ID."""
+    suffix = f"_{attempt}" if attempt > 1 else ""
+    if not name:
+        return f"{stamp}{suffix}"
+    return f"{stamp}_{name[: 40 - len(suffix)]}{suffix}"
+
+
 def fit_snapshot(robots: list[dict]) -> list[dict]:
     """The robots that fit the snapshot line (SNAPSHOT_LINE_BYTES, each at most SNAPSHOT_ROBOT_BYTES): a reader
     parses that line whole, so what is written must stay within what is read (D2)."""
@@ -111,14 +121,13 @@ class SessionRecorder:
         """Create the session file: timestamp (to the second) plus name; a suffix keeps two starts in the
         same second apart. Opened exclusively, so a file that appears under the same id meanwhile (an
         upload) is never truncated."""
-        base = f"{stamp}_{name}" if name else stamp
-        candidate = base
-        for n in range(2, 101):
+        for attempt in range(1, 101):
+            candidate = make_session_id(stamp, name, attempt)
             try:
                 return candidate, (self.directory / f"{candidate}.jsonl").open("x", encoding="utf-8")
             except FileExistsError:
-                candidate = f"{stamp}_{name[:37]}-{n}" if name else f"{stamp}_{n}"
-        raise RecorderError(f"Too many sessions named {base}")
+                continue
+        raise RecorderError(f"Too many sessions named {make_session_id(stamp, name)}")
 
     def stop(self) -> dict:
         with self._lock:

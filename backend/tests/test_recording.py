@@ -230,8 +230,21 @@ def test_two_recordings_started_in_the_same_second_get_different_ids(tmp_path, m
         ids.append(recorder.start(name, [])["sessionId"])
         recorder.stop()
 
-    assert ids == ["20261011-120000", "20261011-120000_2", "20261011-120000_demo", "20261011-120000_demo-2"]
+    # The same suffix rule as uploads (make_session_id, one rule for both since 17 Oct).
+    assert ids == ["20261011-120000", "20261011-120000_2", "20261011-120000_demo", "20261011-120000_demo_2"]
     assert all(recorder.path_for(i) for i in ids)
+
+
+def test_one_session_id_rule_keeps_every_id_valid():
+    from app.recorder import SESSION_ID, make_session_id
+
+    longest = "n" * 40
+    assert make_session_id("20261011-120000", longest) == f"20261011-120000_{longest}"
+    for attempt in (2, 10, 100):
+        made = make_session_id("20261011-120000", longest, attempt)
+        assert made.endswith(f"_{attempt}") and SESSION_ID.fullmatch(made), made
+        assert make_session_id("20261011-120000", None, attempt) == f"20261011-120000_{attempt}"
+    assert make_session_id("20261011-120000", "") == "20261011-120000"
 
 
 def test_start_never_truncates_a_file_that_appeared_with_the_same_id(tmp_path, monkeypatch):
@@ -257,4 +270,4 @@ def test_start_never_truncates_a_file_that_appeared_with_the_same_id(tmp_path, m
     recorder.stop()
 
     assert existing.read_text() == "their session\n"
-    assert status["sessionId"] == "20261012-120000_x-2"
+    assert status["sessionId"] == "20261012-120000_x_2"
