@@ -14,7 +14,7 @@ What changed, per commit, newest first. Status and plans are in [docs/PROGRESS.m
   all nine conformance scenarios and all four raw checks. The default build is
   unchanged.
 - **Conformance report** says where each failure is: mostly the example adapter, not the connector. Upstream drafts
-  are now five pull requests.
+  became five pull requests, opened 17 Oct: ros_amr_interop #82–#85, vda5050_adapter_examples #14.
 - **Fixed:** `conformance/raw_checks.py` could pass the unknown-map check because the previous check's order was
   still open; it now cancels open orders and counts only errors raised during the run.
 - **New raw check:** an order the robot cannot decode must be rejected with an error, not ignored.

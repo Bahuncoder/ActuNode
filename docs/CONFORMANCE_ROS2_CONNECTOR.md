@@ -80,7 +80,7 @@ Located in the code at the pinned commits (16 Oct, D-55). C = connector (`vda505
 
 ## Fixes (ros2/patches/)
 
-Five patches ([ros2/patches/](../ros2/patches/README.md)), proposed upstream, applied only with
+Five patches ([ros2/patches/](../ros2/patches/README.md)), proposed upstream on 17 Oct as pull requests [ros_amr_interop #82](https://github.com/inorbit-ai/ros_amr_interop/pull/82), [#83](https://github.com/inorbit-ai/ros_amr_interop/pull/83), [#84](https://github.com/inorbit-ai/ros_amr_interop/pull/84), [#85](https://github.com/inorbit-ai/ros_amr_interop/pull/85) and [vda5050_adapter_examples #14](https://github.com/inorbit-ai/vda5050_adapter_examples/pull/14), applied only with
 `ACTUNODE_ROS2_PATCHES=1 docker compose --profile ros2 up -d --build ros2-robot`; the default build stays as pinned,
 so the results above remain reproducible.
 

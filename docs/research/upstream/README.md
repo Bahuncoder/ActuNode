@@ -2,7 +2,7 @@
 
 Drafts for `inorbit-ai/ros_amr_interop` (the connector) and `inorbit-ai/vda5050_adapter_examples` (the TurtleBot3
 example adapter), from the conformance report ([../../CONFORMANCE_ROS2_CONNECTOR.md](../../CONFORMANCE_ROS2_CONNECTOR.md)).
-**Not filed yet: filing is the founder's call** (it is public, under their GitHub account).
+**Opened 17 Oct 2026** by the founder (Bahuncoder) as five pull requests; the drafts below are what was sent.
 
 Most failures turned out to be in the example adapter, not the connector (D-55). Where we have a tested fix, we
 propose a pull request rather than an issue; the patches are in [ros2/patches/](../../../ros2/patches/README.md) and
@@ -10,13 +10,13 @@ run in the lab with `ACTUNODE_ROS2_PATCHES=1`.
 
 ## Pull requests (tested together: 9/9 scenarios, 4/4 raw checks; each also applies on its own)
 
-| Draft | Repository | Fixes |
-|---|---|---|
-| [pr-1-adapter-report-nav-result-and-state.md](pr-1-adapter-report-nav-result-and-state.md) | vda5050_adapter_examples | 01, 03, 04 below; stuck after a refused goal |
-| [pr-2-connector-theta-optional.md](pr-2-connector-theta-optional.md) | ros_amr_interop | The `theta` part of 02 |
-| [pr-3-connector-reject-unknown-maps.md](pr-3-connector-reject-unknown-maps.md) | ros_amr_interop | Orders on unknown maps (2.1 §6.7.1, opt-in); `validationOrder` → `validationError` |
-| [pr-4-connector-reject-undecodable-orders.md](pr-4-connector-reject-undecodable-orders.md) | ros_amr_interop | The rest of 02: an order that cannot be decoded is rejected with `validationError`, not dropped |
-| [pr-5-connector-refused-connection-log.md](pr-5-connector-refused-connection-log.md) | ros_amr_interop | 05 |
+| Draft | Repository | Pull request | Fixes |
+|---|---|---|---|
+| [pr-1-adapter-report-nav-result-and-state.md](pr-1-adapter-report-nav-result-and-state.md) | vda5050_adapter_examples | [#14](https://github.com/inorbit-ai/vda5050_adapter_examples/pull/14) | 01, 03, 04 below; stuck after a refused goal |
+| [pr-2-connector-theta-optional.md](pr-2-connector-theta-optional.md) | ros_amr_interop | [#82](https://github.com/inorbit-ai/ros_amr_interop/pull/82) | The `theta` part of 02 |
+| [pr-3-connector-reject-unknown-maps.md](pr-3-connector-reject-unknown-maps.md) | ros_amr_interop | [#83](https://github.com/inorbit-ai/ros_amr_interop/pull/83) | Orders on unknown maps (2.1 §6.7.1, opt-in); `validationOrder` → `validationError` |
+| [pr-4-connector-reject-undecodable-orders.md](pr-4-connector-reject-undecodable-orders.md) | ros_amr_interop | [#84](https://github.com/inorbit-ai/ros_amr_interop/pull/84) | The rest of 02: an order that cannot be decoded is rejected with `validationError`, not dropped |
+| [pr-5-connector-refused-connection-log.md](pr-5-connector-refused-connection-log.md) | ros_amr_interop | [#85](https://github.com/inorbit-ai/ros_amr_interop/pull/85) | 05 |
 
 ## Issue drafts (the evidence behind the PRs; every one is fixed by a PR)
 

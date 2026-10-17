@@ -14,7 +14,7 @@ the status line, the schedule table, the session log, and the open issues.
 |---|---|
 | **Calendar** | Week 1 of 8 by date (Fri 9 Oct – Thu 15 Oct 2026); dates no longer gate the work (D-30) |
 | **Last updated** | Fri 16 Oct 2026 |
-| **Status** | **Phase 1 (weeks 1–8) complete; v0.1.0 released 13 Oct 2026** (D-43). Phase 2 (weeks 9–16, D-44) under way: **Weeks 9 and 10 done** (D-45, D-46: `actunode test`, timing and message expectations, every run recorded, five sample scenarios). **Decision point** (D-44): the founder's first user conversations decide the order of weeks 11–16; without new input, Week 11 is next. **Product audit 14 Oct (D-47):** outside fleet managers can now connect; security headers added. **Week 11 done (D-48):** the plan's demo question runs as a scenario against a fleet manager; `UNRESPONSIVE`; replay with current time. **Week 12 done (D-49).** **Full audit of weeks 0–12 done (D-50, docs/AUDIT_2026-10-14.md):** six reviews, ~95 findings (13 High), all fixed with tests; gate green. **Week 13 done (D-51):** a real ROS 2 stack (Nav2 + InOrbit's VDA 5050 connector) in the lab; eight deviations found. **Week 14 done (D-52):** conformance suite, the connector's report (4/9), five upstream drafts (not filed: founder's call), robot guide. **Week 15 done (D-53):** failure catalogue, scenario gallery, message flows from real recordings; two blog drafts (private, for the founder). **Week 16 done (D-54):** getting started guide, compatibility promise, triage routine; 0.2.0 built and verified (fresh clone, CI green); the `v0.2.0` tag and GitHub release are the founder's step. **Phase 2 complete.** No open issues. |
+| **Status** | **Phase 1 (weeks 1–8) complete; v0.1.0 released 13 Oct 2026** (D-43). Phase 2 (weeks 9–16, D-44) under way: **Weeks 9 and 10 done** (D-45, D-46: `actunode test`, timing and message expectations, every run recorded, five sample scenarios). **Decision point** (D-44): the founder's first user conversations decide the order of weeks 11–16; without new input, Week 11 is next. **Product audit 14 Oct (D-47):** outside fleet managers can now connect; security headers added. **Week 11 done (D-48):** the plan's demo question runs as a scenario against a fleet manager; `UNRESPONSIVE`; replay with current time. **Week 12 done (D-49).** **Full audit of weeks 0–12 done (D-50, docs/AUDIT_2026-10-14.md):** six reviews, ~95 findings (13 High), all fixed with tests; gate green. **Week 13 done (D-51):** a real ROS 2 stack (Nav2 + InOrbit's VDA 5050 connector) in the lab; eight deviations found. **Week 14 done (D-52):** conformance suite, the connector's report (4/9), five upstream drafts (not filed: founder's call), robot guide. **Week 15 done (D-53):** failure catalogue, scenario gallery, message flows from real recordings; two blog drafts (private, for the founder). **Week 16 done (D-54):** getting started guide, compatibility promise, triage routine; 0.2.0 built and verified (fresh clone, CI green); v0.2.0 released (tag on 6c234f2). **Phase 2 complete.** No open issues. |
 | **Working rule** | A week is done when its work is fully done (D-30): features, then a quality gate (independent bug and security review, scans, a test for every fix, all suites and e2e green, docs). Then the next week starts, whatever the date. |
 
 ## Schedule
@@ -38,7 +38,7 @@ Week 1 started on Friday 9 October 2026 (Day 1). Each week runs Friday to Thursd
 | 13 | 1–7 Jan | ROS 2 robot stack, part 1 | Nav2 robot behind the VDA 5050 connector, optional profile | ✅ Built 15 Oct (D-51) | ✅ Quality gate passed 15 Oct |
 | 14 | 8–14 Jan | ROS 2 robot stack, part 2 | Scenarios against it; conformance report; connect-your-robot guide | ✅ Built 15 Oct (D-52) | ✅ Quality gate passed 15 Oct |
 | 15 | 15–21 Jan | Developer credibility | Failure catalogue, scenario gallery, blog drafts | ✅ Built 16 Oct (D-53) | ✅ Quality gate passed 16 Oct |
-| 16 | 22–28 Jan | Ready for external users | Onboarding path, triage routine, v0.2.0 | ✅ Built 16 Oct (D-54) | ✅ Gate passed 16 Oct (fresh clone, CI green); v0.2.0 tag pending |
+| 16 | 22–28 Jan | Ready for external users | Onboarding path, triage routine, v0.2.0 | ✅ Built 16 Oct (D-54) | ✅ Gate passed 16 Oct (fresh clone, CI green); v0.2.0 published 16 Oct |
 
 Legend: ✅ done · 🟡 partly done / known gaps · ⬜ not started
 
@@ -92,8 +92,7 @@ Gate (16 Oct):
   (`down -v`, its own project only); the lab here rebuilt on 0.2.0.
 - CI on 6c234f2 green: lint, simulator, backend (595), frontend, cli (228), e2e (2,0) (2,1) (3,0), scenarios 2 and 3;
   security scans green.
-- Not yet done: tag `v0.2.0` and the GitHub release (publishing is the founder's step; notes generated from
-  CHANGELOG 0.2.0). Until the tag exists, the CI template's `ref: v0.2.0` does not resolve.
+- Released: the founder published v0.2.0 (tag on 6c234f2, notes from CHANGELOG 0.2.0).
 
 ## Week 15: developer credibility (16 Oct, D-53)
 
@@ -642,6 +641,9 @@ Newest first. One entry per work session: what was done, what was learned, what 
 ### Fri 16 Oct 2026 (evening): ROS 2 robot fixes (D-55)
 Patches for the example adapter and the connector; 9/9 with them; raw checks script corrected; upstream drafts
 reworked into PRs; then the map check (3/3); then the last two bugs (4/4) and five upstream PRs.
+
+### Sat 17 Oct 2026: upstream pull requests opened; v0.2.0 published
+The founder opened [ros_amr_interop #82](https://github.com/inorbit-ai/ros_amr_interop/pull/82), [#83](https://github.com/inorbit-ai/ros_amr_interop/pull/83), [#84](https://github.com/inorbit-ai/ros_amr_interop/pull/84), [#85](https://github.com/inorbit-ai/ros_amr_interop/pull/85) and [vda5050_adapter_examples #14](https://github.com/inorbit-ai/vda5050_adapter_examples/pull/14) (awaiting review; first-time contributor, so upstream CI waits for a maintainer). Release v0.2.0 published, tag on the verified commit 6c234f2.
 
 ### Fri 16 Oct 2026 (later): Week 16 and the 0.2.0 release candidate (D-54)
 Getting started, compatibility promise, triage routine, scenario format version, version 0.2.0 (6c234f2). Gate passed:

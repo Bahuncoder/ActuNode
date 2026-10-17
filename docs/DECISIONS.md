@@ -995,7 +995,8 @@ rejected with `validationError`; the refused-login `TypeError`), applied only wh
 exactly as pinned, so the published measurements remain reproducible; the weekly ROS 2 workflow runs both variants
 (unpatched: the report's known failures; patched: all nine scenarios). The upstream drafts become five pull requests, one
 per patch, each applying on its own to the current upstream branch; the founder approved opening them ("explicit
-yes"). The report and the drafts name the adapter where it is the cause. `conformance/raw_checks.py` now
+yes") and opened them on 17 Oct: ros_amr_interop #82–#85, vda5050_adapter_examples #14 (the browser form
+failed with "must be a collaborator"; `gh pr create` worked). The report and the drafts name the adapter where it is the cause. `conformance/raw_checks.py` now
 cancels open orders before and after and counts only errors raised during the run: an open order left by the
 previous check had made the unknown-map check pass by accident.
 **Consequences.** With the patches: 9/9 scenarios and 4/4 raw checks (a fourth was added: an undecodable order must

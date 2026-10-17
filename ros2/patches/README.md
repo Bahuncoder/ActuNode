@@ -18,4 +18,4 @@ The build fails if a patch does not apply; the log shows `applying ...` per patc
 
 Patches are `git diff` output against the pinned commits; apply with `git apply` from each repo root.
 
-Proposed upstream as pull requests: [docs/research/upstream/](../../docs/research/upstream/README.md).
+Proposed upstream as pull requests (17 Oct): ros_amr_interop [#82](https://github.com/inorbit-ai/ros_amr_interop/pull/82) (0001), [#83](https://github.com/inorbit-ai/ros_amr_interop/pull/83) (0002), [#84](https://github.com/inorbit-ai/ros_amr_interop/pull/84) (0003), [#85](https://github.com/inorbit-ai/ros_amr_interop/pull/85) (0004); vda5050_adapter_examples [#14](https://github.com/inorbit-ai/vda5050_adapter_examples/pull/14). When one is merged, move the pin in `ros2/Dockerfile` past it and delete its patch. Drafts: [docs/research/upstream/](../../docs/research/upstream/README.md).
