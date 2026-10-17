@@ -33,7 +33,7 @@ def test_without_a_session_the_api_and_feed_are_closed(client):
 
 def test_health_and_session_status_stay_open(client):
     assert client.get("/api/health").status_code == 200
-    assert client.get("/api/session").json() == {"loginRequired": True, "loggedIn": False}
+    assert client.get("/api/session").json() == {"loginRequired": True, "loggedIn": False, "user": None, "role": None}
 
 
 def test_wrong_token_is_refused(client):
@@ -50,7 +50,12 @@ def test_login_opens_api_and_feed_until_logout(client):
     assert "httponly" in cookie and "samesite=strict" in cookie and "path=/" in cookie
 
     assert client.get("/api/robots").status_code == 200
-    assert client.get("/api/session").json() == {"loginRequired": True, "loggedIn": True}
+    assert client.get("/api/session").json() == {
+        "loginRequired": True,
+        "loggedIn": True,
+        "user": "admin",
+        "role": "operator",
+    }
     # The test client does not attach its cookie jar to WebSockets (browsers do, same origin): pass it.
     session = response.cookies["actunode_session"]
     with client.websocket_connect("/api/ws", headers={"cookie": f"actunode_session={session}"}) as ws:
@@ -82,7 +87,12 @@ def test_login_not_required_by_default(monkeypatch):
     auth.sessions.configure(required=False, token_file=None)
     with TestClient(app, base_url="http://localhost") as test_client:
         assert test_client.get("/api/robots").status_code == 200
-        assert test_client.get("/api/session").json() == {"loginRequired": False, "loggedIn": True}
+        assert test_client.get("/api/session").json() == {
+            "loginRequired": False,
+            "loggedIn": True,
+            "user": "local",
+            "role": "operator",
+        }
 
 
 @pytest.mark.parametrize(
@@ -122,7 +132,7 @@ def test_failed_login_memory_is_bounded(monkeypatch):
     """Rotating client addresses must not grow the failure table without limit."""
     monkeypatch.setattr(auth, "MAX_FAILURE_CLIENTS", 50)
     sessions = auth.Sessions()
-    sessions._token = TOKEN
+    sessions._admin_hash = auth.token_hash(TOKEN)
     for i in range(500):
         sessions.login(f"10.0.{i // 256}.{i % 256}", "wrong")
 

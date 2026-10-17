@@ -1,7 +1,10 @@
 import os
+import tempfile
 
 # TestClient sends "Host: testserver"; allow it alongside the defaults (see app/security.py, D-24).
 os.environ.setdefault("ACTUNODE_ALLOWED_HOSTS", "localhost,127.0.0.1,::1,testserver")
+# The audit trail (D-56) goes to a temp file, not the repo's sessions folder.
+os.environ.setdefault("ACTUNODE_AUDIT_FILE", os.path.join(tempfile.mkdtemp(prefix="actunode-audit-"), "audit.jsonl"))
 
 
 import pytest  # noqa: E402

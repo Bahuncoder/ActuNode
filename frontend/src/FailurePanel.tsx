@@ -1,5 +1,5 @@
 import { memo, useState } from 'react'
-import { injectFailure } from './api'
+import { injectFailure, VIEWER_NOTE } from './api'
 import { display, FAILURE_LABELS, injectedFailures, missionStatus, type FailureEntry, type Robot } from './live'
 
 type Result = { ok: boolean; text: string }
@@ -21,7 +21,7 @@ function time(iso: string): string {
   return new Date(iso).toLocaleTimeString([], { hour12: false })
 }
 
-function FailurePanel({ robots: allRobots, failures }: { robots: Robot[]; failures: FailureEntry[] }) {
+function FailurePanel({ robots: allRobots, failures, readOnly = false }: { robots: Robot[]; failures: FailureEntry[]; readOnly?: boolean }) {
   // Only ActuNode's simulated robots can be failed (the backend refuses others with 409).
   const robots = allRobots.filter((robot) => robot.manufacturer === 'ActuNode')
   const [chosen, setChosen] = useState('')
@@ -159,7 +159,8 @@ function FailurePanel({ robots: allRobots, failures }: { robots: Robot[]; failur
         <button
           type="button"
           className="danger-button"
-          disabled={busy || !robotId || invalid || (needsRoute && !['ACCEPTED', 'MOVING'].includes(status))}
+          title={readOnly ? VIEWER_NOTE : undefined}
+          disabled={readOnly || busy || !robotId || invalid || (needsRoute && !['ACCEPTED', 'MOVING'].includes(status))}
           onClick={() => run('inject')}
         >
           Inject
@@ -168,7 +169,8 @@ function FailurePanel({ robots: allRobots, failures }: { robots: Robot[]; failur
           <button
             type="button"
             className="secondary-button"
-            disabled={busy || !robotId || clearBlocked}
+            title={readOnly ? VIEWER_NOTE : undefined}
+            disabled={readOnly || busy || !robotId || clearBlocked}
             onClick={() => run('clear')}
           >
             Clear

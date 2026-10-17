@@ -5,7 +5,7 @@ import logging
 from typing import Literal
 from uuid import uuid4
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, Request
 from pydantic import BaseModel, ConfigDict, Field, ValidationError, model_validator
 
 from app import vda5050
@@ -102,7 +102,8 @@ def failure_log() -> list[dict]:
 
 
 @router.post("/failures", status_code=202)
-def inject_failure(request: FailureRequest) -> dict:
+def inject_failure(request: FailureRequest, http: Request) -> dict:
+    http.state.audit = {"action": f"failure.{request.action}", "robot": request.robot_id, "failure": request.failure}
     if not mqtt_bridge.connected:
         raise HTTPException(503, "MQTT broker is not connected")
 

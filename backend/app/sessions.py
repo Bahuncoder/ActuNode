@@ -196,6 +196,7 @@ async def upload_session(request: Request, name: str | None = None) -> dict:
         finally:
             temp.unlink(missing_ok=True)
     log.info("Uploaded session %s (%d bytes)", final.stem, size)
+    request.state.audit = {"sessionId": final.stem}
     _sessions_changed()
     return summary
 
@@ -249,10 +250,11 @@ def recording_status() -> dict:
 
 
 @router.post("/recording/start", status_code=201)
-def start_recording(request: StartRequest | None = None) -> dict:
+def start_recording(http: Request, request: StartRequest | None = None) -> dict:
     name = _clean_name(request.name if request else None)
     try:
         status = recorder.start(name, hub.snapshot()["robots"])
+        http.state.audit = {"sessionId": status["sessionId"]}
     except RecorderError as error:
         raise HTTPException(409, str(error)) from error
     hub.broadcast({"type": "recording", "recording": status})

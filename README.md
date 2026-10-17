@@ -222,6 +222,23 @@ certificate warning) and log in with the token. Only HTTPS (8443) and MQTT over 
 `ACTUNODE_BIND_ADDRESS`; plain HTTP and MQTT ports always stay on `127.0.0.1` ([D-26](docs/DECISIONS.md)).
 The certificate covers the names in `ACTUNODE_ALLOWED_HOSTS`.
 
+**One login per person** ([D-56](docs/DECISIONS.md)): give everybody their own token, so the lab knows who did
+what. A *viewer* can watch the map, messages, recordings and replays but not change anything; an *operator*
+can do everything. The token is printed once (the lab keeps only its hash) and works at once, no restart:
+
+```bash
+docker compose run --rm mqtt-init add-user alice operator    # or viewer
+docker compose run --rm mqtt-init list-users
+docker compose run --rm mqtt-init rotate user alice          # new token; the old one stops working
+docker compose run --rm mqtt-init remove-user alice          # their open sessions end within seconds
+```
+
+The shared `api-token` keeps working as the operator `admin` (the CLI and CI use it). Every change to the lab
+(missions, failures, recordings, uploads, deletes, replays, logins) is recorded with the person's name: the
+**Activity** panel in the UI, `GET /api/audit` (filters `user`, `action`, `limit`), and the file
+`.audit.jsonl` next to the recordings (rotated at 10 MB). Without login (one computer) everything is recorded
+as `local`.
+
 The local CA can only vouch for those names, `localhost`, and private network addresses (name constraints,
 `pathlen:0`), so importing it does not let anyone mint certificates for other sites. A CA made by an older
 version has no such limit and a name the CA does not permit stops `cert-init` with an error. Replace the CA
@@ -501,7 +518,7 @@ is stable between 0.x releases: [docs/COMPATIBILITY.md](docs/COMPATIBILITY.md). 
 | [docs/CONNECT_YOUR_ROBOT.md](docs/CONNECT_YOUR_ROBOT.md) | Bring your robot into the lab; the conformance suite |
 | [docs/COMPATIBILITY.md](docs/COMPATIBILITY.md) | What stays stable between 0.x releases |
 | [docs/TRIAGE.md](docs/TRIAGE.md) | Reporting a problem; how issues are handled |
-| [docs/DECISIONS.md](docs/DECISIONS.md) | Why things are built the way they are (D-1 to D-55) |
+| [docs/DECISIONS.md](docs/DECISIONS.md) | Why things are built the way they are (D-1 to D-56) |
 | [docs/VDA5050_NOTES.md](docs/VDA5050_NOTES.md) | Protocol notes and validator rules |
 | [docs/research/VDA5050_3_0.md](docs/research/VDA5050_3_0.md) | VDA 5050 3.0 compared with 2.1 |
 | [docs/DEMO.md](docs/DEMO.md) | 3-minute demo script and the automated recorder |

@@ -9,6 +9,8 @@
 #   /secrets/robots/     <manufacturer>.<serial>.password        -> root only; shown when added
 #   /secrets/masters/    <name>.password, <name>.manufacturers   -> root only; shown when added
 #   /secrets/ros2/       password (the ROS 2 robot, ROS2.nav2_01) -> owned by ROS2_UID (D-51)
+#   /secrets/users/      <name>.role, <name>.sha256 (web logins, D-56) -> root only; the token is shown once, never kept
+#   /secrets/backend/users   name:role:sha256 per web login, rebuilt on every run -> owned by BACKEND_UID
 #
 # Passwords are created once and kept; the hashed password file and the ACL are rebuilt on every start.
 # A robot logs in as <manufacturer>.<serial> (D-28): VDA 5050 serial numbers are unique per manufacturer
@@ -21,7 +23,11 @@
 #   add-master <name> [<manufacturer> ...]   create a login for an outside master control (fleet manager) that
 #                        commands the robots of these manufacturers (default ActuNode: the simulated ones), D-47
 #   remove-robot <manufacturer> <serial> | remove-master <name>   delete a login
-#   rotate tools | api-token | robot <manufacturer> <serial> | master <name>   new password, printed (old one stops working)
+#   add-user <name> operator|viewer   a web login for one person (D-56); prints its token once. Viewers can look,
+#                        not change anything. Takes effect at once (the backend re-reads the users file)
+#   remove-user <name> | list-users   delete a web login (its open sessions end within seconds) | list them
+#   rotate tools | api-token | robot <manufacturer> <serial> | master <name> | user <name>   new password or
+#                        token, printed (old one stops working)
 #   backup               write a tar of all credentials and certificates to stdout (keep it secret)
 #   restore              read such a tar from stdin, check its layout, replace the credentials
 #
@@ -89,6 +95,18 @@ master_acl() {  # master_acl <name> <manufacturer>...: commands to those robots 
 }
 
 usage_exit() { echo "usage: $1" >&2; exit 2; }
+check_user() {  # web login names: lower case, as the backend expects (auth.USER_LINE); admin and local are taken
+  printf '%s' "$1" | grep -Eq '^[a-z0-9][a-z0-9_.-]{0,31}$' ||
+    { echo "invalid user name: '$1' (lower-case letters, digits, . _ -; up to 32)" >&2; exit 2; }
+  case "$1" in admin|local) echo "refused: '$1' is reserved (admin is the shared api-token, local is login off)" >&2; exit 2 ;; esac
+}
+new_user_token() {  # new_user_token <name>: a fresh token; only its hash is kept
+  mkdir -p "$S/users"
+  token="$(new_password)"
+  printf '%s' "$token" | sha256sum | cut -d' ' -f1 > "$S/users/$1.sha256"
+  web_note="web login: user=$1 role=$(cat "$S/users/$1.role") token=$token
+shown once (the lab keeps only its hash); it works at once, no restart"
+}
 check_name() {  # check_name <what> <value>
   valid_name "$2" || { echo "invalid $1: '$2' (letters, digits, _ and - only)" >&2; exit 2; }
 }
@@ -98,7 +116,7 @@ mkdir -p "$S"
 exec 9> "$S/.lock"
 flock 9
 
-new_robot="" new_master="" note=""
+new_robot="" new_master="" note="" web_note=""
 case "${1:-}" in
   show)
     case "${2:-}" in
@@ -121,14 +139,14 @@ case "${1:-}" in
     tar -tvf "$work/in.tar" | awk '
       { t = substr($1, 1, 1); n = $NF }
       (t != "-" && t != "d") || n ~ /^\// || n ~ /(^|\/)\.\.(\/|$)/ ||
-        (n !~ /^(\.\/)?(backend|simulator|people|robots|masters|ros2|public|ca|web|broker)(\/|$)/ && n !~ /^\.\/?$/) { bad = 1 }
+        (n !~ /^(\.\/)?(backend|simulator|people|robots|masters|users|ros2|public|ca|web|broker)(\/|$)/ && n !~ /^\.\/?$/) { bad = 1 }
       END { exit bad }' || { echo "restore: not a backup made by 'backup' (unexpected entry); nothing changed" >&2; exit 1; }
     mkdir "$work/x"
     tar -xf "$work/in.tar" -C "$work/x"
     for f in backend/password backend/api-token simulator/password people/tools.password; do
       [ -s "$work/x/$f" ] || { echo "restore: backup lacks $f; nothing changed" >&2; exit 1; }
     done
-    for d in backend simulator people robots masters ros2 public ca web broker; do
+    for d in backend simulator people robots masters users ros2 public ca web broker; do
       [ -d "$work/x/$d" ] || continue
       rm -rf "${S:?}/$d"
       mv "$work/x/$d" "$S/$d"
@@ -171,6 +189,29 @@ case "${1:-}" in
     [ -e "$S/masters/$2.password" ] || { echo "no master control login $2" >&2; exit 1; }
     rm -f "$S/masters/$2.password" "$S/masters/$2.manufacturers"
     note="removed master control login master@$2" ;;
+  add-user)
+    [ $# -eq 3 ] || usage_exit "add-user <name> operator|viewer"
+    check_user "$2"
+    case "$3" in operator|viewer) ;; *) usage_exit "add-user <name> operator|viewer" ;; esac
+    [ -e "$S/users/$2.sha256" ] && { echo "user $2 exists; new token: rotate user $2" >&2; exit 1; }
+    mkdir -p "$S/users"
+    printf '%s\n' "$3" > "$S/users/$2.role"
+    new_user_token "$2" ;;
+  remove-user)
+    [ $# -eq 2 ] || usage_exit "remove-user <name>"
+    check_user "$2"
+    [ -e "$S/users/$2.sha256" ] || { echo "no user $2" >&2; exit 1; }
+    rm -f "$S/users/$2.sha256" "$S/users/$2.role"
+    web_note="removed user $2 (their open sessions end within seconds)" ;;
+  list-users)
+    [ $# -eq 1 ] || usage_exit "list-users"
+    echo "admin operator (the shared api-token)"
+    for f in "$S"/users/*.sha256; do
+      [ -e "$f" ] || continue
+      name="$(basename "$f" .sha256)"
+      echo "$name $(cat "$S/users/$name.role" 2>/dev/null || echo '?')"
+    done
+    exit 0 ;;
   rotate)
     case "${2:-}" in
       tools)
@@ -194,13 +235,18 @@ the backend reads it at start: docker compose restart backend (everybody logged 
         [ -e "$S/masters/$3.password" ] || { echo "no master control login $3" >&2; exit 1; }
         rm -f "$S/masters/$3.password"; ensure "$S/masters/$3.password"
         note="master control login: username=master@$3 password=$(cat "$S/masters/$3.password")" ;;
-      *) usage_exit "rotate tools | api-token | robot <manufacturer> <serial> | master <name>" ;;
+      user)
+        [ $# -eq 3 ] || usage_exit "rotate user <name>"
+        check_user "$3"
+        [ -e "$S/users/$3.sha256" ] || { echo "no user $3" >&2; exit 1; }
+        new_user_token "$3" ;;
+      *) usage_exit "rotate tools | api-token | robot <manufacturer> <serial> | master <name> | user <name>" ;;
     esac ;;
   "") ;;
   *) echo "unknown command: $1" >&2; exit 2 ;;
 esac
 
-mkdir -p "$S/broker" "$S/backend" "$S/simulator" "$S/people" "$S/robots" "$S/masters" "$S/ros2"
+mkdir -p "$S/broker" "$S/backend" "$S/simulator" "$S/people" "$S/robots" "$S/masters" "$S/users" "$S/ros2"
 ensure "$S/backend/password"
 ensure "$S/backend/api-token"
 ensure "$S/simulator/password"
@@ -211,7 +257,8 @@ ensure "$S/broker/healthcheck.password"
 tmp="$(mktemp "$S/broker/passwd.XXXXXX")"
 tmpnet="$(mktemp "$S/broker/passwd.net.XXXXXX")"
 acl="$(mktemp "$S/broker/acl.XXXXXX")"
-trap 'rm -f "$tmp" "$tmpnet" "$acl"' EXIT
+users="$(mktemp "$S/backend/users.XXXXXX")"
+trap 'rm -f "$tmp" "$tmpnet" "$acl" "$users"' EXIT
 : > "$tmp"; : > "$tmpnet"
 cat /acl.base > "$acl"
 add() {  # add <login> <password file> [net]: net logins also go in the network listener's file
@@ -269,6 +316,18 @@ for f in "$S"/masters/*.password; do
   # shellcheck disable=SC2086 # one manufacturer per word, each checked by valid_name above
   master_acl "$name" $manufacturers >> "$acl"
 done
+# Web logins for the backend (D-56): name:role:sha256, only well-formed entries.
+for f in "$S"/users/*.sha256; do
+  [ -e "$f" ] || continue
+  name="$(basename "$f" .sha256)" role="$(cat "$S/users/$(basename "$f" .sha256).role" 2>/dev/null || true)" hash="$(cat "$f")"
+  if ! printf '%s' "$name" | grep -Eq '^[a-z0-9][a-z0-9_.-]{0,31}$' || [ "$name" = admin ] || [ "$name" = local ] ||
+    { [ "$role" != operator ] && [ "$role" != viewer ]; } || ! printf '%s' "$hash" | grep -Eq '^[0-9a-f]{64}$'; then
+    echo "mqtt-init: WARNING: ignoring web login '$name' (invalid name, role or hash)" >&2
+    continue
+  fi
+  echo "$name:$role:$hash" >> "$users"
+done
+mv "$users" "$S/backend/users"
 mv "$tmp" "$S/broker/passwd"
 mv "$tmpnet" "$S/broker/passwd.net"
 mv "$acl" "$S/broker/acl"
@@ -279,8 +338,8 @@ chown -R "$SIMULATOR_UID" "$S/simulator"
 chown -R "$ROS2_UID" "$S/ros2"
 chmod 500 "$S/broker" "$S/backend" "$S/simulator" "$S/ros2"
 chmod 400 "$S/broker/passwd" "$S/broker/passwd.net" "$S/broker/acl" "$S/broker/healthcheck.password" \
-  "$S/backend/password" "$S/backend/api-token" "$S/simulator/password" "$S/ros2/password"
-chmod -R go-rwx "$S/people" "$S/robots" "$S/masters"
+  "$S/backend/password" "$S/backend/api-token" "$S/backend/users" "$S/simulator/password" "$S/ros2/password"
+chmod -R go-rwx "$S/people" "$S/robots" "$S/masters" "$S/users"
 echo "mqtt-init: credentials ready ($SIM_MAX_ROBOTS simulated robots)"
 if [ -n "$new_robot" ]; then
   echo "robot login: username=$new_robot password=$(cat "$S/robots/$new_robot.password")"
@@ -290,6 +349,7 @@ if [ -n "$new_master" ]; then
   echo "it commands: $(tr '\n' ' ' < "$S/masters/$new_master.manufacturers")"
 fi
 [ -n "$note" ] && echo "$note"
+[ -n "$web_note" ] && echo "$web_note"
 if [ -n "$new_robot$new_master$note" ]; then
   echo "apply it without disconnecting anybody: $HUP"
 fi

@@ -608,7 +608,7 @@ exercised by hand with a real browser and MQTT traffic.
 
 ## Open issues and technical debt
 
-Open from the full audit (D-50): per-user identity and an audit trail in shared labs (A3), metrics (A6);
+Open from the full audit (D-50): metrics (A6); per-user identity and an audit trail (A3): done 17 Oct, D-56;
 published images (A7: deferred until a user asks, D-54). (A5, versioned scenario format and a compatibility promise:
 done, D-54. The session-id generators merged and the simulator's unreachable edge-action code removed: done 17 Oct.)
 

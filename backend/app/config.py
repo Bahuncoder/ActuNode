@@ -22,6 +22,12 @@ class Settings:
     bind_address: str = os.getenv("ACTUNODE_BIND_ADDRESS", "127.0.0.1")
     require_login: bool = os.getenv("ACTUNODE_REQUIRE_LOGIN", "").lower() in ("1", "true", "yes")
     api_token_file: str | None = os.getenv("ACTUNODE_API_TOKEN_FILE") or None
+    # Per-person logins (D-56), written by mqtt-init add-user; next to the API token by default.
+    users_file: str | None = os.getenv("ACTUNODE_USERS_FILE") or (
+        str(Path(os.environ["ACTUNODE_API_TOKEN_FILE"]).with_name("users"))
+        if os.getenv("ACTUNODE_API_TOKEN_FILE")
+        else None
+    )
     # Host names the API answers to (D-24): add the machine's name or address for shared use.
     allowed_hosts: frozenset[str] = frozenset(
         h.strip().lower()
@@ -41,6 +47,13 @@ class Settings:
     sessions_max_total_mb: int = max(0, int(os.getenv("ACTUNODE_SESSIONS_MAX_TOTAL_MB", "2000")))
     sessions_dir: Path = field(
         default_factory=lambda: Path(os.getenv("ACTUNODE_SESSIONS_DIR", _REPO_ROOT / "sessions"))
+    )
+    # The audit trail (D-56): JSON lines next to the recordings (not a session: listing and retention skip it).
+    audit_file: Path = field(
+        default_factory=lambda: Path(
+            os.getenv("ACTUNODE_AUDIT_FILE")
+            or Path(os.getenv("ACTUNODE_SESSIONS_DIR", _REPO_ROOT / "sessions")) / ".audit.jsonl"
+        )
     )
 
 

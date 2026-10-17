@@ -1,12 +1,12 @@
 import { memo } from 'react'
-import { resetValidation } from './api'
+import { resetValidation, VIEWER_NOTE } from './api'
 import { display, type ValidationSummary } from './live'
 
 function time(iso: string): string {
   return new Date(iso).toLocaleTimeString([], { hour12: false })
 }
 
-function ValidationPanel({ validation }: { validation: ValidationSummary | null }) {
+function ValidationPanel({ validation, readOnly = false }: { validation: ValidationSummary | null; readOnly?: boolean }) {
   if (!validation) return null
 
   const clean = validation.withIssues === 0
@@ -32,7 +32,7 @@ function ValidationPanel({ validation }: { validation: ValidationSummary | null 
           <span>rules triggered</span>
         </div>
         <span className="muted">since {time(validation.since)}</span>
-        <button type="button" onClick={() => resetValidation().catch(() => {})}>
+        <button type="button" disabled={readOnly} title={readOnly ? VIEWER_NOTE : undefined} onClick={() => resetValidation().catch(() => {})}>
           Reset counters
         </button>
       </div>

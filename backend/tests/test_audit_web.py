@@ -300,15 +300,15 @@ def test_full_session_table_drops_expired_sessions_before_the_oldest_live_one(mo
     clock = [1000.0]
     monkeypatch.setattr(auth.time, "monotonic", lambda: clock[0])
     s = auth.Sessions()
-    s._token, s.required = "tok", True
-    first = s.login("a", "tok")  # oldest, but still valid for 12 h
+    s._admin_hash, s.required = auth.token_hash("tok"), True
+    first, _ = s.login("a", "tok")  # oldest, but still valid for 12 h
     clock[0] += 1
-    second = s.login("a", "tok")
-    s._sessions[second] = clock[0] - 1  # expired
+    second, _ = s.login("a", "tok")
+    s._sessions[second] = (clock[0] - 1, *s._sessions[second][1:])  # expired
     clock[0] += 1
     s.login("a", "tok")
 
-    new = s.login("a", "tok")
+    new, _ = s.login("a", "tok")
 
     assert s._sessions.keys() >= {first, new} and second not in s._sessions
     assert s.valid(first)  # the oldest live one was not evicted

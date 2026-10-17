@@ -5,7 +5,7 @@ from contextlib import asynccontextmanager
 
 from fastapi import FastAPI, Request, WebSocket, WebSocketDisconnect
 
-from app import auth, docs, failures, missions, sessions, vda5050
+from app import audit, auth, docs, failures, missions, sessions, vda5050
 from app.config import settings
 from app.live import LAGGED, TooManyClients, hub
 from app.mqtt_state import mqtt_bridge
@@ -42,10 +42,13 @@ app = FastAPI(
     **docs.app_options(settings.require_login),
 )
 docs.add_docs(app, settings.require_login)
-# Starlette runs the middleware added last first: LocalWebGuard (D-24), then SessionGuard (D-25).
+# Starlette runs the middleware added last first: LocalWebGuard (D-24), then AuditTrail (D-56, records what
+# SessionGuard let through or refused a viewer), then SessionGuard (D-25, D-56).
 app.add_middleware(auth.SessionGuard)
+app.add_middleware(audit.AuditTrail)
 app.add_middleware(LocalWebGuard, allowed_hosts=settings.allowed_hosts)
 app.include_router(auth.router)
+app.include_router(audit.router)
 app.include_router(missions.router)
 app.include_router(failures.router)
 app.include_router(sessions.router)

@@ -1,11 +1,11 @@
 import { useState } from 'react'
-import { stopReplay } from './api'
+import { stopReplay, VIEWER_NOTE } from './api'
 import type { ReplayStatus } from './live'
 
 const STATE_TEXT = { running: 'REPLAYING', finished: 'REPLAY FINISHED', stopped: 'REPLAY STOPPED', failed: 'REPLAY FAILED' }
 
 /** Shown while a session replays, so replayed traffic is never mistaken for live robots. */
-export default function ReplayBanner({ replay }: { replay: ReplayStatus | null }) {
+export default function ReplayBanner({ replay, readOnly = false }: { replay: ReplayStatus | null; readOnly?: boolean }) {
   const [dismissed, setDismissed] = useState<string | null>(null)
   if (!replay) return null
 
@@ -27,7 +27,7 @@ export default function ReplayBanner({ replay }: { replay: ReplayStatus | null }
         <span style={{ width: `${percent}%` }} />
       </span>
       {running ? (
-        <button type="button" onClick={() => stopReplay().catch(() => {})}>
+        <button type="button" disabled={readOnly} title={readOnly ? VIEWER_NOTE : undefined} onClick={() => stopReplay().catch(() => {})}>
           ■ Stop replay
         </button>
       ) : (

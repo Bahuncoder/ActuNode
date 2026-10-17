@@ -2,7 +2,7 @@ import math
 from typing import Annotated, Literal
 from uuid import uuid4
 
-from fastapi import APIRouter, HTTPException, Path
+from fastapi import APIRouter, HTTPException, Path, Request
 from pydantic import BaseModel, Field
 
 from app import vda5050
@@ -58,7 +58,8 @@ def list_locations() -> dict:
 
 
 @router.post("/missions", status_code=202)
-def send_mission(mission: MissionRequest) -> dict:
+def send_mission(mission: MissionRequest, http: Request) -> dict:
+    http.state.audit = {"robot": mission.robot_id, "source": mission.source, "destination": mission.destination}
     for name in (mission.source, mission.destination):
         if name is not None and name not in LOCATIONS:
             raise HTTPException(422, f"Unknown location: {name}")
@@ -66,6 +67,7 @@ def send_mission(mission: MissionRequest) -> dict:
     _require_broker()
 
     order_id = f"order-{uuid4().hex[:8]}"
+    http.state.audit["orderId"] = order_id
     major, manufacturer = _address(mission)
     stops = []
     # Start where the robot is (from its own state, D-28), so the first node is trivially reachable.
@@ -106,7 +108,10 @@ def send_mission(mission: MissionRequest) -> dict:
 
 
 @router.post("/missions/{robot_id}/cancel", status_code=202)
-def cancel_mission(robot_id: str = Path(pattern=vda5050.ROBOT_ID_FIELD), target: Address | None = None) -> dict:
+def cancel_mission(
+    http: Request, robot_id: str = Path(pattern=vda5050.ROBOT_ID_FIELD), target: Address | None = None
+) -> dict:
+    http.state.audit = {"robot": robot_id}
     major, manufacturer = _address(target or Address())
     _require_broker()
     action_id = f"cancel-{uuid4().hex[:8]}"
@@ -117,7 +122,8 @@ def cancel_mission(robot_id: str = Path(pattern=vda5050.ROBOT_ID_FIELD), target:
 
 
 @router.post("/missions/{robot_id}/extend", status_code=202)
-def extend_mission(request: ExtendRequest, robot_id: str = Path(pattern=vda5050.ROBOT_ID_FIELD)) -> dict:
+def extend_mission(request: ExtendRequest, http: Request, robot_id: str = Path(pattern=vda5050.ROBOT_ID_FIELD)) -> dict:
+    http.state.audit = {"robot": robot_id, "destination": request.to_location}
     if request.to_location not in LOCATIONS:
         raise HTTPException(422, f"Unknown location: {request.to_location}")
     _require_broker()

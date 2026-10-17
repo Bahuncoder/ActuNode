@@ -9,6 +9,7 @@ import {
   type Location,
   type SessionStatus,
 } from './api'
+import ActivityPanel from './ActivityPanel'
 import FailurePanel from './FailurePanel'
 import Login from './Login'
 import { useLiveFeed } from './live'
@@ -68,7 +69,18 @@ function StatusPill({ label, ok }: { label: string; ok: boolean | null }) {
 }
 
 /** The lab itself; mounted only once the session allows it, so the live feed never opens without one. */
-function Lab({ onLogout, onSessionEnded }: { onLogout?: () => void; onSessionEnded: () => void }) {
+function Lab({
+  onLogout,
+  onSessionEnded,
+  user,
+  role,
+}: {
+  onLogout?: () => void
+  onSessionEnded: () => void
+  user?: string | null
+  role?: string | null
+}) {
+  const readOnly = role === 'viewer'
   const [health, setHealth] = useState<Health | null>(null)
   const [apiUp, setApiUp] = useState<boolean | null>(null)
   const feed = useLiveFeed(onSessionEnded)
@@ -126,6 +138,12 @@ function Lab({ onLogout, onSessionEnded }: { onLogout?: () => void; onSessionEnd
           <StatusPill label="MQTT" ok={mqttUp} />
           <StatusPill label="Live" ok={apiUp === null ? null : feed.connected} />
           {health && typeof health.version === 'string' && <span className="pill mono">v{health.version}</span>}
+          {onLogout && user && (
+            <span className="pill" aria-label={`Logged in as ${user}, ${role ?? 'unknown role'}`}>
+              {user} ({role ?? '?'})
+            </span>
+          )}
+          {readOnly && <span className="pill" title="Viewers cannot change the lab">View only</span>}
           {onLogout && (
             <button type="button" className="pill logout" onClick={onLogout}>
               Log out
@@ -142,7 +160,7 @@ function Lab({ onLogout, onSessionEnded }: { onLogout?: () => void; onSessionEnd
       )}
 
       <PanelBoundary title="Replay" resetKey={feed.replay}>
-        <ReplayBanner replay={feed.replay} />
+        <ReplayBanner replay={feed.replay} readOnly={readOnly} />
       </PanelBoundary>
 
       <main className="grid">
@@ -156,23 +174,27 @@ function Lab({ onLogout, onSessionEnded }: { onLogout?: () => void; onSessionEnd
         <PanelBoundary title="Robots" resetKey={feed.robots}>
           <section className="panel panel-wide">
             <h2>Robots</h2>
-            <RobotTable robots={robots} />
+            <RobotTable robots={robots} readOnly={readOnly} />
           </section>
         </PanelBoundary>
 
         <PanelBoundary title="Missions and failures" resetKey={feed.robots}>
           <div className="split">
-            <MissionSender robots={robots} locations={locations} />
-            <FailurePanel robots={robots} failures={feed.failures} />
+            <MissionSender robots={robots} locations={locations} readOnly={readOnly} />
+            <FailurePanel robots={robots} failures={feed.failures} readOnly={readOnly} />
           </div>
         </PanelBoundary>
 
         <PanelBoundary title="Sessions" resetKey={feed.recording}>
-          <RecorderPanel recording={feed.recording} recordingStopped={feed.recordingStopped} replay={feed.replay} sessionsVersion={feed.sessionsVersion} />
+          <RecorderPanel recording={feed.recording} recordingStopped={feed.recordingStopped} replay={feed.replay} sessionsVersion={feed.sessionsVersion} readOnly={readOnly} />
+        </PanelBoundary>
+
+        <PanelBoundary title="Activity" resetKey={feed.sessionsVersion}>
+          <ActivityPanel />
         </PanelBoundary>
 
         <PanelBoundary title="Validation" resetKey={feed.validation}>
-          <ValidationPanel validation={feed.validation} />
+          <ValidationPanel validation={feed.validation} readOnly={readOnly} />
         </PanelBoundary>
 
         <PanelBoundary title="Message stream" resetKey={feed.messages}>
@@ -236,7 +258,12 @@ export default function App() {
           {logoutError}
         </p>
       )}
-      <Lab onLogout={onLogout} onSessionEnded={refresh} />
+      <Lab
+        onLogout={onLogout}
+        onSessionEnded={refresh}
+        user={session !== 'unreachable' ? session.user : undefined}
+        role={session !== 'unreachable' ? session.role : undefined}
+      />
     </>
   )
 }

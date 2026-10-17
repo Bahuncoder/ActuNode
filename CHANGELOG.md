@@ -4,6 +4,19 @@ What changed, per commit, newest first. Status and plans are in [docs/PROGRESS.m
 
 ## Unreleased
 
+### Who did what: per-person logins, roles and an audit trail (A3, D-56)
+
+- **One web login per person:** `mqtt-init add-user <name> operator|viewer` prints a token once (only its hash
+  is kept); `list-users`, `rotate user <name>`, `remove-user <name>`. Changes take effect without a restart;
+  removing or rotating a user ends their open sessions (including the live feed) within seconds. The shared
+  `api-token` still works, as the operator `admin`.
+- **Viewers** can look but not change the lab (403 "Viewers cannot change the lab"); validating a recording is
+  allowed. The UI shows who is logged in, marks viewers "View only" and disables what they cannot do.
+- **Audit trail:** every state-changing request, every login (also failed ones) and logout, with user, role,
+  client address, action, target and result. `GET /api/audit`, an **Activity** panel, and `.audit.jsonl` next
+  to the recordings (10 MB, one rotated file). Login off: recorded as `local`.
+- `GET /api/session` and `POST /api/login` also return `user` and `role` (new fields).
+
 ### Clean-up from the full audit (D-50)
 
 - **One session-id rule** for recordings and uploads (`make_session_id`): a second session with the same name in

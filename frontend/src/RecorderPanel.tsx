@@ -12,6 +12,7 @@ import {
   type SessionStorage,
   type ValidationReport,
   type SessionSummary,
+  VIEWER_NOTE,
 } from './api'
 import { display, num, text, type RecordingStatus, type RecordingStopped, type ReplayStatus } from './live'
 
@@ -87,12 +88,14 @@ function RecorderPanel({
   recordingStopped,
   replay,
   sessionsVersion = 0,
+  readOnly = false,
 }: {
   recording: RecordingStatus | null
   recordingStopped: RecordingStopped | null
   replay: ReplayStatus | null
   // Bumped by the live feed whenever the server changed the session list (stop, delete, upload, retention).
   sessionsVersion?: number
+  readOnly?: boolean
 }) {
   const [name, setName] = useState('')
   const [busy, setBusy] = useState(false)
@@ -248,7 +251,7 @@ function RecorderPanel({
             maxLength={40}
           />
         </label>
-        <button type="button" className={recording ? 'danger-button' : ''} disabled={busy} onClick={toggle}>
+        <button type="button" className={recording ? 'danger-button' : ''} disabled={readOnly || busy} title={readOnly ? VIEWER_NOTE : undefined} onClick={toggle}>
           {recording ? '■ Stop recording' : '● Start recording'}
         </button>
         {recording && (
@@ -304,7 +307,8 @@ function RecorderPanel({
           <input
             type="file"
             accept=".jsonl,application/x-ndjson"
-            disabled={uploading}
+            disabled={readOnly || uploading}
+            title={readOnly ? VIEWER_NOTE : undefined}
             onChange={(e) => {
               const input = e.target
               void upload(input.files?.[0]).then(() => {
@@ -388,7 +392,8 @@ function RecorderPanel({
                       <button
                         type="button"
                         className="link-button"
-                        disabled={replaying}
+                        disabled={readOnly || replaying}
+                        title={readOnly ? VIEWER_NOTE : undefined}
                         onClick={() => replaySession(session.sessionId)}
                       >
                         ▶ Replay
@@ -408,7 +413,8 @@ function RecorderPanel({
                       <button
                         type="button"
                         className="link-button danger-link"
-                        disabled={replaying && replay?.sessionId === session.sessionId}
+                        disabled={readOnly || (replaying && replay?.sessionId === session.sessionId)}
+                        title={readOnly ? VIEWER_NOTE : undefined}
                         onClick={() => removeSession(session.sessionId)}
                       >
                         Delete

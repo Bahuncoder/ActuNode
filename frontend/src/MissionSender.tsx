@@ -1,5 +1,5 @@
 import { memo, useState, type FormEvent } from 'react'
-import { sendMission, type Location } from './api'
+import { sendMission, VIEWER_NOTE, type Location } from './api'
 import { identitiesOf, type Robot } from './live'
 
 // Used until the live feed has seen any robots.
@@ -24,9 +24,11 @@ function describe(identity: Identity): string {
 function MissionSender({
   robots,
   locations,
+  readOnly = false,
 }: {
   robots: Robot[]
   locations: Record<string, Location>
+  readOnly?: boolean
 }) {
   const robotChoices = robots.length > 0 ? [...new Set(robots.map((robot) => robot.robotId))] : DEFAULT_ROBOTS
   const [chosenRobot, setChosenRobot] = useState(DEFAULT_ROBOTS[0])
@@ -132,7 +134,7 @@ function MissionSender({
           Load
           <input value={loadId} onChange={(e) => setLoadId(e.target.value)} placeholder="P-1042" maxLength={64} />
         </label>
-        <button type="submit" disabled={sending || names.length === 0}>
+        <button type="submit" disabled={readOnly || sending || names.length === 0} title={readOnly ? VIEWER_NOTE : undefined}>
           {sending ? 'Sending…' : 'Send mission'}
         </button>
       </form>

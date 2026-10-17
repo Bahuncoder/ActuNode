@@ -1004,3 +1004,26 @@ be rejected with an error), on repeated runs. Testing the map check found
 one more connector bug, fixed in the same patch: validation rejections were typed `validationOrder`, not
 `validationError`. Filing the PRs and issues is public and
 remains the founder's decision. If upstream merges them, the pins move and the patches are deleted.
+
+
+## D-56 · Per-person web logins, two roles, and an audit trail
+17 Oct 2026 · Accepted (founder: "let's go"; chose two roles and an Activity panel)
+
+**Context.** Audit item A3 (D-50): a shared lab had one web token for everyone, so sessions were anonymous and
+nothing recorded who injected a failure, sent a mission or deleted a recording.
+**Decision.** Each person gets a token from `mqtt-init add-user <name> operator|viewer`; it is printed once and
+only its SHA-256 is kept (`secrets/users/`, root only). mqtt-init rebuilds `backend/users` (`name:role:sha256`) on
+every run; the backend re-reads it when it changes, so adding, removing, rotating or re-roling a user needs no
+restart, and a session whose user was removed or got a new token ends at its next request (the live feed within
+5 s). Login stays one field: the token identifies the person; every credential is compared each time. The shared
+API token remains and logs in as `admin`, an operator (D-25 setups, the CLI and CI keep working); `admin` and
+`local` cannot be user names. Roles: *viewer* may use safe methods, validate recordings and log out; anything else
+is 403 "Viewers cannot change the lab" (enforced in SessionGuard, so a new route is covered by default).
+*operator* may do everything. The audit trail is a middleware: every state-changing /api request by a known user
+is recorded after it ran (user, role, client address, action, path, status, plus details routes add: robot,
+failure, destination, order, session); logins, failed logins and logouts too. JSON lines in `.audit.jsonl` next
+to the recordings (not a session id: listing and retention skip it), rotated once at 10 MB; the newest 2,000
+entries in memory for `GET /api/audit` and the UI's Activity panel. Login off: user `local`, an operator.
+**Consequences.** A shared lab knows who did what, and can give people look-only access. Requests without a
+session are not recorded (they did nothing); the client address is the one nginx saw. Not in scope: SSO, and an
+audit trail protected against its own operators (the file is on the lab's disk).

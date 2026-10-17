@@ -1,5 +1,5 @@
 import { memo, useCallback, useState } from 'react'
-import { cancelMission } from './api'
+import { cancelMission, VIEWER_NOTE } from './api'
 import {
   batteryCharge,
   CANCELLABLE_STATUSES,
@@ -36,7 +36,7 @@ function trimmedTitle(trimmed: unknown): string {
   return [`state of ${num(get(trimmed, 'bytes')) ?? '?'} bytes stored trimmed`, ...listed, ...dropped].join('; ')
 }
 
-function RobotTable({ robots }: { robots: Robot[] }) {
+function RobotTable({ robots, readOnly = false }: { robots: Robot[]; readOnly?: boolean }) {
   const [cancelling, setCancelling] = useState<Set<string>>(new Set())
   // Latest error per robot key, so concurrent failures each name their robot.
   const [errors, setErrors] = useState<Record<string, string>>({})
@@ -96,6 +96,7 @@ function RobotTable({ robots }: { robots: Robot[] }) {
                 shared={(serials.get(robot.robotId) ?? 0) > 1}
                 cancelling={cancelling.has(robot.key)}
                 onCancel={cancel}
+                readOnly={readOnly}
               />
             ))}
           </tbody>
@@ -113,11 +114,13 @@ const RobotRow = memo(function RobotRow({
   shared,
   cancelling,
   onCancel,
+  readOnly,
 }: {
   robot: Robot
   shared: boolean
   cancelling: boolean
   onCancel: (robot: Robot) => void
+  readOnly: boolean
 }) {
   const status = missionStatus(robot)
   const { derived } = missionStatusOf(robot.state)
@@ -168,7 +171,8 @@ const RobotRow = memo(function RobotRow({
             {CANCELLABLE_STATUSES.includes(status) && (
               <button
                 aria-label={`Cancel mission for ${robot.robotId}`}
-                disabled={cancelling}
+                disabled={readOnly || cancelling}
+                title={readOnly ? VIEWER_NOTE : undefined}
                 onClick={() => onCancel(robot)}
               >
                 Cancel
