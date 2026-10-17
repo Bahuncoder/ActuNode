@@ -18,7 +18,8 @@ What changed, per commit, newest first. Status and plans are in [docs/PROGRESS.m
 - **Fixed:** `conformance/raw_checks.py` could pass the unknown-map check because the previous check's order was
   still open; it now cancels open orders and counts only errors raised during the run.
 - **New raw check:** an order the robot cannot decode must be rejected with an error, not ignored.
-- The ROS 2 workflow runs the robot unpatched and patched.
+- The ROS 2 workflow runs the robot unpatched and patched, now including the raw checks (unpatched: all four
+  fail, as reported; patched: all pass).
 
 ## 0.2.0 — 2026-10-16
 

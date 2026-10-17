@@ -8,11 +8,13 @@ Opt-in (the image builds ROS 2 Humble, Nav2 and the connector: several minutes t
 
 import math
 import os
+import subprocess
+import sys
 import time
 import xml.etree.ElementTree as ET
 
 import pytest
-from conftest import ROOT, wait_for
+from conftest import HOST, ROOT, SHARED, wait_for
 from test_09_scenarios import actunode_test
 
 pytestmark = pytest.mark.skipif(os.environ.get("ACTUNODE_E2E_ROS2") != "1", reason="set ACTUNODE_E2E_ROS2=1")
@@ -108,3 +110,35 @@ def test_the_conformance_report_still_holds(stack, ros2_robot, tmp_path):
     assert failed == KNOWN_FAILURES, (
         f"results changed: failed {sorted(failed)}; update docs/CONFORMANCE_ROS2_CONNECTOR.md"
     )
+
+
+# conformance/raw_checks.py: orders ActuNode's mission sender would never build. Unpatched, the connector fails all
+# four (docs/CONFORMANCE_ROS2_CONNECTOR.md); with ros2/patches/, all pass.
+RAW_CHECKS = {
+    "unreachable node is not reported reached",
+    "unreachable node is reported as an error",
+    "order on an unknown map is rejected",
+    "an invalid order is rejected with an error, not ignored",
+}
+KNOWN_RAW_FAILURES = set() if PATCHED else RAW_CHECKS
+
+
+@pytest.mark.skipif(SHARED, reason="raw_checks.py speaks plain MQTT on the local port")
+def test_the_raw_checks_still_hold(stack, ros2_robot, tmp_path):
+    out = stack.compose("run", "--rm", "--no-deps", "mqtt-init", "add-master", "conformance", "ROS2")
+    password = tmp_path / "conformance.pw"
+    password.write_text(out.split("password=")[1].split()[0] + "\n")
+    stack.compose("kill", "-s", "HUP", "mosquitto")  # load the new login (CONNECT_YOUR_ROBOT.md)
+    time.sleep(2)
+    command = [sys.executable, str(ROOT / "conformance" / "raw_checks.py"), "--password-file", str(password)]
+    command += ["--host", HOST, "--port", str(stack.mqtt_port)]
+    result = subprocess.run(command, capture_output=True, text=True, timeout=600)
+    print(result.stdout, result.stderr)
+    verdicts = {}
+    for line in result.stdout.splitlines():
+        if line.startswith(("PASS  ", "FAIL  ")):
+            name = line[6:].split(":")[0].split(" (")[0]
+            verdicts[name] = line.startswith("PASS")
+    assert set(verdicts) == RAW_CHECKS, result.stdout + result.stderr
+    failed = {name for name, ok in verdicts.items() if not ok}
+    assert failed == KNOWN_RAW_FAILURES, f"results changed: failed {sorted(failed)}; update the report"

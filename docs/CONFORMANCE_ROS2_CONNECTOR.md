@@ -23,8 +23,8 @@ fields and reports every Nav2 goal as succeeded. A real robot's vendor writes it
 Reproduce: `docker compose --profile ros2 up -d --build`, then
 `actunode test conformance/vda5050-2 --vda-version 2 --junit conformance.xml`, and for the raw checks
 `python conformance/raw_checks.py --password-file <master login>` (both in [CONNECT_YOUR_ROBOT.md](CONNECT_YOUR_ROBOT.md)).
-The opt-in e2e test (`tests/e2e/test_13_ros2_robot.py`) runs the suite weekly, without and with the patches, and
-fails if any result changes.
+The opt-in e2e test (`tests/e2e/test_13_ros2_robot.py`) runs the suite and the raw checks weekly, without and with
+the patches, and fails if any result changes.
 
 ## Results
 
