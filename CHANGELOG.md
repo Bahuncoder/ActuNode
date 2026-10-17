@@ -4,6 +4,19 @@ What changed, per commit, newest first. Status and plans are in [docs/PROGRESS.m
 
 ## Unreleased
 
+### Metrics (A6, D-57)
+
+- **`GET /api/metrics`** in the Prometheus text format: messages received and rejected (by rule), validation
+  issues (by rule), live feeds open and dropped (lagging, too many), the largest live-feed backlog, broker
+  disconnects, failed publishes, robots by connection state, recording, replay, stored sessions and their disk
+  use, and the broker's own heap, clients, stored, received, sent and dropped messages (its `$SYS` topics,
+  which the backend's broker login may now read). No new dependency.
+- With login required, a scraper sends `Authorization: Bearer <token>` (any web login; only this path takes a
+  bearer token, and wrong ones count towards the login limit).
+- **Upgrading a lab:** the broker permissions changed; apply them with
+  `docker compose up -d --force-recreate mqtt-init && docker compose kill -s HUP mosquitto && docker compose restart backend`
+  (a new lab needs nothing).
+
 ### Who did what: per-person logins, roles and an audit trail (A3, D-56)
 
 - **One web login per person:** `mqtt-init add-user <name> operator|viewer` prints a token once (only its hash

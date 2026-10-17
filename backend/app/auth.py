@@ -43,6 +43,8 @@ COOKIE = "actunode_session"
 # Reachable without a session: liveness, and what the login screen itself needs.
 OPEN_PATHS = {"/api/health", "/api/login", "/api/logout", "/api/session"}
 SAFE_METHODS = {"GET", "HEAD", "OPTIONS"}
+# The one path that also takes `Authorization: Bearer <token>` (a metrics scraper cannot keep a cookie), D-57.
+METRICS_PATH = "/api/metrics"
 # What a viewer may send besides reading: ending its own session, and validating a recording (a report, no change).
 VIEWER_MAY_POST = re.compile(r"^/api/(logout|sessions/[^/]+/validate)$")
 OPERATOR, VIEWER = "operator", "viewer"
@@ -162,26 +164,42 @@ class Sessions:
             found[ADMIN] = (OPERATOR, self._admin_hash)
         return found
 
+    def _check(self, client: str, token: str, now: float) -> tuple[str, str, str] | None:
+        """(name, role, hash) for a known token, None for a wrong one (counted); RateLimited after repeated
+        failures. Every credential is compared (no early exit), so timing does not tell how far a guess got.
+        Call with the lock held."""
+        failures = self._failures.get(client, deque())
+        while failures and now - failures[0] > FAILURE_WINDOW_S:
+            failures.popleft()
+        if len(failures) >= MAX_FAILURES:
+            raise RateLimited
+        presented, match = token_hash(token), None
+        for name, (role, known) in self._credentials().items():
+            if hmac.compare_digest(presented, known) and match is None:
+                match = (name, role, known)
+        if match is None:
+            failures.append(now)
+            self._failures[client] = failures
+            self._sweep_failures(now)
+            return None
+        self._failures.pop(client, None)
+        return match
+
+    def verify(self, client: str, token: str) -> User | None:
+        """The user of a token presented directly (a metrics scraper's bearer token): no session is made; wrong
+        tokens count towards the same limit as logins (RateLimited)."""
+        with self._lock:
+            match = self._check(client, token, time.monotonic())
+        return User(match[0], match[1]) if match else None
+
     def login(self, client: str, token: str) -> tuple[str, User] | None:
         """A new session id and its user for a known token, None for a wrong one; RateLimited after repeated
-        failures. Every credential is compared (no early exit), so timing does not tell how far a guess got."""
+        failures (see _check)."""
         now = time.monotonic()
         with self._lock:
-            failures = self._failures.get(client, deque())
-            while failures and now - failures[0] > FAILURE_WINDOW_S:
-                failures.popleft()
-            if len(failures) >= MAX_FAILURES:
-                raise RateLimited
-            presented, match = token_hash(token), None
-            for name, (role, known) in self._credentials().items():
-                if hmac.compare_digest(presented, known) and match is None:
-                    match = (name, role, known)
+            match = self._check(client, token, now)
             if match is None:
-                failures.append(now)
-                self._failures[client] = failures
-                self._sweep_failures(now)
                 return None
-            self._failures.pop(client, None)
             if len(self._sessions) >= MAX_SESSIONS:
                 for old in [s for s, entry in self._sessions.items() if entry[0] < now]:
                     del self._sessions[old]  # expired ones first: they are of no use to anyone
@@ -253,6 +271,15 @@ class SessionGuard:
         if scope["type"] in ("http", "websocket") and path.startswith("/api"):
             headers = {k.decode("latin-1").lower(): v.decode("latin-1") for k, v in scope["headers"]}
             user = sessions.user(session_from_cookie_header(headers.get("cookie")))
+            bearer = headers.get("authorization", "")
+            if user is None and path == METRICS_PATH and scope["type"] == "http" and bearer[:7].lower() == "bearer ":
+                try:
+                    user = sessions.verify(_client(Request(scope)), bearer[7:].strip()[:200])
+                except RateLimited:
+                    await PlainTextResponse("Too many failed logins; wait a minute", status_code=429)(
+                        scope, receive, send
+                    )
+                    return
             scope.setdefault("state", {})["user"] = user
             if path not in OPEN_PATHS:
                 if user is None:

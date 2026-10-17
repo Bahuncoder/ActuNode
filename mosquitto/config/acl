@@ -9,6 +9,8 @@
 user actunode-backend
 topic readwrite uagv/#
 topic readwrite actunode/#
+# The broker's statistics (heap, clients, stored and dropped messages) for /api/metrics (D-57).
+topic read $SYS/broker/#
 
 # People and their tools (mosquitto_sub, MQTT Explorer): read only.
 user tools

@@ -4,6 +4,8 @@ from collections.abc import Callable
 
 import paho.mqtt.client as mqtt
 
+from app.metrics import counters
+
 log = logging.getLogger(__name__)
 
 # At most one handler-error traceback per this many seconds, so a robot cannot flood the log.
@@ -66,9 +68,11 @@ class MqttBridge:
     def publish(self, topic: str, payload: str, qos: int = 0) -> None:
         size = len(payload.encode("utf-8"))
         if self.max_payload_bytes is not None and size > self.max_payload_bytes:
+            counters.inc("actunode_mqtt_publish_failures_total", reason="too_large")
             raise PayloadTooLarge(f"{size} bytes exceeds {self.max_payload_bytes}")
         info = self._client.publish(topic, payload, qos=qos)
         if info.rc != mqtt.MQTT_ERR_SUCCESS:
+            counters.inc("actunode_mqtt_publish_failures_total", reason="failed")
             raise PublishFailed(f"{mqtt.error_string(info.rc)} (rc {info.rc})")
 
     def _on_connect(self, client, userdata, flags, reason_code, properties):
@@ -80,6 +84,7 @@ class MqttBridge:
 
     def _on_disconnect(self, client, userdata, flags, reason_code, properties):
         self.connected = False
+        counters.inc("actunode_mqtt_disconnects_total")
         log.warning("MQTT disconnected: %s", reason_code)
 
     def _on_message(self, client, userdata, message):
@@ -88,6 +93,7 @@ class MqttBridge:
         try:
             self.message_handler(message.topic, message.payload, message.retain)
         except Exception:
+            counters.inc("actunode_mqtt_handler_errors_total")
             now = time.monotonic()
             if now - self._last_error_log < ERROR_LOG_EVERY_S:
                 self._suppressed += 1

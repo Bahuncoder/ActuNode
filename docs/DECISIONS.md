@@ -1027,3 +1027,23 @@ entries in memory for `GET /api/audit` and the UI's Activity panel. Login off: u
 **Consequences.** A shared lab knows who did what, and can give people look-only access. Requests without a
 session are not recorded (they did nothing); the client address is the one nginx saw. Not in scope: SSO, and an
 audit trail protected against its own operators (the file is on the lab's disk).
+
+
+## D-57 · Metrics in the Prometheus text format
+17 Oct 2026 · Accepted (founder: "let's work on the rest")
+
+**Context.** Audit item A6 (D-50): observability was logs only; nothing measured broker memory, queue depth, live
+feeds or dropped messages, so a flood was noticed by its effects.
+**Decision.** `GET /api/metrics`, Prometheus text format 0.0.4, written by hand (a few lines; no client library).
+Counters are incremented where things happen: messages received, rejected by rule, validation issues by rule
+(independent of the UI's reset), live feeds dropped (lagging, too many), broker disconnects, failed publishes
+(too large, failed), message-handler errors. Gauges are read at scrape time: uptime, broker connection, live
+feeds and the largest backlog, robots by connection state, recording and its size, replay, stored sessions and
+their disk use (the folder scan cached 30 s). The broker's statistics come from Mosquitto's `$SYS/broker/#` (heap,
+clients, stored, received, sent, dropped): the backend's broker login may now read them (ACL), and they are routed
+to the metrics before the robot pipeline, so they are never shown, recorded or validated. The path needs a session
+like every other, or `Authorization: Bearer <token>` with any web login's token, because a scraper cannot keep a
+cookie; only this path accepts it, and wrong tokens count towards the same per-client limit as logins. A scrape is
+a GET, so it is not in the audit trail.
+**Consequences.** An operator can graph and alert on the lab's load; the load test's limits (D-38) become visible
+in production. Metric names may still change in 0.x (COMPATIBILITY.md); a change is in the changelog.

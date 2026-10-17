@@ -255,6 +255,25 @@ certificates (secret: keep the file private) with `docker compose run --rm -T mq
 and restore them with `docker compose run --rm -T mqtt-init restore < actunode-secrets.tar`, then
 `docker compose up -d --force-recreate`.
 
+## Metrics
+
+`GET /api/metrics` answers in the Prometheus text format ([D-57](docs/DECISIONS.md)): traffic, rejected messages
+and validation issues by rule, live feeds and their backlog, robots by connection state, recordings, storage, and
+the broker's memory, clients and dropped messages. A Prometheus scrape job for a shared lab:
+
+```yaml
+- job_name: actunode
+  scheme: https
+  metrics_path: /api/metrics
+  authorization: {credentials_file: /etc/prometheus/actunode-token}   # a viewer token is enough
+  tls_config: {ca_file: /etc/prometheus/actunode-ca.crt}
+  static_configs: [{targets: ['<this machine>:8443']}]
+```
+
+On one computer (no login): `curl localhost:8080/api/metrics`. Alerts are yours to set: for example
+`actunode_live_clients_dropped_total` or `actunode_broker_messages_dropped_total` rising, or
+`actunode_mqtt_connected == 0`.
+
 ## Connecting a real robot
 
 A real robot (or your own robot driver) connects to the same broker with its own login:
@@ -518,7 +537,7 @@ is stable between 0.x releases: [docs/COMPATIBILITY.md](docs/COMPATIBILITY.md). 
 | [docs/CONNECT_YOUR_ROBOT.md](docs/CONNECT_YOUR_ROBOT.md) | Bring your robot into the lab; the conformance suite |
 | [docs/COMPATIBILITY.md](docs/COMPATIBILITY.md) | What stays stable between 0.x releases |
 | [docs/TRIAGE.md](docs/TRIAGE.md) | Reporting a problem; how issues are handled |
-| [docs/DECISIONS.md](docs/DECISIONS.md) | Why things are built the way they are (D-1 to D-56) |
+| [docs/DECISIONS.md](docs/DECISIONS.md) | Why things are built the way they are (D-1 to D-57) |
 | [docs/VDA5050_NOTES.md](docs/VDA5050_NOTES.md) | Protocol notes and validator rules |
 | [docs/research/VDA5050_3_0.md](docs/research/VDA5050_3_0.md) | VDA 5050 3.0 compared with 2.1 |
 | [docs/DEMO.md](docs/DEMO.md) | 3-minute demo script and the automated recorder |

@@ -5,7 +5,7 @@ from contextlib import asynccontextmanager
 
 from fastapi import FastAPI, Request, WebSocket, WebSocketDisconnect
 
-from app import audit, auth, docs, failures, missions, sessions, vda5050
+from app import audit, auth, docs, failures, metrics, missions, sessions, vda5050
 from app.config import settings
 from app.live import LAGGED, TooManyClients, hub
 from app.mqtt_state import mqtt_bridge
@@ -49,6 +49,7 @@ app.add_middleware(audit.AuditTrail)
 app.add_middleware(LocalWebGuard, allowed_hosts=settings.allowed_hosts)
 app.include_router(auth.router)
 app.include_router(audit.router)
+app.include_router(metrics.router)
 app.include_router(missions.router)
 app.include_router(failures.router)
 app.include_router(sessions.router)

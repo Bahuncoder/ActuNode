@@ -18,6 +18,7 @@ CI keep working, what may change, and how a change is announced (D-54).
 |---|---|
 | HTTP API (`/api/...`) | Endpoints and fields used by the UI, the runner and the docs. New fields may appear in answers at any time (clients must ignore unknown fields). A removed or renamed endpoint or field is listed under **Breaking** in [CHANGELOG.md](../CHANGELOG.md) for at least one release first, as deprecated. |
 | Compose services and environment variables | `docker compose` service names, `ACTUNODE_*` variables. |
+| Metrics (`/api/metrics`) | Names and labels are kept; a renamed or removed metric is listed under **Breaking** in the changelog. |
 | Validator rules | Rule names (`schema`, `header-id`, ...) are stable; a rule may get stricter where VDA 5050 requires it (each such change is in the changelog). |
 
 ## Not promised

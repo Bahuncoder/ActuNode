@@ -16,6 +16,7 @@ from datetime import UTC, datetime
 from app import vda5050
 from app.config import settings
 from app.jsonsafe import count_values, parse_payload, preview
+from app.metrics import counters
 from app.proximity import ProximityMonitor
 from app.validator import RULES, Validator, issue
 
@@ -140,6 +141,9 @@ class LiveHub:
         # the lock below guards what readers (API, WebSocket) share: robots, messages, stats, proximity.
         body, rejected = parse_payload(payload)
         valid_json = rejected is None
+        counters.inc("actunode_mqtt_messages_received_total")
+        if rejected is not None:
+            counters.inc("actunode_messages_rejected_total", rule=rejected)
         try:
             if rejected is None:
                 issues = self._validator.check(topic, body, True, retained)
@@ -166,6 +170,8 @@ class LiveHub:
             }
             self._next_id += 1
             self._count_issues(message)
+            for found in issues:
+                counters.inc("actunode_validation_issues_total", rule=found["rule"])
             epoch = self._validation["epoch"]  # same lock as the count: a reset cannot fall between them
             shown = message
             values = count_values(body) if valid_json else 0
@@ -306,8 +312,19 @@ class LiveHub:
 
     # --- WebSocket side (asyncio loop) ---------------------------------------
 
+    def metrics(self) -> dict:
+        """For /api/metrics; call on the event loop (the client set belongs to it)."""
+        with self._lock:
+            robots: dict[tuple, int] = {}
+            for robot in self._robots.values():
+                key = (("connection", str(robot.get("connection") or "UNKNOWN")[:20]),)
+                robots[key] = robots.get(key, 0) + 1
+        queued = [q.queued_bytes for q in self._clients if isinstance(q, ClientQueue)]
+        return {"clients": len(self._clients), "maxQueuedBytes": max(queued, default=0), "robots": robots}
+
     def subscribe(self) -> asyncio.Queue:
         if len(self._clients) >= MAX_CLIENTS:
+            counters.inc("actunode_live_clients_dropped_total", reason="too_many")
             raise TooManyClients
         queue = ClientQueue()
         self._clients.add(queue)
@@ -342,6 +359,7 @@ class LiveHub:
                 queue.put_nowait(text)
             except asyncio.QueueFull:
                 log.warning("Live client is too slow; closing it so it can resync")
+                counters.inc("actunode_live_clients_dropped_total", reason="lagging")
                 self._lagged.add(queue)
                 while not queue.empty():
                     queue.get_nowait()
