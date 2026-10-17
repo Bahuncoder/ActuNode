@@ -61,7 +61,7 @@ Priority: P0 = baseline/release blocking; P1 = next-release requirement; P2 = di
 | Reliability at supported scale | Existing 10/25/50-robot load thresholds pass | Repository load harness with host and workload recorded |
 | Regression protection | Required unit, contract, scenario and e2e gates pass | CI artifacts for the candidate commit |
 
-Status 17 October: *independent interoperability* met (PR-11); *regression protection* met for v0.3.0 (CI on the tagged commit); *reliability at supported scale* last measured 15 October at bb7ec88 (all thresholds passed; 50 robots: WebSocket latency p99 214 ms of 250), before v0.2.0, the audit trail and the metrics counters, so it is due again; *first useful result* and *incident usefulness* not yet measured (they need participants).
+Status 17 October: *independent interoperability* met (PR-11); *regression protection* met for v0.3.0 (CI on the tagged commit); *reliability at supported scale* met again on 17 October at fa08f92 (v0.3.0 code): every threshold passed at 10/25/50 robots with the browser; 50 robots: WebSocket latency p99 130 ms of 250, 60 frames/s, 0 console errors, 0 drops, backend memory 50 MiB of 300; *first useful result* and *incident usefulness* not yet measured (they need participants).
 
 These pilot targets are proposed decision gates. Collect feedback locally and manually; telemetry is not currently a product dependency. Interviews should ask how failures are debugged today, how often they occur, and what evidence teams can share.
 

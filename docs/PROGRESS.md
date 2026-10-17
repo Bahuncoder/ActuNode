@@ -639,6 +639,11 @@ Numbered so they can be referenced from commits. Remove an item only when it is 
 
 Newest first. One entry per work session: what was done, what was learned, what is next.
 
+### Sat 17 Oct 2026 (night): product specification brought up to date; load re-measured
+The founder's product documents (docs/product/, written 15 Oct) updated to v0.3.0: requirement status (PR-11 done,
+PR-12 in progress, PR-13 open), PR-15..17 and TR-10..12 added, the implementation plan now runs toward v0.4.0
+(packages H–M). ARCHITECTURE.md brought up to D-59. Package H done: load test on 17 October at fa08f92 (v0.3.0 code): every threshold passed at 10/25/50 robots with the browser; 50 robots: WebSocket latency p99 130 ms of 250, 60 frames/s, 0 console errors, 0 drops, backend memory 50 MiB of 300.
+
 ### Sat 17 Oct 2026 (evening): v0.3.0 released
 Per-person logins and audit trail (D-56), metrics (D-57), published images (D-58), robot-scoped scenario checks
 (D-59). Gate on 238509e: CI, ROS 2 workflow, image build, security scans all green. The founder tagged and published;

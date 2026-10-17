@@ -59,7 +59,7 @@ Use the existing [load harness](../../tests/load/README.md), run at 10, 25 and 5
 | Browser median frame rate | ≥30 fps |
 | Backend dropped events / browser console errors | 0 / 0 |
 
-All remaining harness thresholds also apply. Record host, workload, version and duration. ROS 2 resource usage is measured separately; simulator benchmarks do not establish its capacity. Last full run: 15 October at bb7ec88 (all passed; 50 robots: latency p99 214 ms of 250, little headroom). The audit trail and per-message metrics counters added since make a new run a v0.4.0 gate; the weekly CI run (Mondays, `load.yml`) has not had its first scheduled run yet.
+All remaining harness thresholds also apply. Record host, workload, version and duration. ROS 2 resource usage is measured separately; simulator benchmarks do not establish its capacity. Last full run: 17 October at fa08f92 (v0.3.0 code): every threshold passed at 10/25/50 robots with the browser; 50 robots: WebSocket latency p99 130 ms of 250, 60 frames/s, 0 console errors, 0 drops, backend memory 50 MiB of 300. The audit trail and per-message metrics counters added no measurable cost (15 October, before them: 50-robot latency p99 214 ms, a busier host). The weekly CI run (Mondays, `load.yml`) repeats it.
 
 ## Persistence, recovery and compatibility
 
