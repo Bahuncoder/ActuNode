@@ -355,6 +355,9 @@ def session_status(request: Request) -> dict:
 def login(body: LoginRequest, request: Request, response: Response) -> dict:
     if not sessions.required:
         return {"loggedIn": True}
+    # Who this attempt is from is what the token proves, not the cookie the browser still carries: a failed
+    # attempt must not be put on the account of whoever was logged in before (audit trail, D-56).
+    request.state.user = None
     try:
         found = sessions.login(_client(request), body.token)
     except RateLimited:

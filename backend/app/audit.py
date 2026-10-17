@@ -137,7 +137,8 @@ def _entry(request: Request, action: str, status: int) -> dict:
         "status": status,
     }
     # Details come from request bodies, some before validation: bounded, so a junk value cannot bloat the trail.
-    entry.update({key: _bounded(value) for key, value in detail.items() if key != "action"})
+    # They add to the core fields, never replace them (who, when, what answer).
+    entry.update({key: _bounded(value) for key, value in detail.items() if key not in entry})
     entry["action"] = _bounded(entry["action"])
     return entry
 

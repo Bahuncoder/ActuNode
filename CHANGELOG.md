@@ -16,6 +16,9 @@ What changed, per commit, newest first. Status and plans are in [docs/PROGRESS.m
   client address, action, target and result. `GET /api/audit`, an **Activity** panel, and `.audit.jsonl` next
   to the recordings (10 MB, one rotated file). Login off: recorded as `local`.
 - `GET /api/session` and `POST /api/login` also return `user` and `role` (new fields).
+- **Fixed (security review):** a failed or rate-limited login was recorded under the user of the session the
+  browser still carried; failed attempts now carry no user. Route details can no longer replace an entry's
+  user, role, time or status.
 
 ### Clean-up from the full audit (D-50)
 

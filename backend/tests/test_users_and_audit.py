@@ -255,3 +255,27 @@ def test_detail_values_from_requests_are_bounded(lab):
     client.post("/api/missions", json={"robot_id": "robot_01", "destination": "D" * 5000})
     mission = [e for e in entries(path) if e["action"] == "mission.send"][-1]
     assert mission["destination"] == "D" * 100
+
+
+def test_a_failed_login_is_not_put_on_the_account_of_the_session_in_the_browser(lab):
+    client, _, path = lab
+    login(client, ALICE)  # the browser now carries alice's session cookie
+    client.post("/api/login", json={"token": "a-guess-" + "g" * 30})
+    failed = [e for e in entries(path) if e["action"] == "login.failed"]
+    assert [(e["user"], e["role"]) for e in failed] == [(None, None)]
+
+
+def test_route_details_cannot_replace_who_when_or_the_answer(lab, monkeypatch):
+    client, _, path = lab
+    real_entry = audit._entry
+
+    def with_forged_detail(request, action, status):
+        request.state.audit = {"user": "mallory", "status": 299, "at": "2000-01-01T00:00:00Z", "robot": "r1"}
+        return real_entry(request, action, status)
+
+    monkeypatch.setattr(audit, "_entry", with_forged_detail)
+    login(client, ALICE)
+    client.post("/api/validation/reset")
+    reset = [e for e in entries(path) if e["action"] == "validation.reset"][-1]
+    assert reset["user"] == "alice" and reset["status"] == 200 and not reset["at"].startswith("2000")
+    assert reset["robot"] == "r1"  # details still add what the path does not say
