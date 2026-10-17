@@ -1,6 +1,6 @@
 # App flow — ActuNode Lab
 
-Working specification · 15 October 2026 · [PRD](PRD.md) · [Design brief](UI_UX_DESIGN_BRIEF.md)
+Working specification · updated 17 October 2026 (v0.3.0) · [PRD](PRD.md) · [Design brief](UI_UX_DESIGN_BRIEF.md)
 
 ## Entry and navigation
 
@@ -9,7 +9,7 @@ Current UI is one lab dashboard, with conditional login. Scenario execution and 
 ```mermaid
 flowchart TD
   Open[Open lab URL] --> Check[Check /api/session]
-  Check -->|Login required| Login[Enter lab token]
+  Check -->|Login required| Login[Enter your token]
   Login -->|Accepted| Lab[Lab dashboard]
   Login -->|Rejected| Login
   Check -->|Local access or authenticated| Lab
@@ -18,11 +18,12 @@ flowchart TD
   Lab --> Observe[Warehouse and robot table]
   Lab --> Act[Mission sender and failure injection]
   Lab --> Evidence[Sessions and validation]
+  Lab --> Activity[Activity: who changed what]
   Lab --> Inspect[Message stream and JSON detail]
   Lab -->|Session expires| Login
 ```
 
-The dashboard order is header/status → replay banner when active → warehouse → robots → missions/failures → sessions/validation → message stream. API, broker and live-feed status are distinct. A WebSocket reconnect obtains a new snapshot; the UI must not present old values as newly observed data.
+With login required, each person enters their own token (or the shared admin token); the header then shows who is logged in and their role, and a viewer sees "View only" with every changing control disabled and explained. The dashboard order is header/status → replay banner when active → warehouse → robots → missions/failures → sessions/validation → activity → message stream. API, broker and live-feed status are distinct. A WebSocket reconnect obtains a new snapshot; the UI must not present old values as newly observed data.
 
 ## Journey A: first incident (PR-01–07)
 
@@ -62,7 +63,11 @@ Invalid upload: display first bad line and reason. Oversize/storage exhaustion: 
 
 Create scoped robot credentials → connect robot/connector → observe full identity → inspect traffic → send a mission to that identity → assess state/errors → save evidence. Use VDA fields in scenarios when an external robot lacks ActuNode-specific mission status. Failure injection remains restricted to simulated robots.
 
-Proposed independent ROS 2 onboarding adds pinned setup instructions and a known-limitations report to this journey; no in-app ROS installer is assumed.
+Shipped (v0.2.0): the independent ROS 2 robot (`--profile ros2`, [CONNECT_YOUR_ROBOT](../CONNECT_YOUR_ROBOT.md)) and the conformance suite (`conformance/vda5050-2/` plus `raw_checks.py`) with a known-limitations report; no in-app ROS installer.
+
+## Journey E: run a shared lab (PR-10/15/16)
+
+Start shared (`ACTUNODE_REQUIRE_LOGIN=1`, README "Sharing the lab") → `mqtt-init add-user <name> operator|viewer` per person, tokens handed over privately → people log in as themselves → the Activity panel (or `GET /api/audit`) shows who sent, injected, recorded, uploaded, deleted or replayed what → `remove-user` or `rotate user` locks someone out within seconds, no restart → Prometheus scrapes `/api/metrics` with a viewer token. Credential administration stays a terminal workflow; there is no user-management screen.
 
 ## Operational state rules
 
@@ -77,7 +82,9 @@ Proposed independent ROS 2 onboarding adds pinned setup instructions and a known
 | Replay running | Persistent session/progress banner and Stop; conflicting start/deletion refused |
 | Validation/upload busy | Show bounded operation state and actionable retry message |
 | Session expired | Return to login; resume network-dependent activity only after authentication |
+| Viewer | Changing controls disabled with "Viewers cannot change the lab"; validate, replay viewing and activity remain; a refused request shows the same text |
+| User removed or token rotated | Session ends at the next request (live feed within 5 s); back to login |
 
 ## Proposed onboarding verification
 
-Give a new participant only the public README and sample scenario. Observe journey A and one CLI run. Log time, errors, interventions and whether the recording reproduces the incident. Do not count a guided author demonstration as independent completion (PR-12).
+Give a new participant only the public README and sample scenario. Observe journey A and one CLI run. Log time, errors, interventions and whether the recording reproduces the incident. Do not count a guided author demonstration as independent completion (PR-12). The author's fresh-clone check of [GETTING_STARTED](../GETTING_STARTED.md) (D-54) verifies the instructions, not a new user's experience.

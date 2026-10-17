@@ -1,6 +1,6 @@
 # UI/UX design brief — ActuNode Lab
 
-Working specification · 15 October 2026 · [App flow](APP_FLOW.md)
+Working specification · updated 17 October 2026 (v0.3.0) · [App flow](APP_FLOW.md)
 
 ## Intent and audience
 
@@ -12,12 +12,13 @@ Current baseline is the React dashboard in `frontend/src/App.tsx`. This brief pr
 
 | Region | Content and purpose |
 |---|---|
-| Header | Product name/version, independent API/MQTT/Live statuses, logout when required |
+| Header | Product name/version, independent API/MQTT/Live statuses; with login, who is logged in and their role ("alice (operator)"), "View only" for viewers, logout |
 | Persistent activity | Active replay with session identity, progress and Stop |
 | Warehouse | Robot positions, route and proximity warnings on the fixed map |
 | Robots | Comparable identity, connection, battery, mission and action information |
 | Controls | Mission sender alongside failure injection for deliberate experiments |
 | Evidence | Recording controls, session list/storage, validation summary/report |
+| Activity | Who changed what: the latest audit entries with time, person, action, target and result; filter by person (v0.3.0) |
 | Inspector | Filterable, pausable message stream with selectable JSON details |
 
 Desktop reference: retain the current centered 1,200 px workspace and 24/16 px outer spacing. Proposed layout checks cover 1,440×900 and 1,024×768 desktops plus a 390 px narrow viewport. At narrow widths stack panels and allow tables/code to scroll within their region rather than overflow the page. Desktop remains the primary operating environment; mobile is a review/support target.
@@ -41,6 +42,7 @@ Use Inter/system sans for controls and labels, JetBrains Mono/system monospace f
 
 ## Interaction requirements
 
+- A viewer sees every changing control disabled, with the reason as its title ("Viewers cannot change the lab"); errors from the server show its plain text, not a status code (v0.3.0).
 - Identify a robot by version, manufacturer and serial wherever ambiguity matters. Serial alone must not silently select a different target (PR-02).
 - Say “Order published” for successful publication; show observed acceptance/completion from robot telemetry separately.
 - Explain failure duration and whether it ends automatically. Offer Clear only for blocked path and low battery.

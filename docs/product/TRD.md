@@ -1,6 +1,6 @@
 # Technical requirements document — ActuNode Lab
 
-Working specification · 15 October 2026 · [PRD](PRD.md) · [Backend contracts](BACKEND_SCHEMA.md)
+Working specification · updated 17 October 2026 (v0.3.0) · [PRD](PRD.md) · [Backend contracts](BACKEND_SCHEMA.md)
 
 ## Architecture and deployment
 
@@ -12,8 +12,10 @@ flowchart LR
   API <-->|MQTT| Broker[Mosquitto]
   Broker <--> Sim[Python simulated robots]
   Broker <--> External[External robot or fleet manager]
-  API --> Files[JSONL sessions on host volume]
+  API --> Files[JSONL sessions and audit trail on host volume]
   CLI[Scenario runner] <-->|HTTP and WebSocket| API
+  Prom[Prometheus] -->|GET /api/metrics| API
+  Broker <-->|optional profile ros2| ROS[ROS 2 / Nav2 robot]
 ```
 
 Use one backend process for shared in-memory state, recording ownership, replay and counters. Multiple workers/replicas are unsupported until coordination is explicitly designed. No SQL database, Redis, cloud account or Kubernetes deployment is required.
@@ -28,9 +30,12 @@ Use one backend process for shared in-memory state, recording ownership, replay 
 | TR-04 | PR-06/07 | Stream JSONL recording, validation and replay. Preserve monotonic relative timing separately from UTC timestamps. Stop/close on shutdown and report size/write failure reasons. |
 | TR-05 | PR-04 | Failure control uses `actunode/v1/sim/<serial>/inject`, separate from VDA topics. Strict parameters and simulator targeting prevent arbitrary external fault commands. |
 | TR-06 | PR-08 | CLI is a black-box API client; strict YAML rejects unknown/duplicate keys. Preserve owned-resource cleanup, recording ownership and exit code semantics. |
-| TR-07 | PR-10 | Enforce host/origin guards, HttpOnly login cookies, token rate limits, scoped broker ACLs and TLS sharing. Mount only required secrets; never include credentials in test artifacts. |
-| TR-08 | PR-11 | Add independent stack as an opt-in Compose profile or equivalent isolated composition. Pin compatible versions, document licenses/resources, scope credentials and retain default startup behavior. |
+| TR-07 | PR-10/15 | Enforce host/origin guards, HttpOnly login cookies, per-person tokens stored only as SHA-256 (users file, re-read on change), viewer/operator roles enforced in middleware (new routes covered by default), token rate limits shared by logins and metrics bearer tokens, scoped broker ACLs and TLS sharing. Mount only required secrets; never include credentials in test artifacts. |
+| TR-08 | PR-11 | Done: opt-in Compose profile `ros2`, pinned upstream commits, scoped robot login over TLS, default startup unchanged; optional patches behind a build argument (`ACTUNODE_ROS2_PATCHES=1`) so the unpatched measurement stays reproducible; a weekly workflow runs both. |
 | TR-09 | PR-12 | API errors remain actionable in UI and CLI; publication success is not robot acceptance. Reconnect restores authoritative state rather than suggesting continuity of missing events. |
+| TR-10 | PR-15 | Audit trail as ASGI middleware: every state-changing /api request by a known user, after it ran (user, role, client, action, target, status); logins including failed ones without a user; JSON lines rotated at 10 MB, newest 2,000 in memory for `GET /api/audit`. Route details cannot overwrite core fields. |
+| TR-11 | PR-16 | `GET /api/metrics`, Prometheus text 0.0.4 without a client library: counters where events happen, gauges at scrape time, broker statistics from `$SYS/broker/#` routed before the robot pipeline (never shown, recorded or validated). |
+| TR-12 | PR-17 | Release tags build amd64/arm64 images with provenance (mode=max), SBOM and a GitHub attestation; actions pinned by commit; compose opts in through `ACTUNODE_IMAGES`, `ACTUNODE_VERSION`, `ACTUNODE_PULL_POLICY`. |
 
 ## Resource and input constraints
 
@@ -54,18 +59,18 @@ Use the existing [load harness](../../tests/load/README.md), run at 10, 25 and 5
 | Browser median frame rate | ≥30 fps |
 | Backend dropped events / browser console errors | 0 / 0 |
 
-All remaining harness thresholds also apply. Record host, workload, version and duration. ROS 2 resource usage is measured separately; simulator benchmarks do not establish its capacity.
+All remaining harness thresholds also apply. Record host, workload, version and duration. ROS 2 resource usage is measured separately; simulator benchmarks do not establish its capacity. Last full run: 15 October at bb7ec88 (all passed; 50 robots: latency p99 214 ms of 250, little headroom). The audit trail and per-message metrics counters added since make a new run a v0.4.0 gate; the weekly CI run (Mondays, `load.yml`) has not had its first scheduled run yet.
 
 ## Persistence, recovery and compatibility
 
-Runtime robot state, sent orders, validation history and live IDs are process-local. JSONL files survive backend restart; runtime counters do not constitute a durable audit log. An interrupted session may lack its final `end` record. Recorder shutdown must close cleanly where possible; backend restart requires clients to fetch a new snapshot.
+Runtime robot state, sent orders, validation history and live IDs are process-local. JSONL files survive backend restart. The audit trail (`.audit.jsonl`, D-56) is the durable record of who changed what; runtime counters and metrics are not. An interrupted session may lack its final `end` record. Recorder shutdown must close cleanly where possible; backend restart requires clients to fetch a new snapshot.
 
 VDA orders/state/factsheets use QoS 0; connection uses QoS 1 and retained last-will semantics. Fault injection uses QoS 1. Replay republishes selected recorded traffic; it is not a closed-loop simulator and does not reconstruct broker-wide guarantees.
 
-Preserve session format version 1 and existing scenario syntax. Proposed changes to API/scenario versioning require an explicit compatibility decision and fixtures before release. Avoid adding storage infrastructure without a measured query, durability or collaboration need.
+Session format 1 and scenario format 1 are versioned and promised in [COMPATIBILITY.md](../COMPATIBILITY.md) (D-54); the HTTP API and metric names are kept compatible, with breaks announced a release ahead. Changes follow that page. Avoid adding storage infrastructure without a measured query, durability or collaboration need.
 
 ## Verification and release
 
-Required checks: ruff lint/format, backend/simulator/CLI pytest, frontend lint/Vitest/TypeScript build, shared contract fixtures, Docker scenarios, e2e for VDA 2.1, VDA 3.0 and authenticated/TLS configuration, plus load and security checks applicable to the candidate. See [architecture](../ARCHITECTURE.md) for commands and workflow definitions.
+Required checks: ruff lint/format, backend/simulator/CLI pytest, frontend lint/Vitest/TypeScript build, shared contract fixtures, Docker scenarios, e2e for VDA 2.1, VDA 3.0 and authenticated/TLS configuration, the ROS 2 workflow (unpatched and patched), the image build for both architectures, plus load and security checks applicable to the candidate. See [architecture](../ARCHITECTURE.md) for commands and workflow definitions.
 
 PR-11 additionally needs independent-stack mission/cancel tests, raw traffic artifacts, explicit expected deviations and isolation/cleanup checks. No silent conversion of a protocol violation into a pass. Known incompatibilities must name the component/version, observed behavior and reproduction steps.

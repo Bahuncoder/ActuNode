@@ -1,10 +1,10 @@
 # Backend schema and data contracts — ActuNode Lab
 
-Working specification · 15 October 2026 · [TRD](TRD.md)
+Working specification · updated 17 October 2026 (v0.3.0) · [TRD](TRD.md)
 
 ## Storage model
 
-**Current:** Python runtime objects and bounded collections plus JSONL files in `sessions/`. There are no relational tables or database migrations. The following is a logical schema of implemented entities, not proposed SQL. Source references are authoritative when optional transport fields vary.
+**Current:** Python runtime objects and bounded collections plus JSONL files in `sessions/` (recordings, uploads, and the audit trail `.audit.jsonl` with one rotated `.audit.jsonl.1`), and the users file in the secrets volume (`backend/users`, `name:role:sha256` per line, written by mqtt-init). There are no relational tables or database migrations. The following is a logical schema of implemented entities, not proposed SQL. Source references are authoritative when optional transport fields vary.
 
 ```mermaid
 erDiagram
@@ -26,10 +26,12 @@ Relationships are logical and are not enforced by foreign keys. Messages may con
 | Issue | `severity:error|warning`, `rule:string`, `message:string`, `path:string` | Attached to message; rule counts aggregated |
 | ValidationSummary | `since:UTC string`, `checked:integer`, `withIssues:integer`, `byRule:RuleCount[]`, `epoch?:integer` | Since last reset; epoch distinguishes resets |
 | RuleCount | `rule`, `description`, `severity`, `count`; optional `last:{message,topic,at}` | Aggregate by rule; one message may have multiple issues |
-| FailureEntry | `injectionId`, `timestamp`, `robotId`, `failure`, `action:inject|clear`, `robotStatus`, optional `params` | Recent bounded event log; represents injection command, not durable user audit |
+| FailureEntry | `injectionId`, `timestamp`, `robotId`, `failure`, `action:inject|clear`, `robotStatus`, optional `params` | Recent bounded event log of injection commands; who sent them is in the AuditEntry |
 | RecordingStatus | `sessionId`, `name:string|null`, `startedAt`, `messageCount`, `duration`; optional `sizeBytes`, `maxBytes` | One active recorder; duration in seconds |
 | ReplayStatus | `sessionId`, `state:running|finished|stopped|failed`, `speed`, `includeCommands`, optional `currentTime`, `sent`, `total`, `position`, `duration` | Process-local task; position/duration in recorded seconds |
 | ProximityPair | `robots:string[]`, `distance:number` | Pair of composite robot keys; distance in metres |
+| User | `name:string` (lower case, ≤32; `admin` = the shared token, `local` = login off), `role:operator|viewer` | From the users file; only the token's SHA-256 is stored; a session ends when its user is removed or re-tokened |
+| AuditEntry | `at:UTC string`, `user:string|null`, `role:string|null`, `client:string`, `action:string` (`mission.send`, `failure.inject`, `session.delete`, `login`, `login.failed`, …), `method`, `path`, `status:integer`; optional `robot`, `failure`, `destination`, `source`, `orderId`, `sessionId` (each ≤100 characters) | Appended after each state-changing request by a known user and each login attempt; durable (JSON lines, rotated at 10 MB) |
 
 See [live.ts](../../frontend/src/live.ts), [live.py](../../backend/app/live.py), [validator.py](../../backend/app/validator.py) and [recorder.py](../../backend/app/recorder.py). Payloads remain untrusted; TypeScript shapes do not validate external robot state. Robot cache and UI previews may contain reduced data with truncation markers.
 
@@ -74,14 +76,19 @@ Clear takes no parameters. MQTT command: `{injectionId,timestamp,robotId,failure
 
 | Operation | Contract |
 |---|---|
-| GET `/api/session` | `{loginRequired:boolean, loggedIn:boolean}` |
-| POST `/api/login` | `{token:string}` → HttpOnly session cookie; no user table |
+| GET `/api/session` | `{loginRequired:boolean, loggedIn:boolean, user:string|null, role:string|null}` |
+| POST `/api/login` | `{token:string}` → HttpOnly session cookie and `{loggedIn, user, role}`; the token identifies the person (users file or the shared admin token) |
+| any changing request as a viewer | 403, plain text "Viewers cannot change the lab" (validate and logout allowed) |
+| GET `/api/audit?limit=&user=&action=` | `{entries: AuditEntry[]}` newest first; `limit` 1–500 (default 100); `action` matches a name or the prefix before a dot |
+| GET `/api/metrics` | Prometheus text 0.0.4; a session or `Authorization: Bearer <token>` (this path only) |
 | POST `/api/logout` | Ends browser session |
 | GET `/api/sessions` | Array of SessionSummary |
 | POST `/api/sessions/upload?name=` | Raw `application/x-ndjson` body, not multipart; returns SessionSummary on 201 |
 | POST `/api/sessions/{id}/validate` | Report with `sessionId,checked,withIssues,byRule,issues,truncated`; issue samples bounded to first 100 |
 | POST `/api/sessions/{id}/replay` | `speed` 0.1–20, optional `include_commands` and `current_time`; UI offers narrower speed choices |
 | GET `/api/sessions/storage` | `{keepDays,maxTotalMb,usedMb,sessions}` |
+
+Session ids: `<YYYYMMDD-HHMMSS>_<name>`, then `_2`, `_3`, … for later sessions with the same name in the same second; one rule for recordings and uploads (`make_session_id`), always matching the backend's `SESSION_ID` pattern.
 
 SessionSummary: `sessionId:string`, `name:string|null`, `startedAt:string|null`, `endedAt?:string|null`, `messageCount:integer`, `recording:boolean`, `complete?:boolean`, `reason?:string|null`, `sizeBytes:integer`. A summary is a file projection, not a separate persisted row.
 
@@ -121,6 +128,6 @@ A state-message event can omit duplicate `robot.state` and use `stateFromMessage
 
 Deletion of an active recorded/replayed session is refused. Offline validation of an active recording is refused. Validation/upload concurrency is bounded; busy work can return 429. Upload can return 413 size, 422 line/format, 408 stalled or 507 storage; it never evicts unrelated recordings to succeed. General API errors follow FastAPI detail responses; callers must handle string and validation-list forms.
 
-Secrets live in mounted files/volumes, not JSONL records or a user table. Shared token login supplies access control, not per-user attribution. Cross-process IDs and transactional DB semantics must not be inferred from runtime objects.
+Secrets live in mounted files/volumes, not JSONL records or a user table; user tokens are stored only as hashes. Per-person logins (D-56) supply attribution: the audit trail names who changed what. The trail is on the lab's disk and not protected against the lab's own operators. Cross-process IDs and transactional DB semantics must not be inferred from runtime objects.
 
-No database migration is proposed for v0.2.0. If durable search, audit or multi-user ownership becomes necessary, first define retention, access rules and migration compatibility in a new decision; retain portable v1 artifacts or provide an explicit converter.
+No database: the per-user audit came as JSON lines (D-56), without a migration. If durable search or multi-user ownership of sessions becomes necessary, first define retention, access rules and migration compatibility in a new decision; retain portable v1 artifacts or provide an explicit converter.

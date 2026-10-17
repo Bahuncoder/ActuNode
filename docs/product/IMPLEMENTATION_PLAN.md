@@ -1,76 +1,99 @@
 # Implementation plan — ActuNode Lab
 
-Working specification · 15 October 2026 · [PRD](PRD.md) · [TRD](TRD.md)
+Working specification · updated 17 October 2026 (v0.3.0) · [PRD](PRD.md) · [TRD](TRD.md)
 
 ## Planning basis
 
-The original roadmap milestones 1–12 are recorded complete; this plan continues from that baseline toward a proposed v0.2.0. It does not schedule rebuilding shipped functionality. Milestone numbers in [PLAN.md](../PLAN.md) are work packages, not elapsed calendar weeks. Estimates below are planning ranges for engineering effort, not promised dates; external feedback and connector compatibility can change them.
+Roadmap weeks 1–16 ([PLAN.md](../PLAN.md)) are complete and released: v0.1.0 (13 Oct), v0.2.0 (16 Oct), v0.3.0
+(17 Oct, the full audit closed). Weeks are work packages, not calendar weeks (D-30). This plan records the outcome
+of the packages written on 15 October (A–G) and sequences the work toward **v0.4.0** (H–M). Estimates are planning
+ranges, not promised dates; user evidence can reorder them.
 
-No production code or new dependencies are introduced by this document package. Product prioritization belongs to the founder; engineering supplies runnable deliverables and test evidence. Roles below are responsibilities to assign, not assumed team members.
+Product prioritization belongs to the founder; engineering supplies runnable deliverables and test evidence.
 
-## Work packages and dependencies
+## Outcome of packages A–G (15 → 17 October)
 
-| Package | Effort / responsible role | Deliverables | Dependency / exit gate |
+| Package | Status | Evidence |
+|---|---|---|
+| A. Baseline and discovery | Engineering part done; discovery open | Gates re-run per release (CI on each tagged commit); fresh-clone check of the quick start (D-54); pilot recruits and interviews not yet done |
+| B. Connector feasibility | Done | InOrbit `ros_amr_interop` + `vda5050_adapter_examples`, pinned commits, licence and maintenance checked (D-51) |
+| C. Independent stack integration | Done | Compose profile `ros2`, scoped TLS login, map alias, mission and cancel (D-51) |
+| D. Conformance and regression | Done | Nine scenarios plus raw checks, report with spec citations (D-52); patches 9/9 and 4/4, unpatched 4/9 and 0/4, both weekly in CI (D-55); five upstream PRs open |
+| E. Onboarding and UX | Partly done | GETTING_STARTED, CONNECT_YOUR_ROBOT, failure catalogue, scenario gallery, message flows (D-53/D-54); UI for real robots (D-52); viewer mode and Activity panel (D-56). Open: observed new-user sessions; keyboard/zoom/screen-reader review |
+| F. External pilot | Not started | Needs a participant |
+| G. Release candidate | Done | v0.2.0 and v0.3.0, each gated on its tagged commit; PR-12/13 open, so released as a preview |
+
+Also delivered beyond A–G, from the full audit (D-50): per-person logins and audit trail (D-56), metrics (D-57),
+published images (D-58), scenario format version and compatibility promise (D-54), robot-scoped scenario checks
+(D-59).
+
+## Work toward v0.4.0
+
+| Package | Effort / responsible role | Deliverables | Exit gate |
 |---|---|---|---|
-| A. Baseline and discovery | 1–2 days / engineering + founder | Candidate baseline checks; current screenshots; 3 pilot recruits; recorded assumptions and interview questions | Start immediately; list observed gaps separately from proposed features |
-| B. Connector feasibility | 2–4 days / integration engineering | Compare available independent ROS 2/VDA connectors, compatible protocol/ROS/Nav2 versions, licenses, maintenance and headless requirements; select and pin one | A technical baseline; demonstrate clean startup before committing to full profile |
-| C. Independent stack integration | 3–6 days / integration engineering | Optional Compose profile/composition, scoped login, resource/startup limits, map/location mapping, mission and cancel example | B; PR-11 mission completes, traffic captured, default simulator startup unchanged |
-| D. Conformance and regression | 2–4 days / engineering | Applicable scenario subset, pass/fail report with raw evidence, expected limitations, repeatable cleanup and CI decision | C; repeatable clean runs and no suppressed protocol failures |
-| E. Onboarding and UX | 2–4 days / frontend + docs | First-scenario path, explicit target/status copy, complete/incomplete evidence cues, failure recovery guidance, keyboard/zoom fixes | A baseline; C/D limitations inform connector guide; PR-12 observed with new users |
-| F. External pilot | 1–2 engineering days plus participant availability / founder + engineering | Outside integrator's incident or reaction scenario, consented recording, interview notes and prioritized findings | Existing lab is sufficient to recruit/run pilots; C optional unless pilot requires it; PR-13 evidence |
-| G. Release candidate | 1–2 days / engineering + founder | Full gates, changelog/docs alignment, known limits, release notes and v0.2.0 decision | C/D/E plus F outcome or explicit preview status |
+| H. Re-measure load | 0.5–1 day / engineering | 10/25/50-robot load harness on the current code (last run 15 Oct at bb7ec88, before the audit trail and metrics counters); results in tests/load/results and PROGRESS; fixes for any threshold missed | Every TRD performance threshold passes on a recorded host |
+| I. Accessibility and interaction review | 2–3 days / engineering | The design brief's checks on the current UI: keyboard-only operation of every control, visible focus, labels, 200% zoom, 390 px width, contrast of the token pairs, one screen reader pass, reduced motion; the interaction requirements (units, unknown-not-zero, deletion confirmation, busy states, copy patterns) checked one by one; fixes with tests | A written review with each item passed, fixed, or recorded as a known gap |
+| J. Observed onboarding (PR-12) | Founder: 3 participants; engineering: fixes, 1–3 days | Sessions with GETTING_STARTED only; time, errors, interventions; prioritized fixes | ≥2 of 3 finish within 20 minutes without help, or the gaps are fixed and re-tested |
+| K. External pilot (PR-13) | Founder plus 1–2 engineering days | One outside integrator's incident or reaction scenario, consented and redacted | Outcome recorded, or the release keeps the preview designation |
+| L. Upstream follow-through | Engineering, as reviews arrive | Answer InOrbit's reviews on PRs #82–#85 and #14; when one merges, move the pin in `ros2/Dockerfile` and delete its patch | No patch kept for a merged fix |
+| M. Discovery-gated (PR-14) | Only with user evidence | Live site-broker bridge, configurable simulated manufacturer, duplicate-mission detection | A user need recorded in PROGRESS first |
 
-B–D correspond to original weeks 13–14; E includes weeks 15–16 onboarding and educational material. Discovery and pilot recruitment can proceed alongside engineering without depending on ROS 2 delivery.
+H and I need no outside people and come first. J and K run whenever participants are available; L whenever
+InOrbit answers.
 
 ## Package details
 
-### A — Re-establish evidence
+### H — Load
 
-Run documented unit/lint/build gates and required Docker configurations on the candidate commit. Record actual results in PROGRESS.md, avoiding inherited test counts as proof of a new run. Compare current docs with implementation and log blockers. Capture journey A from [app flow](APP_FLOW.md) as the usability baseline. Ask pilot recruits about their last integration incident before demonstrating the tool.
+Run `tests/load/run_load.py` at 10, 25 and 50 robots with missions and browser monitoring, on an isolated stack.
+Compare with the 15 October run (tests/load/results/latest.md) and D-38. Watch the costs added since: the audit middleware (state-changing requests only), metrics
+counters on every message (a lock per increment), robot-scoped validation (runner side only). Use `/api/metrics`
+during the run as a second view of drops and backlogs.
 
-### B/C — Add independent interoperability
+### I — Accessibility and interaction
 
-Evaluate connectors using primary upstream documentation when implementation begins; no connector is selected in this specification. Confirm version compatibility and upstream license before adding artifacts. Pin image/source references and record provenance. Provision a separately scoped robot login and ensure topic identity matches mission target fields. Account for ROS coordinates/map IDs and Nav2 startup readiness; do not assume the lab's fixed map matches an arbitrary robot world.
+Work from the [design brief](UI_UX_DESIGN_BRIEF.md): first capture the current screens (desktop 1,440×900 and
+1,024×768, 390 px), then check each item and record the result. Small fixes go in with component tests; anything
+larger is listed with its reason. Do not claim WCAG conformance from this review; it is a design objective.
 
-Implement the optional stack and health/readiness checks, then mission completion and cancel. Store a minimal recording and exact reproduction commands. Avoid modifying the default simulator to hide connector deviations. If connector compliance prevents completion, publish reproducible findings and decide whether to fix upstream, add an explicit compatibility mode, or choose another connector.
+### J/K — Evidence from people
 
-### D — Test what is actually supported
-
-Select scenarios using plain VDA fields for external robots; do not require `actunode.missionStatus`. Fault injection scenarios apply only to ActuNode's simulator, so independent-stack tests should cover mission acceptance/completion, cancellation, connection and validation. Record both protocol and functional outcomes: completing a mission with invalid traffic is not a clean conformance pass.
-
-Prefer deterministic headless CI if resource and startup measurements support it. If integration needs manual or scheduled execution, document the exact reason, runner requirements and release procedure rather than claiming full CI coverage.
-
-### E/F — Prove a usable workflow
-
-Use the [design brief](UI_UX_DESIGN_BRIEF.md) to address observed friction with small changes to current panels. Test new-user mission/failure/recording and CLI scenario flow, including replay conflicts and malformed files. Record completion times and interventions against PR-12. Pilot evidence should capture the user's original problem, expected response, observed result and whether the artifact helped diagnose it. An example fleet manager maintained by ActuNode does not count as an external pilot.
-
-Create a failure-case catalogue, scenario gallery and message-flow explanation from verified examples. Publish only consented/redacted pilot details. Keep the documentation usable without private company files.
+Unchanged from the 15 October plan: participants get only the public README and sample scenario; record time,
+errors and interventions; an ActuNode example does not count as an external pilot; publish only consented,
+redacted details.
 
 ## Traceability and release gates
 
 | Requirement | Implementation evidence | Verification |
 |---|---|---|
-| PR-01/10, TR-07 | Compose, broker ACL/TLS, auth and security guards | Fresh start, sharing-mode e2e, security regressions/scans |
+| PR-01/10/15, TR-07/10 | Compose, broker ACL/TLS, per-person logins, roles, audit trail | Fresh start, sharing-mode e2e (users, viewer refusals, removal), security regressions/scans |
 | PR-02/03, TR-01/02 | Mission/protocol code and fixtures | Both VDA versions, identity collisions, schema/order tests |
 | PR-04/05, TR-03/05 | Simulator controls, hub and UI panels | Fault behavior, malformed traffic, reconnect/slow-client checks |
 | PR-06/07, TR-04 | Recorder/readers/replayer | Upload/retention/crash/replay-conflict and bounded-input checks |
-| PR-08/09, TR-06 | CLI, sample scenarios and outside clients | Docker scenarios, exit codes, recording ownership and cleanup |
-| PR-11, TR-08 | Independent stack and conformance report | Clean setup, mission/cancel, saved traffic and documented deviations |
-| PR-12, TR-09 | Onboarding instructions and targeted UX changes | Pilot completion target, keyboard/zoom review |
-| PR-13 | External incident/scenario and feedback | Outside participant outcome recorded with consent |
+| PR-08/09, TR-06 | CLI, sample scenarios and outside clients | Docker scenarios, exit codes, recording ownership, cleanup, robot-scoped checks |
+| PR-11, TR-08 | Independent stack, conformance report, patches | Weekly ROS 2 workflow, unpatched and patched |
+| PR-12, TR-09 | Onboarding instructions and UX fixes | Package J sessions; package I review |
+| PR-13 | External incident/scenario and feedback | Package K |
+| PR-16, TR-11 | `/api/metrics` | Unit tests; e2e scrape in both modes |
+| PR-17, TR-12 | Image workflow | Build of both architectures; attestation verified on the release |
 
-Before release: required lint/types/unit/contract/e2e/scenario gates pass; all existing load thresholds pass at 10/25/50 robots on a recorded host; relevant security scans are reviewed; independent-stack limits are explicit; no unresolved release-blocking regression; public quick start works from clean checkout. Fixes include meaningful regression tests where behavior warrants them; prose-only updates need link/format review.
+Before v0.4.0: required lint/types/unit/contract/e2e/scenario gates pass on the candidate; the ROS 2 workflow and
+image build pass; **all load thresholds pass at 10/25/50 robots on a recorded host (H)**; the accessibility review
+is written (I); PR-12/13 outcomes recorded or the preview designation kept; public quick start works from a clean
+checkout.
 
 ## Risks, fallback and deferred work
 
 | Risk | Response |
 |---|---|
-| Connector is incompatible or unmaintained | Time-box feasibility; preserve findings and choose another candidate or explicitly retain preview scope |
-| ROS stack makes default lab heavy | Keep opt-in composition, separate measurements and documented resource prerequisites |
-| Pilot recruitment takes longer than development | Recruit early; ship usable previews without describing internal tests as market validation |
-| UI improvements obscure evidence | Preserve raw message access, truncation markers and existing contract fixtures |
-| Scope grows into production orchestration | Keep planning/avoidance/safety and hosted multitenancy outside this release |
+| Added per-message work costs throughput | H measures it; counters can be batched if a threshold is missed |
+| Pilot recruitment takes longer than development | Ship previews; never describe internal tests as market validation |
+| Upstream does not merge the patches | Keep them optional and reproducible; the unpatched measurement stays the default |
+| UI fixes obscure evidence | Preserve raw message access, truncation markers and contract fixtures |
+| Scope grows into production orchestration | Keep planning/avoidance/safety and hosted multitenancy out |
 
-Deferred until evidence justifies them: live broker bridge, configurable manufacturer simulation, duplicate-mission detection, persistent indexed search, per-user audit, metrics service, published images and API/scenario versioning. Track any dependency that becomes release-critical explicitly.
+Deferred until evidence justifies them: live broker bridge, configurable manufacturer simulation, duplicate-mission
+detection, persistent indexed search, SSO and finer roles. (Done since 15 October and no longer deferred: per-user
+audit, metrics, published images, scenario/API versioning.)
 
-Changes to optional integration should be removable without session-format migration; disable its profile to return to the default lab. Preserve failing artifacts before cleanup. The release decision records which proposed criteria were met, unmet or deliberately deferred and why.
+The release decision records which criteria were met, unmet or deliberately deferred and why.

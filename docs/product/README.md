@@ -1,6 +1,7 @@
 # ActuNode product specification
 
-Working specification · 15 October 2026 · baseline: v0.1.0 plus completed roadmap milestones 9–12.
+Working specification · updated 17 October 2026 · baseline: **v0.3.0** (roadmap weeks 1–16 complete; the full
+audit closed, D-50). First written 15 October 2026 against v0.1.0 plus milestones 9–12.
 
 These documents describe the existing product and the requirements for its next release. **Current** means supported by repository implementation or recorded verification. **Proposed** means work or validation still required; it is not a shipped capability. Targets are acceptance criteria, not measurements or customer commitments.
 
@@ -21,4 +22,4 @@ The code defines current behavior. [Architecture](../ARCHITECTURE.md), [decision
 
 This package complements those documents; it does not replace the historical roadmap or progress log. Update affected requirements and contracts with behavior changes. Record significant design choices in DECISIONS.md and verification in PROGRESS.md. The founder owns product prioritization; engineering owns implementation and evidence. These are proposed roles, not claims about staffing.
 
-Open decisions: which independent connector to support first, which external pilot workflow to prioritize, and whether field users need capture import or a live broker bridge. User interviews may reorder proposed work.
+Open decisions: which external pilot workflow to prioritize, and whether field users need capture import or a live broker bridge. User interviews may reorder proposed work. (Decided since: the first independent connector is InOrbit's ROS 2 VDA 5050 connector, D-51.)
