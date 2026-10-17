@@ -106,6 +106,10 @@ services:
     logging: *logging
     mem_limit: 1g
     restart: unless-stopped
+    # Built here by default; or the published image (D-58): ACTUNODE_IMAGES=ghcr.io/bahuncoder/actunode,
+    # ACTUNODE_VERSION=<release> and ACTUNODE_PULL_POLICY=missing (README, "Published images").
+    image: ${ACTUNODE_IMAGES:-actunode}-backend:${ACTUNODE_VERSION:-local}
+    pull_policy: ${ACTUNODE_PULL_POLICY:-build}
     build: ./backend
     # Write session files as the host user, not root. Set ACTUNODE_UID/ACTUNODE_GID
     # if your user id is not 1000 (check with `id -u` and `id -g`).
@@ -152,6 +156,8 @@ services:
     logging: *logging
     mem_limit: 512m
     restart: unless-stopped
+    image: ${ACTUNODE_IMAGES:-actunode}-simulator:${ACTUNODE_VERSION:-local}
+    pull_policy: ${ACTUNODE_PULL_POLICY:-build}
     build:
       context: .
       dockerfile: simulator/Dockerfile
@@ -177,6 +183,8 @@ services:
     logging: *logging
     mem_limit: 256m
     restart: unless-stopped
+    image: ${ACTUNODE_IMAGES:-actunode}-frontend:${ACTUNODE_VERSION:-local}
+    pull_policy: ${ACTUNODE_PULL_POLICY:-build}
     build: ./frontend
     # Plain HTTP only on this computer; HTTPS (8443) is what a network sees (D-26).
     ports:
@@ -211,6 +219,8 @@ services:
     <<: *hardened
     profiles: ["test"]
     mem_limit: 512m
+    image: ${ACTUNODE_IMAGES:-actunode}-runner:${ACTUNODE_VERSION:-local}
+    pull_policy: ${ACTUNODE_PULL_POLICY:-build}
     build: ./cli
     network_mode: "service:frontend"
     user: "${ACTUNODE_UID:-1000}:${ACTUNODE_GID:-1000}"

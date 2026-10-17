@@ -4,6 +4,15 @@ What changed, per commit, newest first. Status and plans are in [docs/PROGRESS.m
 
 ## Unreleased
 
+### Published images (A7, D-58)
+
+- A release tag builds the backend, simulator, frontend and runner images for amd64 and arm64 and publishes them
+  to `ghcr.io/bahuncoder/actunode-<name>:<version>` (and `<major>.<minor>`), with build provenance attested
+  by GitHub and an SBOM. Started by hand, the workflow only builds (a check).
+- `docker-compose.yml` names its images `${ACTUNODE_IMAGES:-actunode}-<name>:${ACTUNODE_VERSION:-local}` with
+  `pull_policy: ${ACTUNODE_PULL_POLICY:-build}`: the default still builds locally (images are now tagged
+  `actunode-<name>:local`); set the three variables to run a published release without building.
+
 ### Metrics (A6, D-57)
 
 - **`GET /api/metrics`** in the Prometheus text format: messages received and rejected (by rule), validation

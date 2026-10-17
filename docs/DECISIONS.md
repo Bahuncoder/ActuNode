@@ -1047,3 +1047,22 @@ cookie; only this path accepts it, and wrong tokens count towards the same per-c
 a GET, so it is not in the audit trail.
 **Consequences.** An operator can graph and alert on the lab's load; the load test's limits (D-38) become visible
 in production. Metric names may still change in 0.x (COMPATIBILITY.md); a change is in the changelog.
+
+
+## D-58 · Published images
+17 Oct 2026 · Accepted (founder: "let's work on the rest"; reverses the deferral in D-54)
+
+**Context.** Audit item A7 (D-50): every user built the images locally (minutes on a first start, more on a
+small machine); D-54 deferred publishing until a user asked.
+**Decision.** `.github/workflows/images.yml` runs on `v*` tags: the backend, simulator, frontend and runner images
+(the services ActuNode builds; the ROS 2 robot stays local, it is optional and large), for linux/amd64 and
+linux/arm64, pushed to `ghcr.io/<owner>/actunode-<name>` tagged `<version>` and `<major>.<minor>`, with
+provenance (mode=max), an SBOM, and a GitHub build-provenance attestation pushed to the registry. Started by hand
+it builds both architectures without pushing. Actions are pinned by commit, like the other workflows; the job
+has `packages: write` only for this. Compose gives each built service an `image:` from `ACTUNODE_IMAGES` and
+`ACTUNODE_VERSION` (default `actunode-<name>:local`) and `pull_policy: ${ACTUNODE_PULL_POLICY:-build}`, so
+nothing changes unless a user opts in. The images take no build arguments (user ids are set at run time), so
+one image serves everyone.
+**Consequences.** A release can be run without building. The first push creates the packages on GitHub as
+private: the founder makes each public once (package settings), and the release checklist says so. A release is
+now also a supply chain: the workflow, its pinned actions and the base images are reviewed like code.
