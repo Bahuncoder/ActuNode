@@ -1066,3 +1066,17 @@ one image serves everyone.
 **Consequences.** A release can be run without building. The first push creates the packages on GitHub as
 private: the founder makes each public once (package settings), and the release checklist says so. A release is
 now also a supply chain: the workflow, its pinned actions and the base images are reviewed like code.
+
+
+## D-59 · Scenario validation checks for one robot
+17 Oct 2026 · Accepted (founder: "do both one by one")
+
+**Context.** `validation: {no_errors: true}` counts the lab's validator totals, so in a shared lab any robot's
+broken traffic fails every scenario that checks it. Found running the sample scenario next to the unpatched ROS 2
+robot (D-55): 9 schema errors, all from `nav2_01`, failed `p1042_blocked_path`.
+**Decision.** An optional `robot:` on the validation check (format 1 allows new optional fields, D-54): issues
+are then counted on that robot's own messages (topic level 4, any VDA version and manufacturer) from the live
+feed, since the scenario (or the `never`) started; failures name the robot. Without it, behaviour is unchanged.
+The shipped scenarios that check for no errors name their robot.
+**Consequences.** Scenarios hold in a lab shared with other robots. The live feed is opened for such a step, and
+counts what the runner saw (its buffer holds 50,000 messages).

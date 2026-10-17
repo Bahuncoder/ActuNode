@@ -28,4 +28,4 @@ steps:
   - send_mission: {robot: robot_01, destination: LOADING_DOCK_2, as: resumed}
   - expect: {robot: robot_01, order: resumed, status: MOVING, within: 15}
   - expect: {robot: robot_01, order: resumed, status: COMPLETED, within: 90}
-  - expect: {validation: {no_errors: true}}
+  - expect: {validation: {no_errors: true, robot: robot_01}}  # only its traffic: other robots in the lab do not count

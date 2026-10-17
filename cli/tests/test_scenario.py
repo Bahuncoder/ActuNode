@@ -159,7 +159,7 @@ def test_descriptions_read_like_the_scenario():
     text = [step.describe() for step in scenario.steps]
     assert "send mission robot_01: RECEIVING_DOOR_2 -> STORAGE_A17 (load P-1042) as p1042" in text
     assert "expect robot_01 status BLOCKED, order p1042, error pathBlocked within 5 s, then for 3 s" in text
-    assert "expect no validation errors within 10 s" in text
+    assert "expect no validation errors from robot_01 within 10 s" in text
 
 
 def test_a_scenario_may_declare_the_format_version():

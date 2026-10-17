@@ -29,4 +29,4 @@ steps:
   - clear: {robot: robot_01, failure: BLOCKED_PATH}
   - expect: {robot: robot_01, order: p1042, status: MOVING, no_error: pathBlocked, within: 5}
   - expect: {robot: robot_01, order: p1042, status: COMPLETED, within: 120}
-  - expect: {validation: {no_errors: true}}
+  - expect: {validation: {no_errors: true, robot: robot_01}}  # only its traffic: other robots in the lab do not count

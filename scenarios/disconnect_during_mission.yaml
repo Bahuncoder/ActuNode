@@ -24,4 +24,4 @@ steps:
       message: {topic: uagv/+/+/robot_03/connection, match: {connectionState: ONLINE}}
       within: 20
   - expect: {robot: robot_03, order: job, status: COMPLETED, within: 120}
-  - expect: {validation: {no_errors: true}}
+  - expect: {validation: {no_errors: true, robot: robot_03}}  # only its traffic: other robots in the lab do not count

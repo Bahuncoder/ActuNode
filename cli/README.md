@@ -15,7 +15,7 @@ P-1042 blocked on the way to storage  (scenarios/p1042_blocked_path.yaml)
   ok    3. expect robot_01 status MOVING, order p1042 within 15 s  [0.3 s]
   ...
   ok   11. expect robot_01 status COMPLETED, order p1042 within 120 s  [24.1 s]
-  ok   12. expect no validation errors within 10 s  [0.0 s]
+  ok   12. expect no validation errors from robot_01 within 10 s  [0.0 s]
   -> PASSED in 29.0 s
 
 1 scenario(s): 1 passed, 0 failed, 0 could not run  (29.0 s)
@@ -126,7 +126,8 @@ The runner looks every 0.25 s, so a robot state that lasts less than that can be
 | `no_error: pathBlocked` | The robot does not report this error. |
 | `connection: ONLINE` | Connection state `ONLINE`, `OFFLINE` or `CONNECTIONBROKEN` (`CONNECTION_BROKEN` in 3.0; either spelling matches both). |
 | `validation: {rule: header-id}` | The validator reported at least one issue of this rule since the scenario started (rules: README, live inspector). |
-| `validation: {no_errors: true}` | The validator reported no error-severity issue since the scenario started. |
+| `validation: {no_errors: true}` | The validator reported no error-severity issue since the scenario started (the whole lab). |
+| `validation: {no_errors: true, robot: robot_01}` | The same for one robot's messages only (any VDA version and manufacturer): in a shared lab, another robot's traffic does not decide the step. Works with `rule:` too. |
 | `message: {topic: uagv/+/+/robot_01/instantActions, match: {actions: [{actionType: cancelOrder}]}}` | A message arrived on a topic matching the MQTT filter (`+` one level, `#` the rest), and its payload contains `match` (see below). Any robot or system, any direction: also orders and instant actions a fleet manager sends. A list of such checks means **any one of them** (D-48): "cancel, reroute or pause". |
 
 ### Per-message validator verdict and headings

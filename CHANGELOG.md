@@ -4,6 +4,12 @@ What changed, per commit, newest first. Status and plans are in [docs/PROGRESS.m
 
 ## Unreleased
 
+### Scenarios: validation checks for one robot (D-59)
+
+- `validation: {no_errors: true, robot: robot_01}` (and `rule:` with `robot:`) counts only that robot's messages,
+  from the live feed; without `robot:` the whole lab counts, as before. The shipped scenarios use it, so a
+  non-conformant robot elsewhere in the lab (the ROS 2 robot, a customer's robot) no longer fails them.
+
 ### Published images (A7, D-58)
 
 - A release tag builds the backend, simulator, frontend and runner images for amd64 and arm64 and publishes them

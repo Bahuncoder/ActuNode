@@ -22,4 +22,4 @@ steps:
 
   - clear: {robot: robot_02, failure: LOW_BATTERY}
   - expect: {robot: robot_02, no_error: batteryLow, within: 5}
-  - expect: {validation: {no_errors: true}}
+  - expect: {validation: {no_errors: true, robot: robot_02}}  # only its traffic: other robots in the lab do not count

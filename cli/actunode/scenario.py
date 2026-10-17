@@ -124,6 +124,9 @@ class ErrorCheck(_Strict):
 class ValidationCheck(_Strict):
     rule: str | None = Field(default=None, min_length=1, max_length=64)  # at least one new issue of this rule
     no_errors: Literal[True] | None = None  # no new error-severity issue since the scenario started
+    # Only this robot's messages (any VDA version and manufacturer), from the live feed; without it the whole lab
+    # counts, so another robot's traffic in a shared lab would decide the step.
+    robot: RobotId | None = None
 
     @model_validator(mode="after")
     def _one(self):
@@ -132,7 +135,8 @@ class ValidationCheck(_Strict):
         return self
 
     def describe(self) -> str:
-        return f"validation rule {self.rule} reported" if self.rule else "no validation errors"
+        text = f"validation rule {self.rule} reported" if self.rule else "no validation errors"
+        return f"{text} from {self.robot}" if self.robot else text
 
 
 ROBOT_CHECKS = ("status", "order", "error", "no_error", "connection")
@@ -274,7 +278,10 @@ class Scenario:
 
     @property
     def uses_messages(self) -> bool:
-        return any(isinstance(step, _Conditions) and step.message for step in self.steps)
+        return any(
+            isinstance(step, _Conditions) and (step.message or (step.validation and step.validation.robot))
+            for step in self.steps
+        )
 
     @property
     def robots(self) -> tuple[tuple[str, str | None], ...]:

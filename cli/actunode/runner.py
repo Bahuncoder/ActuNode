@@ -324,6 +324,7 @@ class Runner:
         return [f"{check.robot} {item}" for item in wrong]
 
     def _baseline(self) -> None:
+        self.validation_since = self.clock()  # for robot-scoped checks, which count the feed's messages
         summary = self.stack.validation()
         self.validation_epoch = summary.get("epoch")
         self.validation_base = {r["rule"]: r.get("count", 0) for r in summary.get("byRule") or [] if "rule" in r}
@@ -341,16 +342,33 @@ class Runner:
                 found[rule] = (count, entry.get("severity"))
         return found
 
+    def _robot_issues(self, robot: str) -> dict[str, tuple[int, str]]:
+        """Issues on this robot's messages (topic uagv/<version>/<manufacturer>/<robot>/...) since the scenario
+        (or the `never`) started: rule -> (count, severity)."""
+        found: dict[str, tuple[int, str]] = {}
+        for message in self.feed.since(self.validation_since):
+            levels = str(message.get("topic", "")).split("/")
+            if len(levels) < 5 or levels[3] != robot:
+                continue
+            for issue in message.get("issues") or []:
+                if isinstance(issue, dict) and issue.get("rule"):
+                    count, _ = found.get(issue["rule"], (0, ""))
+                    found[issue["rule"]] = (count + 1, str(issue.get("severity")))
+        return found
+
     def _validation_mismatches(self, check: ValidationCheck) -> tuple[list[str], str]:
-        issues = self._new_issues()
+        issues = self._robot_issues(check.robot) if check.robot else self._new_issues()
         fired = ", ".join(f"{rule} x{count}" for rule, (count, _) in issues.items()) or "none"
+        scope = f" from {check.robot}" if check.robot else ""
         if check.rule and check.rule not in issues:
-            return [f"validation rule {check.rule} not reported (new issues: {fired})"], ""
+            return [f"validation rule {check.rule} not reported{scope} (new issues: {fired})"], ""
         if check.no_errors:
             errors = {rule: count for rule, (count, severity) in issues.items() if severity == "error"}
             if errors:
-                return ["validation errors: " + ", ".join(f"{rule} x{count}" for rule, count in errors.items())], ""
-        return [], f"new validation issues: {fired}"
+                return [
+                    f"validation errors{scope}: " + ", ".join(f"{rule} x{count}" for rule, count in errors.items())
+                ], ""
+        return [], f"new validation issues{scope}: {fired}"
 
     def _message_mismatches(self, checks: list[MessageCheck]) -> tuple[list[str], str]:
         """Holds when any one of the checks finds its message."""
@@ -414,13 +432,13 @@ class Runner:
 
     def _never(self, never: Never) -> None:
         start = self.clock()
-        saved = self.validation_epoch, self.validation_base
+        saved = self.validation_epoch, self.validation_base, self.validation_since
         if never.validation is not None:
             self._baseline()  # issues count from this step's own start, like its messages
         try:
             self._never_loop(never, start)
         finally:
-            self.validation_epoch, self.validation_base = saved
+            self.validation_epoch, self.validation_base, self.validation_since = saved
 
     def _never_loop(self, never: Never, start: float) -> None:
         # "Never during the next N s": its messages count from its own start, not from the previous step's (D-48).

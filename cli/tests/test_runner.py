@@ -162,6 +162,50 @@ def test_validation_counts_only_issues_since_the_scenario_started(clock):
     assert result.outcome == FAILED and "validation errors: schema x2" in result.message
 
 
+def flagged(robot_id, rule, severity="error", topic="state"):
+    return {
+        "topic": f"uagv/v2/ActuNode/{robot_id}/{topic}",
+        "payload": {},
+        "issues": [{"rule": rule, "severity": severity}],
+    }
+
+
+def test_a_robot_scoped_validation_check_ignores_other_robots(clock):
+    """A shared lab: another robot's broken traffic must not fail this robot's scenario (D-59)."""
+    lab_wide = {"epoch": 1, "byRule": [{"rule": "schema", "severity": "error", "count": 8}]}
+    messages = [(0.5, flagged("nav2_01", "schema")), (0.6, flagged("robot_01", "header-id", "warning"))]
+    stack = FakeStack(clock, validation=[(0, {"epoch": 1, "byRule": []}), (0.5, lab_wide)], messages=messages)
+    result, _ = run(stack, clock, scenario("  - wait: 1\n  - expect: {validation: {no_errors: true, robot: robot_01}}"))
+    assert result.outcome == PASSED  # nav2_01's schema errors are not robot_01's; a warning is not an error
+    clock.now = 0
+    result, _ = run(stack, clock, scenario("  - wait: 1\n  - expect: {validation: {no_errors: true}, within: 0.1}"))
+    assert result.outcome == FAILED and "validation errors: schema x8" in result.message  # lab-wide, as before
+
+
+def test_a_robot_scoped_check_fails_on_that_robots_errors_and_names_it(clock):
+    stack = FakeStack(clock, messages=[(0.5, flagged("robot_01", "schema")), (0.7, flagged("robot_01", "schema"))])
+    result, _ = run(
+        stack, clock, scenario("  - wait: 1\n  - expect: {validation: {no_errors: true, robot: robot_01}, within: 0.1}")
+    )
+    assert result.outcome == FAILED and "validation errors from robot_01: schema x2" in result.message
+    clock.now = 0
+    result, _ = run(stack, clock, scenario("  - expect: {validation: {rule: schema, robot: robot_01}, within: 1}"))
+    assert result.outcome == PASSED
+
+
+def test_a_robot_scoped_check_counts_only_messages_since_the_scenario_started(clock):
+    clock.now = 5
+    stack = FakeStack(clock, messages=[(1, flagged("robot_01", "schema")), (6, flagged("robot_02", "schema"))])
+    result, _ = run(stack, clock, scenario("  - wait: 2\n  - expect: {validation: {no_errors: true, robot: robot_01}}"))
+    assert result.outcome == PASSED
+
+
+def test_a_robot_scoped_check_opens_the_live_feed(clock):
+    stack = FakeStack(clock)
+    run(stack, clock, scenario("  - expect: {validation: {no_errors: true, robot: robot_01}}"))
+    assert ("open_feed",) in stack.lab_calls
+
+
 def test_a_validation_reset_during_the_scenario_counts_everything_after_it(clock):
     before = {"epoch": 1, "byRule": [{"rule": "schema", "severity": "error", "count": 9}]}
     after = {"epoch": 2, "byRule": [{"rule": "schema", "severity": "error", "count": 1}]}
