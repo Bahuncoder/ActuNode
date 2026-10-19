@@ -639,6 +639,11 @@ Numbered so they can be referenced from commits. Remove an item only when it is 
 
 Newest first. One entry per work session: what was done, what was learned, what is next.
 
+### Mon 19 Oct 2026 (later): kits for the work that needs people
+docs/research/SCREEN_READER_CHECK.md (17 checks for Orca, NVDA or VoiceOver), ONBOARDING_STUDY.md (package J:
+participants, script, observation sheet, consent, target) and PILOT_GUIDE.md (package K: agreement, steps, report).
+Invitation drafts for both are in docs/company/ (private, not in git).
+
 ### Mon 19 Oct 2026: package I, accessibility and interaction review
 The design brief's checks run on the v0.3.0 UI (Playwright: screenshots at four sizes, accessible names, a keyboard
 walk, token contrast; and a line-by-line comparison with the brief). Fixed with tests: field contrast (3:1),

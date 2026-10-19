@@ -46,7 +46,7 @@ tests (`frontend/src/a11y.test.tsx`, `frontend/src/brief.test.tsx`).
 ## Known gaps (not fixed here)
 
 - **Screen reader pass**: not done; this environment has no screen reader. The announcements are checked as DOM
-  roles and text only. To do with NVDA or VoiceOver before claiming readiness.
+  roles and text only. To do with Orca, NVDA or VoiceOver before claiming readiness: [research/SCREEN_READER_CHECK.md](research/SCREEN_READER_CHECK.md) is the script (17 checks).
 - **Robot identity in the mission sender**: the robot list shows serials; the target select names the identity
   (default "ActuNode · VDA 2") and warns when the default has not been seen. Kept: changing it touches mission
   addressing (D-21).
