@@ -82,7 +82,8 @@ def test_a_mission_sent_from_the_form_drives_the_robot(page, stack):
     field(page, "To (drop)").select_option("LOADING_DOCK_1")
     page.get_by_role("button", name="Send mission").click()
 
-    expect(page.locator("p.result.ok")).to_contain_text("Sent ", timeout=10_000)
+    # Publication, not acceptance (design brief): the robot's own state says when it is done.
+    expect(page.locator("p.result.ok")).to_contain_text("Order published: ", timeout=10_000)
     expect(row.locator(".badge.status-completed")).to_have_text("COMPLETED", timeout=45_000)
     assert stack.status("robot_03") == "COMPLETED"
     x, y = stack.position("robot_03")

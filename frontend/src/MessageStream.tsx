@@ -106,7 +106,7 @@ function MessageStream({ messages }: { messages: MqttMessage[] }) {
   const ids = shown.map((m) => m.id)
   const tabbable = [active, expanded].find((id) => id !== null && ids.includes(id)) ?? ids[0]
 
-  function onKeyDown(event: KeyboardEvent<HTMLUListElement>) {
+  function onKeyDown(event: KeyboardEvent<HTMLOListElement>) {
     const rows = Array.from(event.currentTarget.querySelectorAll<HTMLElement>('button.stream-row'))
     const at = rows.indexOf(event.target as HTMLElement)
     if (at < 0) return
@@ -136,11 +136,11 @@ function MessageStream({ messages }: { messages: MqttMessage[] }) {
 
       {shown.length === 0 && <p className="empty">No messages yet.</p>}
       {/* A list of disclosure buttons (each opens its message's detail), one Tab stop with arrow keys between rows. */}
-      <ul className="stream" aria-label="Messages" hidden={shown.length === 0} onKeyDown={onKeyDown}>
+      <ol className="stream" aria-label="Messages" hidden={shown.length === 0} onKeyDown={onKeyDown}>
         {shown.map((message) => (
           <MessageRow key={message.id} message={message} open={expanded === message.id} tabbable={tabbable === message.id} onToggle={toggle} onFocus={setActive} />
         ))}
-      </ul>
+      </ol>
     </div>
   )
 }
