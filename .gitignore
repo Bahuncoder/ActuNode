@@ -36,3 +36,6 @@ junit*.xml
 
 # Scenario runner output (docker compose run --rm runner ..., D-49)
 test-results/
+
+# Local settings for docker compose (login, published images, ports): never committed.
+.env
