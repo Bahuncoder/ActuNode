@@ -303,3 +303,17 @@ def test_someone_taking_a_freed_login_gets_a_distinct_handle(cloud):
     assert sign_in(second, "code-newcomer").status_code == 303
     handles = {store.user(i).handle for i in (1, 2) if store.user(i)}
     assert len(handles) == 2 and "github:mallory" in handles
+
+
+def test_development_sign_in_exists_only_on_localhost(tmp_path):
+    with pytest.raises(RuntimeError, match="local development only"):
+        create_app(Settings(domain="actunode.com", database=tmp_path / "db", dev_login=True))
+    app = create_app(Settings(domain="actunode.com", database=tmp_path / "db2", secret="s" * 40))
+    client = TestClient(app, base_url="https://app.actunode.com")
+    client.headers["origin"] = "https://app.actunode.com"
+    assert client.post("/dev/login", data={"login": "x"}).status_code == 404
+    local = TestClient(create_app(Settings(domain="actunode.localhost", database=tmp_path / "db3", dev_login=True)),
+                       base_url=APP)  # fmt: skip
+    local.headers["origin"] = APP
+    assert local.post("/dev/login", data={"login": "tester"}, follow_redirects=False).status_code == 303
+    assert "dev:tester" in local.get("/workspaces").text

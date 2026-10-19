@@ -33,14 +33,16 @@ def login_token(key: str, workspace: str, handle: str, role: str, nonce_hash: st
                       "jti": secrets.token_hex(12), "nonce": nonce_hash})  # fmt: skip
 
 
-def revoke(lab_api: str, key: str, workspace: str, handles: list[str], client: httpx.Client) -> bool:
+def revoke(lab_api: str, host: str, key: str, workspace: str, handles: list[str], client: httpx.Client) -> bool:
     """End these people's lab sessions now (a member removed, or a role changed). False if the lab did not answer:
     then its sessions still end within their lifetime (8 h), and the next start re-checks membership."""
     now = time.time()
     token = sign(key, {"typ": "revoke", "ws": workspace, "revoke": handles, "iat": now, "exp": now + TOKEN_S,
                        "jti": secrets.token_hex(12)})  # fmt: skip
     try:
-        response = client.post(f"{lab_api}/api/sso/revoke", json={"token": token}, timeout=10)
+        # Straight to the lab over its front network (the control plane is attached to it), with the lab's public
+        # host name, which is the only one the lab answers to (D-24).
+        response = client.post(f"{lab_api}/api/sso/revoke", json={"token": token}, headers={"Host": host}, timeout=10)
         return response.status_code == 200
     except httpx.HTTPError as error:
         log.warning("Revoke on %s failed: %s", workspace, error)

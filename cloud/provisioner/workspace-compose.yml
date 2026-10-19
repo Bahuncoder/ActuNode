@@ -87,8 +87,9 @@ services:
       ACTUNODE_API_TOKEN_FILE: /run/secrets/actunode/api-token
       ACTUNODE_SSO_KEY_FILE: /run/actunode-sso/key
       ACTUNODE_WORKSPACE: "%{slug}"
-      ACTUNODE_SSO_START_URL: "https://app.%{domain}/workspaces/{workspace}/sso?nonce={nonce}"
-      ACTUNODE_ALLOWED_HOSTS: "%{slug}.%{domain}"
+      ACTUNODE_SSO_START_URL: "https://app.%{domain}%{port}/workspaces/{workspace}/sso?nonce={nonce}"
+      # Its public name, and the names its own health check and the edge's internal calls use (D-24).
+      ACTUNODE_ALLOWED_HOSTS: "%{slug}.%{domain},localhost,127.0.0.1"
       ACTUNODE_TRUSTED_PROXIES: frontend
       ACTUNODE_SESSIONS_MAX_TOTAL_MB: "2000"
     volumes:

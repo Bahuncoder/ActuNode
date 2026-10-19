@@ -1,0 +1,109 @@
+# ActuNode Cloud (D-61): the edge, the control plane, the provisioner, and two Docker API proxies. Workspace labs
+# are separate Compose projects (ws-<slug>) that the provisioner starts. Local: deploy/local-up.sh.
+name: actunode-cloud
+
+x-hardened: &hardened
+  cap_drop: [ALL]
+  security_opt: ["no-new-privileges:true"]
+  restart: unless-stopped
+  logging:
+    driver: json-file
+    options: {max-size: "10m", max-file: "3"}
+
+networks:
+  edge: {}
+  cloud: {internal: true}
+  docker-read: {internal: true}
+  docker-write: {internal: true}
+
+volumes:
+  cloud-data: {}
+
+services:
+  # Docker API for the edge: read only (it discovers labs by their labels).
+  docker-ro:
+    <<: *hardened
+    image: tecnativa/docker-socket-proxy:v0.5.0
+    environment: {CONTAINERS: 1, NETWORKS: 1, EVENTS: 1, PING: 1, VERSION: 1, POST: 0}
+    volumes: ["/var/run/docker.sock:/var/run/docker.sock:ro"]
+    networks: [docker-read]
+
+  # Docker API for the provisioner: what `docker compose up/down` needs, nothing more (no exec, build, swarm).
+  docker-rw:
+    <<: *hardened
+    image: tecnativa/docker-socket-proxy:v0.5.0
+    environment:
+      {CONTAINERS: 1, NETWORKS: 1, VOLUMES: 1, IMAGES: 1, INFO: 1, VERSION: 1, PING: 1, POST: 1, DELETE: 1,
+       ALLOW_START: 1, ALLOW_STOP: 1, ALLOW_RESTARTS: 1, DISTRIBUTION: 1, EXEC: 0, BUILD: 0, SECRETS: 0, SWARM: 0,
+       NODES: 0, PLUGINS: 0, SYSTEM: 0, AUTH: 0}
+    volumes: ["/var/run/docker.sock:/var/run/docker.sock:ro"]
+    networks: [docker-write]
+
+  edge:
+    <<: *hardened
+    image: traefik:v3.7.15
+    container_name: actunode-edge
+    cap_add: [NET_BIND_SERVICE]
+    ports:
+      - "${EDGE_BIND:-0.0.0.0}:${EDGE_HTTP_PORT:-80}:80"
+      - "${EDGE_BIND:-0.0.0.0}:${EDGE_HTTPS_PORT:-443}:443"
+      - "${EDGE_BIND:-0.0.0.0}:${EDGE_MQTTS_PORT:-8883}:8883"
+    volumes:
+      - ./traefik.yml:/etc/traefik/traefik.yml:ro
+      - ./dynamic.yml:/etc/traefik/dynamic.yml:ro
+      - ${ACTUNODE_CERTS_DIR:?set by local-up.sh}:/certs:ro
+    networks: [edge, docker-read]
+
+  control-plane:
+    <<: *hardened
+    build: ..
+    image: actunode-cloud:local
+    container_name: actunode-control-plane
+    read_only: true
+    tmpfs: ["/tmp"]
+    environment:
+      ACTUNODE_CLOUD_DOMAIN: ${ACTUNODE_CLOUD_DOMAIN:-actunode.localhost}
+      ACTUNODE_CLOUD_PUBLIC_PORT: ${ACTUNODE_CLOUD_PUBLIC_PORT:-}
+      ACTUNODE_CLOUD_DB: /data/cloud.sqlite3
+      ACTUNODE_CLOUD_SECRET_FILE: /run/cloud/secret
+      ACTUNODE_PROVISIONER_URL: http://provisioner:8100
+      ACTUNODE_PROVISIONER_TOKEN_FILE: /run/cloud/provisioner-token
+      ACTUNODE_LAB_URL_TEMPLATE: "http://ws-{slug}-frontend-1"
+      ACTUNODE_CLOUD_ALLOWLIST_FILE: /run/cloud/allowlist
+      ACTUNODE_CLOUD_DEV_LOGIN: ${ACTUNODE_CLOUD_DEV_LOGIN:-0}
+      ACTUNODE_GITHUB_CLIENT_ID: ${ACTUNODE_GITHUB_CLIENT_ID:-}
+      ACTUNODE_GOOGLE_CLIENT_ID: ${ACTUNODE_GOOGLE_CLIENT_ID:-}
+    volumes:
+      - cloud-data:/data
+      - ${ACTUNODE_CLOUD_SECRETS:?set by local-up.sh}:/run/cloud:ro
+    networks: [edge, cloud]
+    labels:
+      traefik.enable: "true"
+      traefik.docker.network: actunode-cloud_edge
+      traefik.http.routers.app.rule: "Host(`app.${ACTUNODE_CLOUD_DOMAIN:-actunode.localhost}`)"
+      traefik.http.routers.app.entrypoints: websecure
+      traefik.http.routers.app.tls: "true"
+      traefik.http.routers.app.middlewares: "secure-headers@file"
+      traefik.http.services.app.loadbalancer.server.port: "8000"
+
+  provisioner:
+    <<: *hardened
+    build:
+      context: ..
+      dockerfile: provisioner/Dockerfile
+    image: actunode-provisioner:local
+    container_name: actunode-provisioner
+    cap_add: [CHOWN, FOWNER, DAC_OVERRIDE]
+    environment:
+      PROVISIONER_TOKEN_FILE: /run/cloud/provisioner-token
+      DOCKER_HOST: tcp://docker-rw:2375
+      ACTUNODE_DATA_DIR: ${ACTUNODE_DATA_DIR:?set by local-up.sh}
+      ACTUNODE_CLOUD_DOMAIN: ${ACTUNODE_CLOUD_DOMAIN:-actunode.localhost}
+      ACTUNODE_CLOUD_PUBLIC_PORT: ${ACTUNODE_CLOUD_PUBLIC_PORT:-}
+      ACTUNODE_IMAGES: ${ACTUNODE_IMAGES:-ghcr.io/bahuncoder/actunode}
+      ACTUNODE_VERSION: ${ACTUNODE_VERSION:-0.3.0}
+      ACTUNODE_FRONT_CONTAINERS: actunode-edge,actunode-control-plane
+    volumes:
+      - ${ACTUNODE_DATA_DIR}:${ACTUNODE_DATA_DIR}  # same path as on the host: labs' bind mounts are host paths
+      - ${ACTUNODE_CLOUD_SECRETS}:/run/cloud:ro
+    networks: [cloud, docker-write]

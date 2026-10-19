@@ -27,6 +27,8 @@ class Settings:
     # actunode.com in production; actunode.localhost for the local service (resolves to 127.0.0.1 everywhere).
     domain: str = os.getenv("ACTUNODE_CLOUD_DOMAIN", "actunode.localhost")
     scheme: str = os.getenv("ACTUNODE_CLOUD_SCHEME", "https")
+    # Only when the edge is not on 443 (local development next to another web server): ":9443".
+    port: str = os.getenv("ACTUNODE_CLOUD_PUBLIC_PORT", "")
     database: Path = field(default_factory=lambda: Path(os.getenv("ACTUNODE_CLOUD_DB", "cloud.sqlite3")))
     # Signs the OAuth state cookie; sessions are random ids in the database.
     secret: str | None = _secret("ACTUNODE_CLOUD_SECRET_FILE")
@@ -38,16 +40,19 @@ class Settings:
     allowlist: frozenset[str] = field(default_factory=lambda: _lines("ACTUNODE_CLOUD_ALLOWLIST_FILE"))
     provisioner_url: str | None = os.getenv("ACTUNODE_PROVISIONER_URL") or None
     provisioner_token: str | None = _secret("ACTUNODE_PROVISIONER_TOKEN_FILE")
-    # How the control plane reaches a lab's API (revocation); default: its public address.
+    # How the control plane reaches a lab's API (revocation): in the hosted stack, the lab's frontend container on the
+    # workspace's front network (http://ws-{slug}-frontend-1); default: its public address.
     lab_url_template: str = os.getenv("ACTUNODE_LAB_URL_TEMPLATE", "")
+    # Local development only (refused unless the domain ends in .localhost): sign in as anyone, without OAuth.
+    dev_login: bool = os.getenv("ACTUNODE_CLOUD_DEV_LOGIN", "") == "1"
     workspaces_per_user: int = int(os.getenv("ACTUNODE_WORKSPACES_PER_USER", "1"))
 
     @property
     def app_url(self) -> str:
-        return f"{self.scheme}://app.{self.domain}"
+        return f"{self.scheme}://app.{self.domain}{self.port}"
 
     def lab_url(self, slug: str) -> str:
-        return f"{self.scheme}://{slug}.{self.domain}"
+        return f"{self.scheme}://{slug}.{self.domain}{self.port}"
 
     def lab_api(self, slug: str) -> str:
         return (self.lab_url_template or "{public}").format(slug=slug, public=self.lab_url(slug))

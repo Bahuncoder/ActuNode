@@ -92,6 +92,8 @@ class SecurityHeaders:
 
 
 def create_app(config: Settings = settings, store: Store | None = None, http: httpx.Client | None = None) -> FastAPI:
+    if config.dev_login and not config.domain.endswith(".localhost"):
+        raise RuntimeError("ACTUNODE_CLOUD_DEV_LOGIN is for local development only (a .localhost domain)")
     app = FastAPI(title="ActuNode Cloud", docs_url=None, redoc_url=None, openapi_url=None)
     store = store or Store(config.database)
     http = http or httpx.Client(timeout=15)
@@ -133,6 +135,11 @@ def create_app(config: Settings = settings, store: Store | None = None, http: ht
             return RedirectResponse("/workspaces", status_code=303)
         names = {"github": "GitHub", "google": "Google"}
         buttons = " ".join(f"<a class=button href='/login/{p}'>Sign in with {names[p]}</a>" for p in providers())
+        if config.dev_login:
+            buttons += (
+                "<form method=post action='/dev/login'><label>Local development: sign in as "
+                "<input name=login required pattern='[a-z0-9-]{1,39}'></label> <button>Sign in</button></form>"
+            )
         return page("Sign in", f"<section><p>Test robots and fleet managers against VDA 5050, in your own lab.</p>"
                                f"<p>{buttons or 'Sign-in is not configured yet.'}</p>"
                                f"<p class=muted>Invite-only beta.</p></section>")  # fmt: skip
@@ -177,6 +184,18 @@ def create_app(config: Settings = settings, store: Store | None = None, http: ht
         response.set_cookie(COOKIE, store.new_session(user), max_age=7 * 24 * 3600, httponly=True, secure=True,
                             samesite="lax", path="/")  # fmt: skip
         response.delete_cookie(oauth.STATE_COOKIE, path="/", secure=True, httponly=True, samesite="lax")
+        return response
+
+    @app.post("/dev/login")
+    def dev_login(login: str = Form(..., pattern=r"^[a-z0-9-]{1,39}$")):
+        """Local development only (create_app refuses it on a real domain): no OAuth, admitted without invitation."""
+        if not config.dev_login:
+            raise HTTPException(404)
+        user = store.user_for_identity("dev", login, f"dev:{login}", f"{login}@dev.localhost", login)
+        store.accept_invitations(user)
+        response = RedirectResponse("/workspaces", status_code=303)
+        response.set_cookie(COOKIE, store.new_session(user), max_age=7 * 24 * 3600, httponly=True, secure=True,
+                            samesite="lax", path="/")  # fmt: skip
         return response
 
     @app.post("/logout")
@@ -290,7 +309,7 @@ def create_app(config: Settings = settings, store: Store | None = None, http: ht
     def revoke(w: Workspace, user_id: int) -> None:
         target = store.user(user_id)
         if target:
-            labs.revoke(config.lab_api(w.slug), w.sso_key, w.slug, [target.handle], http)
+            labs.revoke(config.lab_api(w.slug), f"{w.slug}.{config.domain}", w.sso_key, w.slug, [target.handle], http)
 
     @app.post("/workspaces/{slug}/invite")
     def invite(slug: str, request: Request, invitee: str = Form(..., max_length=254), role: str = Form(...)):

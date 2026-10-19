@@ -35,10 +35,12 @@ class Config:
         self.token = Path(token_file).read_text().strip() if token_file else ""
         self.data = Path(env.get("ACTUNODE_DATA_DIR", "/srv/actunode"))  # same path on the host and in here
         self.domain = env.get("ACTUNODE_CLOUD_DOMAIN", "actunode.localhost")
+        self.port = env.get("ACTUNODE_CLOUD_PUBLIC_PORT", "")  # ":9443" locally next to another web server
         self.images = env.get("ACTUNODE_IMAGES", "ghcr.io/bahuncoder/actunode")
         self.version = env.get("ACTUNODE_VERSION", "0.3.0")
         self.robots = int(env.get("ACTUNODE_SIM_ROBOTS", "3"))
-        self.edge = env.get("ACTUNODE_EDGE_CONTAINER", "actunode-edge")
+        # Attached to each workspace's front network: the edge (routes to the lab) and the control plane (revokes).
+        self.front = [c for c in env.get("ACTUNODE_FRONT_CONTAINERS", "actunode-edge").split(",") if c]
 
     @property
     def workspaces(self) -> Path:
@@ -56,7 +58,7 @@ def run(args: list[str], timeout: float = 600) -> subprocess.CompletedProcess:
 
 def render(config: Config, slug: str) -> str:
     return Percent(TEMPLATE.read_text()).substitute(
-        slug=slug, domain=config.domain, images=config.images, version=config.version,
+        slug=slug, domain=config.domain, port=config.port, images=config.images, version=config.version,
         lab=str(config.data / "lab"), dir=str(config.workspaces / slug), robots=str(config.robots),
     )  # fmt: skip
 
@@ -85,8 +87,9 @@ def create_app(config: Config | None = None, runner=run) -> FastAPI:
     def connect_edge(slug: str) -> None:
         network = f"ws-{slug}_front"
         inspect = runner(["docker", "network", "inspect", network, "--format", "{{json .Containers}}"])
-        if config.edge not in inspect.stdout:
-            runner(["docker", "network", "connect", network, config.edge])
+        for container in config.front:
+            if f'"{container}"' not in inspect.stdout:
+                runner(["docker", "network", "connect", network, container])
 
     @app.put("/workspaces/{slug}", dependencies=[Depends(authorized)])
     def create(slug: str, body: CreateRequest) -> dict:
@@ -128,11 +131,12 @@ def create_app(config: Config | None = None, runner=run) -> FastAPI:
         slug = checked(slug)
         folder = config.workspaces / slug
         if (folder / "compose.yml").exists():
-            # Docker will not remove a network with the edge still attached: detach it first (fine if it is not).
-            try:
-                runner(["docker", "network", "disconnect", "--force", f"ws-{slug}_front", config.edge], timeout=60)
-            except HTTPException:
-                pass
+            # Docker will not remove a network with others still attached: detach them first (fine if they are not).
+            for container in config.front:
+                try:
+                    runner(["docker", "network", "disconnect", "--force", f"ws-{slug}_front", container], timeout=60)
+                except HTTPException:
+                    pass
             runner(compose(slug, "down", "--volumes", "--remove-orphans"))
         shutil.rmtree(folder, ignore_errors=True)  # recordings and keys go with the workspace
         return {"workspace": slug, "state": "deleted"}

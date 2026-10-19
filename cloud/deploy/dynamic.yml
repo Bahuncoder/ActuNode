@@ -1,0 +1,25 @@
+# Certificates and shared middlewares (local: a wildcard certificate made by local-up.sh; production: ACME, see
+# traefik.prod.yml).
+tls:
+  # Listed (not only the store default): with sniStrict, Traefik accepts a host name only if a listed certificate covers it.
+  certificates:
+    - certFile: /certs/wildcard.crt
+      keyFile: /certs/wildcard.key
+  stores:
+    default:
+      defaultCertificate:
+        certFile: /certs/wildcard.crt
+        keyFile: /certs/wildcard.key
+  options:
+    default:
+      minVersion: VersionTLS12
+      sniStrict: true
+http:
+  middlewares:
+    secure-headers:
+      headers:
+        stsSeconds: 31536000
+        stsIncludeSubdomains: true
+        stsPreload: true
+        contentTypeNosniff: true
+        referrerPolicy: same-origin
