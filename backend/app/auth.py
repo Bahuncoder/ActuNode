@@ -41,7 +41,7 @@ log = logging.getLogger("actunode.auth")
 
 COOKIE = "actunode_session"
 # Reachable without a session: liveness, and what the login screen itself needs.
-OPEN_PATHS = {"/api/health", "/api/login", "/api/logout", "/api/session"}
+OPEN_PATHS = {"/api/health", "/api/login", "/api/logout", "/api/session", "/api/sso", "/api/sso/revoke"}
 SAFE_METHODS = {"GET", "HEAD", "OPTIONS"}
 # The one path that also takes `Authorization: Bearer <token>` (a metrics scraper cannot keep a cookie), D-57.
 METRICS_PATH = "/api/metrics"
@@ -86,6 +86,7 @@ class User:
 
 
 LOCAL = User("local", OPERATOR)  # login off: the lab is reachable from this computer only (D-18)
+SSO = "sso"  # the credential of a session opened by single sign-on from the hosted control plane (D-61)
 
 
 def token_hash(token: str) -> str:
@@ -143,9 +144,11 @@ class Sessions:
         self.required = False
         self._admin_hash: str | None = None
         self.user_file = UserFile()
-        # session id -> (expiry (monotonic), user name, hash of the token it logged in with)
-        self._sessions: dict[str, tuple[float, str, str]] = {}
+        # session id -> (expiry (monotonic), user name, hash of the token it logged in with, or SSO; role)
+        self._sessions: dict[str, tuple[float, str, str, str]] = {}
         self._failures: dict[str, deque[float]] = {}
+        # Single sign-on (D-61): person -> wall-clock time of their removal; tokens issued before it are refused.
+        self._revoked: dict[str, float] = {}
 
     def configure(self, required: bool, token_file: str | None, users_file: str | None = None) -> None:
         token = Path(token_file).read_text().strip() if required and token_file else None
@@ -156,6 +159,7 @@ class Sessions:
             self.user_file.configure(users_file if required else None)
             self._sessions.clear()
             self._failures.clear()
+            self._revoked.clear()
 
     def _credentials(self) -> dict[str, tuple[str, str]]:
         """Everyone who can log in now: name -> (role, token hash)."""
@@ -185,6 +189,51 @@ class Sessions:
         self._failures.pop(client, None)
         return match
 
+    def limited(self, client: str) -> bool:
+        """True once a client has had MAX_FAILURES failed attempts in the window (logins, bearer tokens, SSO)."""
+        now = time.monotonic()
+        with self._lock:
+            failures = self._failures.get(client, deque())
+            while failures and now - failures[0] > FAILURE_WINDOW_S:
+                failures.popleft()
+            return len(failures) >= MAX_FAILURES
+
+    def failed(self, client: str) -> None:
+        now = time.monotonic()
+        with self._lock:
+            self._failures.setdefault(client, deque()).append(now)
+            self._sweep_failures(now)
+
+    def _new_session(self, now: float, name: str, credential: str, role: str) -> str:
+        """Call with the lock held."""
+        if len(self._sessions) >= MAX_SESSIONS:
+            for old in [s for s, entry in self._sessions.items() if entry[0] < now]:
+                del self._sessions[old]  # expired ones first: they are of no use to anyone
+        if len(self._sessions) >= MAX_SESSIONS:
+            del self._sessions[min(self._sessions, key=lambda s: self._sessions[s][0])]
+        session_id = secrets.token_urlsafe(32)
+        self._sessions[session_id] = (now + self.lifetime, name, credential, role)
+        return session_id
+
+    def sso_login(self, name: str, role: str, issued_at: float) -> tuple[str, User] | None:
+        """A session for a person the control plane signed in (D-61); None if they were removed after the
+        token was issued."""
+        with self._lock:
+            if self._revoked.get(name, float("-inf")) >= issued_at:
+                return None
+            return self._new_session(time.monotonic(), name, SSO, role), User(name, role)
+
+    def revoke(self, names: list[str], at: float) -> int:
+        """End the SSO sessions of these people now and refuse their tokens issued until `at`. Returns how many
+        sessions ended."""
+        with self._lock:
+            for name in names:
+                self._revoked[name] = max(at, self._revoked.get(name, float("-inf")))
+            ended = [s for s, entry in self._sessions.items() if entry[2] == SSO and entry[1] in names]
+            for session_id in ended:
+                del self._sessions[session_id]
+            return len(ended)
+
     def verify(self, client: str, token: str) -> User | None:
         """The user of a token presented directly (a metrics scraper's bearer token): no session is made; wrong
         tokens count towards the same limit as logins (RateLimited)."""
@@ -200,14 +249,7 @@ class Sessions:
             match = self._check(client, token, now)
             if match is None:
                 return None
-            if len(self._sessions) >= MAX_SESSIONS:
-                for old in [s for s, entry in self._sessions.items() if entry[0] < now]:
-                    del self._sessions[old]  # expired ones first: they are of no use to anyone
-            if len(self._sessions) >= MAX_SESSIONS:
-                del self._sessions[min(self._sessions, key=lambda s: self._sessions[s][0])]
-            session_id = secrets.token_urlsafe(32)
-            self._sessions[session_id] = (now + self.lifetime, match[0], match[2])
-            return session_id, User(match[0], match[1])
+            return self._new_session(now, match[0], match[2], match[1]), User(match[0], match[1])
 
     def _sweep_failures(self, now: float) -> None:
         """Over the cap: forget clients whose failures are outside the window, then the oldest."""
@@ -228,7 +270,12 @@ class Sessions:
             entry = self._sessions.get(session_id or "")
             if entry is None:
                 return None
-            expiry, name, credential = entry
+            expiry, name, credential, role = entry
+            if credential == SSO:  # the control plane decides who may enter; removal ends it (revoke)
+                if expiry < time.monotonic():
+                    del self._sessions[session_id]
+                    return None
+                return User(name, role)
             current = self._credentials().get(name)
             if expiry < time.monotonic() or current is None or current[1] != credential:
                 del self._sessions[session_id]
@@ -244,8 +291,8 @@ class Sessions:
 
     def _expire_all_for_tests(self) -> None:
         with self._lock:
-            for session_id, (_, name, credential) in self._sessions.items():
-                self._sessions[session_id] = (time.monotonic() - 1, name, credential)
+            for session_id, (_, name, credential, role) in self._sessions.items():
+                self._sessions[session_id] = (time.monotonic() - 1, name, credential, role)
 
 
 sessions = Sessions()

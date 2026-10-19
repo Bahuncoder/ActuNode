@@ -22,6 +22,9 @@ class Settings:
     bind_address: str = os.getenv("ACTUNODE_BIND_ADDRESS", "127.0.0.1")
     require_login: bool = os.getenv("ACTUNODE_REQUIRE_LOGIN", "").lower() in ("1", "true", "yes")
     api_token_file: str | None = os.getenv("ACTUNODE_API_TOKEN_FILE") or None
+    # Hosted service (D-61): single sign-on from the control plane, with this workspace's key and id.
+    sso_key_file: str | None = os.getenv("ACTUNODE_SSO_KEY_FILE") or None
+    workspace: str | None = os.getenv("ACTUNODE_WORKSPACE") or None
     # Per-person logins (D-56), written by mqtt-init add-user; next to the API token by default.
     users_file: str | None = os.getenv("ACTUNODE_USERS_FILE") or (
         str(Path(os.environ["ACTUNODE_API_TOKEN_FILE"]).with_name("users"))
