@@ -267,4 +267,39 @@ def test_a_github_rename_does_not_keep_invitations_meant_for_the_new_owner_of_th
     )  # meant for the new holder
     assert sign_in(mallory, "code-mallory").status_code == 303  # invitations are accepted at sign-in
     assert mallory.get("/workspaces/acme").status_code == 404
-    assert "github:mallory-renamed" in mallory.get("/workspaces").text  # the handle follows the rename
+    # The handle is the lab identity (sessions, revocation, audit): it stays what it was.
+    assert "github:mallory<" in mallory.get("/workspaces").text.replace("</code>", "<")
+
+
+def test_a_renamed_member_is_revoked_under_the_name_their_lab_sessions_use(cloud):
+    """After a GitHub rename, removing the member must revoke the handle their lab sessions were opened with."""
+    world, store, browser = cloud
+    owner, alice = browser(), browser()
+    sign_in(owner, "code-octocat")
+    create(owner)
+    owner.post("/workspaces/acme/invite", data={"invitee": "github:alice", "role": "operator"})
+    sign_in(alice, "code-alice")
+    key = store.workspaces_of(store.user(1))[0].sso_key
+    opened_as = claims_of(alice.get("/workspaces/acme/sso", params={"nonce": NONCE}, follow_redirects=False)
+                          .headers["location"], key)["sub"]  # fmt: skip
+    world.users["code-alice"] = {"id": 2, "login": "alice-new", "email": "alice@example.com"}
+    sign_in(alice, "code-alice")
+    alice_id = next(m.id for m, _ in store.members("acme") if m.handle == opened_as)
+    owner.post(f"/workspaces/acme/members/{alice_id}/remove")
+    _, body = world.revoked[-1]
+    token = body["token"]
+    payload = json.loads(base64.urlsafe_b64decode(token.partition(".")[0] + "=="))
+    assert payload["revoke"] == [opened_as]
+
+
+def test_someone_taking_a_freed_login_gets_a_distinct_handle(cloud):
+    world, store, browser = cloud
+    first = browser()
+    sign_in(first, "code-mallory")
+    world.users["code-mallory"] = {"id": 3, "login": "mallory-renamed", "email": "mallory@example.com"}
+    sign_in(first, "code-mallory")
+    world.users["code-newcomer"] = {"id": 9, "login": "mallory", "email": "mallory@example.com"}
+    second = browser()
+    assert sign_in(second, "code-newcomer").status_code == 303
+    handles = {store.user(i).handle for i in (1, 2) if store.user(i)}
+    assert len(handles) == 2 and "github:mallory" in handles

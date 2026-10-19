@@ -109,12 +109,14 @@ class Store:
     def _refresh(self, user: User, provider: str, subject: str, handle: str, email: str | None, login: str) -> User:
         """Logins and emails change at the provider (a GitHub rename frees the old login for someone else): keep
         what we match invitations against current, at every sign-in, so an invitation to a login reaches whoever
-        holds it now."""
-        statements = [("UPDATE identities SET login = ? WHERE provider = ? AND subject = ?", login, provider, subject),
-                      ("UPDATE users SET email = ? WHERE id = ?", email, user.id)]  # fmt: skip
-        if handle != user.handle and not self._one("SELECT 1 FROM users WHERE handle = ? AND id != ?", handle, user.id):
-            statements.append(("UPDATE users SET handle = ? WHERE id = ?", handle, user.id))
-        self._run(*statements)
+        holds it now.
+
+        The handle does NOT follow: it is the person's identity inside every lab (sessions, revocation, audit
+        trail), so it is fixed at the first sign-in. Following a rename would leave lab sessions under the old name
+        that a revocation under the new one misses. Someone who later takes the freed login gets a distinct handle
+        (a suffix), so two people never share one."""
+        self._run(("UPDATE identities SET login = ? WHERE provider = ? AND subject = ?", login, provider, subject),
+                  ("UPDATE users SET email = ? WHERE id = ?", email, user.id))  # fmt: skip
         return self.user(user.id)
 
     def user(self, user_id: int) -> User | None:
