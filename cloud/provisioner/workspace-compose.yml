@@ -1,0 +1,147 @@
+# One hosted workspace's lab (D-61), rendered by the provisioner: %{slug}, %{domain}, %{images}, %{version}, %{lab}, %{dir},
+# %{robots}. Isolated: its own networks and volume; the edge reaches it only through this workspace's `front` network.
+name: ws-%{slug}
+
+x-hardened: &hardened
+  cap_drop: [ALL]
+  security_opt: ["no-new-privileges:true"]
+  read_only: true
+  tmpfs: ["/tmp"]
+  pids_limit: 256
+  logging:
+    driver: json-file
+    options: {max-size: "10m", max-file: "3"}
+
+networks:
+  lab: {internal: true}
+  front: {}  # the edge (Traefik) is connected to this network only, by the provisioner
+
+volumes:
+  secrets: {}
+
+services:
+  mqtt-init:
+    <<: *hardened
+    image: eclipse-mosquitto:2
+    cap_add: [CHOWN, FOWNER, DAC_OVERRIDE]
+    network_mode: none
+    mem_limit: 128m
+    entrypoint: ["/bin/sh", "/init-secrets.sh"]
+    environment: {BACKEND_UID: 1000, SIMULATOR_UID: 1000, SIM_MAX_ROBOTS: 10, ROS2_UID: 1000}
+    volumes:
+      - %{lab}/mosquitto/init-secrets.sh:/init-secrets.sh:ro
+      - %{lab}/mosquitto/acl:/acl.base:ro
+      - secrets:/secrets
+
+  cert-init:
+    <<: *hardened
+    image: python:3.12-slim
+    cap_add: [CHOWN, FOWNER, DAC_OVERRIDE]
+    network_mode: none
+    mem_limit: 128m
+    entrypoint: ["/bin/sh", "/init-certs.sh"]
+    environment: {ACTUNODE_ALLOWED_HOSTS: "localhost"}
+    volumes:
+      - %{lab}/tls/init-certs.sh:/init-certs.sh:ro
+      - secrets:/secrets
+
+  mosquitto:
+    <<: *hardened
+    image: eclipse-mosquitto:2
+    user: "1883:1883"
+    mem_limit: 256m
+    restart: unless-stopped
+    networks: [lab, front]
+    volumes:
+      - %{lab}/mosquitto/mosquitto-hosted.conf:/mosquitto/config/mosquitto.conf:ro
+      - {type: volume, source: secrets, target: /mosquitto/secrets, read_only: true, volume: {subpath: broker}}
+    labels:
+      traefik.enable: "true"
+      traefik.docker.network: ws-%{slug}_front
+      traefik.tcp.routers.mq-%{slug}.rule: "HostSNI(`%{slug}.%{domain}`)"
+      traefik.tcp.routers.mq-%{slug}.entrypoints: mqtts
+      traefik.tcp.routers.mq-%{slug}.tls: "true"
+      traefik.tcp.services.mq-%{slug}.loadbalancer.server.port: "1884"
+    healthcheck:
+      test: ["CMD-SHELL", "mosquitto_sub -u healthcheck -P \"$$(cat /mosquitto/secrets/healthcheck.password)\" -t '$$SYS/broker/uptime' -C 1 -W 3"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+    depends_on:
+      mqtt-init: {condition: service_completed_successfully}
+
+  backend:
+    <<: *hardened
+    image: %{images}-backend:%{version}
+    user: "1000:1000"
+    mem_limit: 512m
+    restart: unless-stopped
+    networks: [lab]
+    environment:
+      ACTUNODE_MQTT_HOST: mosquitto
+      ACTUNODE_MQTT_PORT: 1883
+      ACTUNODE_MQTT_USERNAME: actunode-backend
+      ACTUNODE_MQTT_PASSWORD_FILE: /run/secrets/actunode/password
+      ACTUNODE_SESSIONS_DIR: /app/sessions
+      ACTUNODE_REQUIRE_LOGIN: "1"
+      ACTUNODE_API_TOKEN_FILE: /run/secrets/actunode/api-token
+      ACTUNODE_SSO_KEY_FILE: /run/actunode-sso/key
+      ACTUNODE_WORKSPACE: "%{slug}"
+      ACTUNODE_SSO_START_URL: "https://app.%{domain}/workspaces/{workspace}/sso?nonce={nonce}"
+      ACTUNODE_ALLOWED_HOSTS: "%{slug}.%{domain}"
+      ACTUNODE_TRUSTED_PROXIES: frontend
+      ACTUNODE_SESSIONS_MAX_TOTAL_MB: "2000"
+    volumes:
+      - %{dir}/sessions:/app/sessions
+      - %{dir}/sso-key:/run/actunode-sso/key:ro
+      - {type: volume, source: secrets, target: /run/secrets/actunode, read_only: true, volume: {subpath: backend}}
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/api/health', timeout=2)"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+    depends_on:
+      mosquitto: {condition: service_healthy}
+
+  simulator:
+    <<: *hardened
+    image: %{images}-simulator:%{version}
+    mem_limit: 256m
+    restart: unless-stopped
+    networks: [lab]
+    environment:
+      ACTUNODE_MQTT_HOST: mosquitto
+      ACTUNODE_MQTT_PORT: 1883
+      ACTUNODE_SIM_ROBOTS: "%{robots}"
+      ACTUNODE_VDA_VERSION: "2"
+      ACTUNODE_MQTT_PASSWORD_FILE: /run/secrets/actunode/password
+    volumes:
+      - {type: volume, source: secrets, target: /run/secrets/actunode, read_only: true, volume: {subpath: simulator}}
+    depends_on:
+      mosquitto: {condition: service_healthy}
+
+  frontend:
+    <<: *hardened
+    image: %{images}-frontend:%{version}
+    mem_limit: 128m
+    restart: unless-stopped
+    networks: [lab, front]
+    sysctls: {net.ipv4.ip_unprivileged_port_start: 0}
+    volumes:
+      - {type: volume, source: secrets, target: /etc/nginx/tls, read_only: true, volume: {subpath: web}}
+    labels:
+      traefik.enable: "true"
+      traefik.docker.network: ws-%{slug}_front
+      traefik.http.routers.ws-%{slug}.rule: "Host(`%{slug}.%{domain}`)"
+      traefik.http.routers.ws-%{slug}.entrypoints: websecure
+      traefik.http.routers.ws-%{slug}.tls: "true"
+      traefik.http.routers.ws-%{slug}.middlewares: "secure-headers@file"
+      traefik.http.services.ws-%{slug}.loadbalancer.server.port: "80"
+    healthcheck:
+      test: ["CMD", "wget", "-qO", "/dev/null", "http://127.0.0.1/"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+    depends_on:
+      cert-init: {condition: service_completed_successfully}
+      backend: {condition: service_healthy}
