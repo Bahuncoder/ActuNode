@@ -639,6 +639,12 @@ Numbered so they can be referenced from commits. Remove an item only when it is 
 
 Newest first. One entry per work session: what was done, what was learned, what is next.
 
+### Mon 19 Oct 2026 (evening): the founder used the lab as a user
+Login on (`.env`, now ignored by git), personal accounts `rupert` (operator) and `guest` (viewer) made with
+`mqtt-init add-user`; tokens kept in docs/company/ (private). The founder logged in through the browser and went
+through mission, blocked path and clear, recording, the Activity panel, the viewer's read-only view and removing a
+user: everything behaved as described. An author's own run: it does not count for PR-12 (a newcomer, unassisted).
+
 ### Mon 19 Oct 2026 (later): kits for the work that needs people
 docs/research/SCREEN_READER_CHECK.md (17 checks for Orca, NVDA or VoiceOver), ONBOARDING_STUDY.md (package J:
 participants, script, observation sheet, consent, target) and PILOT_GUIDE.md (package K: agreement, steps, report).
