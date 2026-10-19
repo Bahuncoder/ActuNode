@@ -15,6 +15,11 @@ What changed, per commit, newest first. Status and plans are in [docs/PROGRESS.m
 - **Provisioner and edge** (`cloud/provisioner`, `cloud/deploy`): one isolated lab per workspace (own networks, own
   volume), Traefik with TLS and MQTT routed by SNI, Docker access only through restricted proxies; a local stack
   (`local-up.sh`) and a 16-step end-to-end check (`local-check.sh`), passing.
+- **Control plane pages**: a sign-in page that says what you get; error pages instead of raw JSON; the lab starts
+  in the background with a page that follows it (and "Try again" if it fails); signing in returns to the page you
+  were opening (local paths only); **robot and fleet manager logins** on the workspace page (add: the password shown
+  once, never in a URL; remove; viewers only see them); a "Connect a robot" box with copy buttons; removing a member
+  is confirmed; field patterns valid in current browsers.
 - **Infrastructure** (`cloud/infra`): Terraform for Hetzner (server with backups, data volume, firewall),
   cloud-init, production edge with a Let's Encrypt wildcard; deployment guide docs/HOSTED_DEPLOY.md.
 

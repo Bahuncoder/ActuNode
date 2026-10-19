@@ -367,7 +367,8 @@ def create_app(config: Settings = settings, store: Store | None = None, http: ht
               else "the system's trusted certificates (Let's Encrypt), nothing to install")  # fmt: skip
         return (f"<section><h2>Connect a robot or fleet manager</h2>{copyable('Host', host)}"
                 f"{copyable('Port', config.mqtt_port)}<p>MQTT over TLS, with {ca}. Server name (SNI): "
-                f"<code>{esc(host)}</code>. Log in with a login from below; robots publish on "
+                f"<code>{esc(host)}</code>. Log in with one of this workspace's robot or fleet manager logins; "
+                "robots publish on "
                 "<code>uagv/v2/&lt;manufacturer&gt;/&lt;serial&gt;/…</code> (VDA 5050 2.x) or "
                 "<code>uagv/v3/…</code> (3.0). Guide: <a href='https://github.com/Bahuncoder/ActuNode/blob/main/docs/"
                 "CONNECT_YOUR_ROBOT.md'>Connect your robot</a>.</p></section>")  # fmt: skip
