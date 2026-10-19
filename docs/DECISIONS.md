@@ -1080,3 +1080,18 @@ feed, since the scenario (or the `never`) started; failures name the robot. With
 The shipped scenarios that check for no errors name their robot.
 **Consequences.** Scenarios hold in a lab shared with other robots. The live feed is opened for such a step, and
 counts what the runner saw (its buffer holds 50,000 messages).
+
+
+## D-60 · Keyboard: skip links and one Tab stop per long region
+19 Oct 2026 · Accepted (founder: "go head")
+
+**Context.** The accessibility review (package I) found that the session table added four Tab stops per saved
+session (Replay, Validate, Download, Delete) and the message stream one per message: on a lab with 100+ sessions,
+reaching the message stream took hundreds of Tab presses.
+**Decision.** Two skip links are the first Tab stops (Sessions, Message stream; off screen until focused). Long
+regions are one Tab stop each with a roving tab index: the message stream (rows are disclosure buttons, up/down,
+Home/End) and the session actions (a grid: left/right within a session, up/down between sessions, Home/End;
+disabled actions are skipped, so a viewer moves through Validate and Download only). The session table's roving
+index is kept on the DOM (data attributes), so its buttons need no extra props.
+**Consequences.** The page is about 25 Tab stops regardless of how many sessions or messages there are (measured).
+Screen-reader behaviour of the patterns is still to be checked with a real screen reader.

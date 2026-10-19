@@ -118,3 +118,58 @@ describe('sessions and replay', () => {
     expect(api.stopReplay).toHaveBeenCalledTimes(1)
   })
 })
+
+describe('keyboard: long regions (D-60)', () => {
+  const session = (id: string) => ({
+    sessionId: id, name: null, startedAt: '2026-10-10T12:00:00Z', endedAt: '2026-10-10T12:01:00Z', messageCount: 5,
+    recording: false, complete: true, reason: 'stopped', sizeBytes: 100,
+  })
+
+  async function table(readOnly = false) {
+    vi.mocked(api.fetchSessions).mockResolvedValue([session('s1'), session('s2')] as never)
+    vi.mocked(api.fetchSessionStorage).mockResolvedValue({ keepDays: 0, maxTotalMb: 0, usedMb: 0, sessions: 2 })
+    const { container } = render(<RecorderPanel recording={null} recordingStopped={null as never} replay={null} readOnly={readOnly} />)
+    await waitFor(() => expect(container.querySelectorAll('tr[data-session]')).toHaveLength(2))
+    const actions = (row: number) => Array.from(container.querySelectorAll<HTMLElement>(`tr[data-session="s${row}"] [data-action]`))
+    // Disabled buttons cannot take focus whatever their tabIndex says.
+    const stops = () => Array.from(container.querySelectorAll<HTMLElement>('[data-action]')).filter((el) => el.tabIndex === 0 && !(el as HTMLButtonElement).disabled)
+    return { actions, stops }
+  }
+  const press = (key: string) => fireEvent.keyDown(document.activeElement!, { key })
+
+  it('the session actions are one Tab stop; arrows move left/right in a session, up/down between sessions', async () => {
+    const { actions, stops } = await table()
+    expect(stops()).toEqual([actions(1)[0]])
+    actions(1)[0].focus()
+    press('ArrowRight')
+    expect(document.activeElement).toBe(actions(1)[1])
+    expect(stops()).toEqual([actions(1)[1]])
+    press('ArrowDown')
+    expect(document.activeElement).toBe(actions(2)[1])
+    press('End')
+    expect(document.activeElement?.getAttribute('data-action')).toBe('delete')
+    press('ArrowUp')
+    expect(document.activeElement).toBe(actions(1)[3])
+    press('Home')
+    expect(document.activeElement?.getAttribute('data-action')).toBe('replay')
+  })
+
+  it('a viewer moves only through what it can use', async () => {
+    const { stops } = await table(true)
+    const [first] = stops()
+    expect(first.getAttribute('data-action')).toBe('validate')
+    first.focus()
+    press('ArrowRight')
+    expect(document.activeElement?.getAttribute('data-action')).toBe('download')
+    press('ArrowRight')
+    expect(document.activeElement?.getAttribute('data-action')).toBe('download')
+  })
+
+  it('skip links lead to the sessions and the message stream', () => {
+    const app = readFileSync(`${process.cwd()}/src/App.tsx`, 'utf8')
+    const recorder = readFileSync(`${process.cwd()}/src/RecorderPanel.tsx`, 'utf8')
+    expect(app).toMatch(/href="#sessions"[\s\S]*href="#messages"/)
+    expect(app).toMatch(/id="messages" tabIndex=\{-1\}/)
+    expect(recorder).toMatch(/<section id="sessions" tabIndex=\{-1\}/)
+  })
+})

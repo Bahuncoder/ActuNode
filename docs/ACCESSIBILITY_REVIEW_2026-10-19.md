@@ -19,6 +19,7 @@ tests (`frontend/src/a11y.test.tsx`, `frontend/src/brief.test.tsx`).
 | Layout at 390 px and 200% zoom | Passed: no horizontal page scroll; wide tables scroll inside their panel |
 | Announcements without flooding | **Fixed**: recording start/stop, replay start/end and action results are announced (polite), errors as alerts; never message traffic or counters. Status regions stay in the page so their text is announced |
 | Reduced motion | **Fixed**: `prefers-reduced-motion` turns off CSS animation and transitions (the only motion; no JavaScript animation) |
+| Long regions by keyboard | **Fixed** (D-60): skip links to Sessions and the Message stream come first; the session actions are one Tab stop with arrows (left/right in a session, up/down between sessions, disabled ones skipped). Measured on a lab with 100+ sessions: 25 Tab stops for the whole page (before: 4 per session) |
 | Message stream by keyboard | **Fixed**: was one Tab stop per message (up to 200); now one, with ↑/↓/Home/End between rows; rows are disclosure buttons (`aria-expanded`) |
 | Decorative images | Passed: the logo has `alt=""` |
 | Headings and landmarks | Passed: one h1, an h2 per panel, header and main |
@@ -46,8 +47,6 @@ tests (`frontend/src/a11y.test.tsx`, `frontend/src/brief.test.tsx`).
 
 - **Screen reader pass**: not done; this environment has no screen reader. The announcements are checked as DOM
   roles and text only. To do with NVDA or VoiceOver before claiming readiness.
-- **Long session lists**: each saved session adds four Tab stops (Replay, Validate, Download, Delete); a lab with
-  many sessions is tedious by keyboard. Options: a skip link to the message stream, or one Tab stop per row.
 - **Robot identity in the mission sender**: the robot list shows serials; the target select names the identity
   (default "ActuNode · VDA 2") and warns when the default has not been seen. Kept: changing it touches mission
   addressing (D-21).

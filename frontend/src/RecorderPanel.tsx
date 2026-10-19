@@ -1,4 +1,4 @@
-import { memo, useEffect, useRef, useState } from 'react'
+import { memo, useEffect, useRef, useState, type FocusEvent, type KeyboardEvent } from 'react'
 import {
   deleteSession,
   fetchRecording,
@@ -24,6 +24,18 @@ const MAX_UPLOAD_BYTES = 200 * 1024 ** 2
 // Unknown is shown as unknown, not as 0 B (design brief).
 function sizeText(bytes: number | undefined | null): string {
   return bytes === undefined || bytes === null ? '—' : formatSize(bytes)
+}
+
+// The enabled session actions, per session row.
+function actionRows(body: HTMLElement | null): HTMLElement[][] {
+  if (!body) return []
+  return Array.from(body.querySelectorAll<HTMLTableRowElement>('tr[data-session]'))
+    .map((tr) => Array.from(tr.querySelectorAll<HTMLElement>('[data-action]')).filter((el) => !(el as HTMLButtonElement).disabled))
+    .filter((row) => row.length > 0)
+}
+
+function actionKey(el: HTMLElement): string {
+  return `${el.closest<HTMLElement>('tr[data-session]')?.dataset.session ?? ''}|${el.dataset.action ?? ''}`
 }
 
 function formatDuration(seconds: number): string {
@@ -271,8 +283,42 @@ function RecorderPanel({
   const replaying = replay?.state === 'running'
   const elapsed = recording ? Math.max(0, (now - Date.parse(recording.startedAt)) / 1000) : 0
 
+  // The session actions are one Tab stop (D-60): arrows move between them, left/right in a session, up/down between
+  // sessions; disabled ones are skipped. Kept on the DOM, so the buttons need no extra props.
+  const actionsRef = useRef<HTMLTableSectionElement>(null)
+  const lastAction = useRef<string | null>(null)
+  useEffect(() => {
+    const all = actionRows(actionsRef.current).flat()
+    const current = all.find((el) => actionKey(el) === lastAction.current) ?? all[0]
+    for (const el of all) el.tabIndex = el === current ? 0 : -1
+  })
+  function rememberAction(event: FocusEvent<HTMLTableSectionElement>) {
+    const el = event.target as HTMLElement
+    if (!el.dataset.action) return
+    lastAction.current = actionKey(el)
+    for (const other of actionRows(actionsRef.current).flat()) other.tabIndex = other === el ? 0 : -1
+  }
+  function moveAction(event: KeyboardEvent<HTMLTableSectionElement>) {
+    const rows = actionRows(actionsRef.current)
+    const row = rows.findIndex((r) => r.includes(event.target as HTMLElement))
+    if (row < 0) return
+    const col = rows[row].indexOf(event.target as HTMLElement)
+    const at = (r: number, c: number) => rows[r][Math.min(c, rows[r].length - 1)]
+    const next = {
+      ArrowRight: at(row, col + 1),
+      ArrowLeft: at(row, Math.max(col - 1, 0)),
+      ArrowDown: at(Math.min(row + 1, rows.length - 1), col),
+      ArrowUp: at(Math.max(row - 1, 0), col),
+      Home: rows[row][0],
+      End: rows[row][rows[row].length - 1],
+    }[event.key]
+    if (!next) return
+    event.preventDefault()
+    next.focus()
+  }
+
   return (
-    <section className="panel panel-wide">
+    <section id="sessions" tabIndex={-1} className="panel panel-wide">
       <h2>Sessions</h2>
       <p role="status" className="sr-only">
         {announcement}
@@ -389,7 +435,7 @@ function RecorderPanel({
               <th />
             </tr>
           </thead>
-          <tbody>
+          <tbody ref={actionsRef} onFocus={rememberAction} onKeyDown={moveAction}>
             {sessions.length === 0 && !listError && (
               <tr>
                 <td colSpan={6} className="muted">
@@ -398,7 +444,7 @@ function RecorderPanel({
               </tr>
             )}
             {sessions.flatMap((session) => [
-              <tr key={session.sessionId}>
+              <tr key={session.sessionId} data-session={session.sessionId}>
                 <td className="mono">
                   {session.sessionId}
                   {session.recording === true && <span className="badge down session-badge">REC</span>}
@@ -442,6 +488,7 @@ function RecorderPanel({
                         className="link-button"
                         disabled={readOnly || replaying || starting !== null}
                         title={readOnly ? VIEWER_NOTE : undefined}
+                        data-action="replay"
                         onClick={() => replaySession(session.sessionId)}
                       >
                         {starting === session.sessionId ? 'Starting…' : '▶ Replay'}
@@ -451,11 +498,12 @@ function RecorderPanel({
                         className="link-button"
                         aria-label={`Validate session ${text(session.name) === '—' ? session.sessionId : text(session.name)}`}
                         disabled={validating.has(session.sessionId)}
+                        data-action="validate"
                         onClick={() => validate(session.sessionId)}
                       >
                         {validating.has(session.sessionId) ? 'Validating…' : 'Validate'}
                       </button>
-                      <a className="link" href={`/api/sessions/${encodeURIComponent(session.sessionId)}/download`} download>
+                      <a className="link" data-action="download" href={`/api/sessions/${encodeURIComponent(session.sessionId)}/download`} download>
                         Download
                       </a>
                       <button
@@ -463,6 +511,7 @@ function RecorderPanel({
                         className="link-button danger-link"
                         disabled={readOnly || deleting !== null || (replaying && replay?.sessionId === session.sessionId)}
                         title={readOnly ? VIEWER_NOTE : undefined}
+                        data-action="delete"
                         onClick={() => removeSession(session.sessionId)}
                       >
                         {deleting === session.sessionId ? 'Deleting…' : 'Delete'}

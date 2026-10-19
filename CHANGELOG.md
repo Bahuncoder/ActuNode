@@ -9,6 +9,8 @@ What changed, per commit, newest first. Status and plans are in [docs/PROGRESS.m
 - **Screen readers** hear recording start/stop, replay start/end and action results (errors as alerts), never the
   message traffic; form fields have a 3:1 border (`--control-border`); `prefers-reduced-motion` is respected; the
   message stream is one Tab stop with arrow keys.
+- **Keyboard (D-60):** skip links to Sessions and the Message stream; the session actions are one Tab stop with
+  arrow keys, so the whole page is about 25 stops however many sessions are kept.
 - **Copy from the design brief:** "Order published: … Waiting for robot state.", "No robot traffic received…",
   "Live feed disconnected. Reconnecting…", how each failure ends, the identity a failure reaches, units on positions
   and durations, unknown sizes as "—", busy labels and no double submissions (replay, stop, delete, inject,

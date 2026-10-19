@@ -129,6 +129,11 @@ function Lab({
 
   return (
     <div className="app">
+      {/* First Tab stops: jump past the long regions (D-60). Shown only when focused. */}
+      <nav className="skip-links" aria-label="Skip links">
+        <a href="#sessions">Skip to sessions</a>
+        <a href="#messages">Skip to message stream</a>
+      </nav>
       <PanelBoundary title="Header" resetKey={health}>
       <header className="header">
         <img src="/logo.png" alt="" />
@@ -204,7 +209,7 @@ function Lab({
         </PanelBoundary>
 
         <PanelBoundary title="Message stream" resetKey={feed.messages}>
-          <section className="panel panel-wide">
+          <section className="panel panel-wide" id="messages" tabIndex={-1}>
             <h2>Message stream</h2>
             <MessageStream messages={feed.messages} />
           </section>

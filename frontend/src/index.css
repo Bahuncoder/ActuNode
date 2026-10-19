@@ -886,3 +886,25 @@ code,
     scroll-behavior: auto !important;
   }
 }
+
+/* Skip links (D-60): off screen until a keyboard user reaches them. */
+.skip-links a {
+  position: absolute;
+  left: -9999px;
+  top: 8px;
+  z-index: 10;
+  padding: 8px 12px;
+  background: var(--panel);
+  color: var(--fog-white);
+  border: 1px solid var(--control-border);
+  border-radius: 6px;
+}
+
+.skip-links a:focus {
+  left: 16px;
+}
+
+/* Landing on a section from a skip link: no outline on the whole panel. */
+section[tabindex="-1"]:focus {
+  outline: none;
+}
