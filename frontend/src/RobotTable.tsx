@@ -66,7 +66,14 @@ function RobotTable({ robots, readOnly = false }: { robots: Robot[]; readOnly?: 
   for (const robot of robots) serials.set(robot.robotId, (serials.get(robot.robotId) ?? 0) + 1)
 
   if (robots.length === 0) {
-    return <p className="empty">No robots yet. Start the simulator: <code>python -m simulator --robots 3</code></p>
+    return (
+      <p className="empty">
+        No robot traffic received. Start the simulator or connect a robot.{' '}
+        <span className="muted">
+          (Without Docker: <code>python -m simulator --robots 3</code>)
+        </span>
+      </p>
+    )
   }
 
   return (
@@ -80,7 +87,7 @@ function RobotTable({ robots, readOnly = false }: { robots: Robot[]; readOnly?: 
               <th>VDA</th>
               <th>Mission</th>
               <th>Battery</th>
-              <th>Position</th>
+              <th>Position (m)</th>
               <th>Order</th>
               <th>Last node</th>
               <th>Load</th>

@@ -348,7 +348,8 @@ async def _start_replay(session_id: str, path: Path, request: ReplayRequest) -> 
         raise HTTPException(
             409,
             f"{', '.join(live)} {'is' if len(live) == 1 else 'are'} publishing live state; "
-            "stop the simulator before replaying so live and replayed messages do not mix",
+            "stop the simulator before replaying so live and replayed messages do not mix "
+            "(docker compose stop simulator; other robots: stop their publishers)",
         )
 
     try:

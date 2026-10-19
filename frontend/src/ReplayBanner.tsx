@@ -6,6 +6,7 @@ const STATE_TEXT = { running: 'REPLAYING', finished: 'REPLAY FINISHED', stopped:
 
 /** Shown while a session replays, so replayed traffic is never mistaken for live robots. */
 export default function ReplayBanner({ replay, readOnly = false }: { replay: ReplayStatus | null; readOnly?: boolean }) {
+  const [stopping, setStopping] = useState(false)
   const [dismissed, setDismissed] = useState<string | null>(null)
   const [announcement, setAnnouncement] = useState('')
   const key = `${replay?.sessionId}:${replay?.state}`
@@ -42,8 +43,18 @@ export default function ReplayBanner({ replay, readOnly = false }: { replay: Rep
         <span style={{ width: `${percent}%` }} />
       </span>
       {running ? (
-        <button type="button" disabled={readOnly} title={readOnly ? VIEWER_NOTE : undefined} onClick={() => stopReplay().catch(() => {})}>
-          ■ Stop replay
+        <button
+          type="button"
+          disabled={readOnly || stopping}
+          title={readOnly ? VIEWER_NOTE : undefined}
+          onClick={() => {
+            setStopping(true)
+            stopReplay()
+              .catch(() => {})
+              .finally(() => setStopping(false))
+          }}
+        >
+          {stopping ? 'Stopping…' : '■ Stop replay'}
         </button>
       ) : (
         <button type="button" onClick={() => setDismissed(key)}>

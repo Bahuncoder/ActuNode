@@ -75,6 +75,11 @@ function stringify(payload: unknown): string | undefined {
   }
 }
 
+// The backend shows big payloads as a text preview ending "(N bytes, truncated for display)" (jsonsafe.preview).
+function shortened(message: MqttMessage): boolean {
+  return typeof message.payload === 'string' && message.payload.includes('truncated for display')
+}
+
 function time(iso: string): string {
   const date = new Date(iso)
   return `${date.toLocaleTimeString([], { hour12: false })}.${String(date.getMilliseconds()).padStart(3, '0')}`
@@ -102,7 +107,7 @@ function MessageStream({ messages }: { messages: MqttMessage[] }) {
   const tabbable = [active, expanded].find((id) => id !== null && ids.includes(id)) ?? ids[0]
 
   function onKeyDown(event: KeyboardEvent<HTMLUListElement>) {
-    const rows = Array.from(event.currentTarget.querySelectorAll<HTMLElement>('[role="option"]'))
+    const rows = Array.from(event.currentTarget.querySelectorAll<HTMLElement>('button.stream-row'))
     const at = rows.indexOf(event.target as HTMLElement)
     if (at < 0) return
     const next = { ArrowDown: Math.min(at + 1, rows.length - 1), ArrowUp: Math.max(at - 1, 0), Home: 0, End: rows.length - 1 }[event.key]
@@ -130,7 +135,8 @@ function MessageStream({ messages }: { messages: MqttMessage[] }) {
       </div>
 
       {shown.length === 0 && <p className="empty">No messages yet.</p>}
-      <ul className="stream" role="listbox" aria-label="Messages" hidden={shown.length === 0} onKeyDown={onKeyDown}>
+      {/* A list of disclosure buttons (each opens its message's detail), one Tab stop with arrow keys between rows. */}
+      <ul className="stream" aria-label="Messages" hidden={shown.length === 0} onKeyDown={onKeyDown}>
         {shown.map((message) => (
           <MessageRow key={message.id} message={message} open={expanded === message.id} tabbable={tabbable === message.id} onToggle={toggle} onFocus={setActive} />
         ))}
@@ -155,20 +161,14 @@ const MessageRow = memo(function MessageRow({
 }) {
   const kind = kindOf(message.topic)
   return (
-    <li role="none" className={rowClass(message)}>
-        <div
-          role="option"
+    <li className={rowClass(message)}>
+        <button
+          type="button"
           className="stream-row"
-          aria-selected={open}
+          aria-expanded={open}
           tabIndex={tabbable ? 0 : -1}
           onClick={() => onToggle(message.id)}
           onFocus={() => onFocus(message.id)}
-          onKeyDown={(event) => {
-            if (event.key === 'Enter' || event.key === ' ') {
-              event.preventDefault()
-              onToggle(message.id)
-            }
-          }}
         >
           <span className="mono muted">{time(message.receivedAt)}</span>
           <span className={`kind kind-${kind}`}>{kind}</span>
@@ -179,7 +179,7 @@ const MessageRow = memo(function MessageRow({
               {message.issues.length} issue{message.issues.length > 1 ? 's' : ''}
             </span>
           )}
-        </div>
+        </button>
         {(message.issues ?? []).length > 0 && (
           <ul className="issues">
             {message.issues.map((issue, index) => (
@@ -197,6 +197,11 @@ const MessageRow = memo(function MessageRow({
             {'\n\n'}
             {message.validJson ? (stringify(message.payload) ?? display(message.payload)) : display(message.payload)}
           </pre>
+        )}
+        {open && shortened(message) && (
+          <p className="muted shortened-hint">
+            Shortened for display. The whole message is kept in a recording: record it, then download the session (Sessions).
+          </p>
         )}
       </li>
   )

@@ -84,6 +84,9 @@ function Lab({
   const [health, setHealth] = useState<Health | null>(null)
   const [apiUp, setApiUp] = useState<boolean | null>(null)
   const feed = useLiveFeed(onSessionEnded)
+  // "Reconnecting" only after the feed has been up once (before that the Live pill says checking…).
+  const [liveSeen, setLiveSeen] = useState(false)
+  if (feed.connected && !liveSeen) setLiveSeen(true) // state from an earlier render (React: adjusting state while rendering)
 
   useEffect(() => {
     let cancelled = false
@@ -132,6 +135,9 @@ function Lab({
         <div>
           <h1>ActuNode Lab</h1>
           <p>Simulate, test, debug and replay AMR integrations.</p>
+          <div role="status">
+            {liveSeen && !feed.connected && <p className="result error">Live feed disconnected. Reconnecting…</p>}
+          </div>
         </div>
         <div className="status-bar">
           <StatusPill label="API" ok={apiUp} />

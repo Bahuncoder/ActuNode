@@ -5,7 +5,7 @@ import { identitiesOf, type Robot } from './live'
 // Used until the live feed has seen any robots.
 const DEFAULT_ROBOTS = ['robot_01', 'robot_02', 'robot_03']
 
-type Result = { ok: boolean; text: string; warning?: string }
+type Result = { ok: boolean; text: string; topic?: string; warning?: string }
 type Identity = { manufacturer: string; vdaMajor: string }
 
 // What the server accepts (missions.py). Observed names come from anyone on the broker, so anything
@@ -68,7 +68,8 @@ function MissionSender({
         manufacturer: target?.manufacturer,
         vda_version: target ? (target.vdaMajor.slice(1) as '2' | '3') : undefined,
       })
-      setResult({ ok: true, text: `Sent ${response.order_id} → ${response.topic}`, warning: response.warning })
+      // Published to the broker, not accepted by the robot: its state says that (design brief).
+      setResult({ ok: true, text: `Order published: ${response.order_id}. Waiting for robot state.`, topic: response.topic, warning: response.warning })
     } catch (error) {
       setResult({ ok: false, text: (error as Error).message })
     } finally {
@@ -140,7 +141,16 @@ function MissionSender({
       </form>
 
       {hint && <p role="alert" className="result mono error">{hint}</p>}
-      {result && <p role={result.ok ? 'status' : 'alert'} className={`result mono ${result.ok ? 'ok' : 'error'}`}>{result.text}</p>}
+      {/* Always mounted, so a screen reader announces the text when it appears; errors are alerts. */}
+      <div role="status">
+        {result?.ok && (
+          <p className="result mono ok">
+            {result.text}
+            {result.topic && <span className="muted"> (on {result.topic})</span>}
+          </p>
+        )}
+      </div>
+      {result && !result.ok && <p role="alert" className="result mono error">{result.text}</p>}
       {result?.warning && <p role="alert" className="result mono error">⚠ {result.warning}</p>}
     </section>
   )

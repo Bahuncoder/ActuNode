@@ -21,6 +21,11 @@ const SPEEDS = [1, 2, 5, 10]
 // The server's upload limit (ACTUNODE_MAX_UPLOAD_MB default); a larger file is refused here, without sending it.
 const MAX_UPLOAD_BYTES = 200 * 1024 ** 2
 
+// Unknown is shown as unknown, not as 0 B (design brief).
+function sizeText(bytes: number | undefined | null): string {
+  return bytes === undefined || bytes === null ? '—' : formatSize(bytes)
+}
+
 function formatDuration(seconds: number): string {
   const m = Math.floor(seconds / 60)
   const s = Math.floor(seconds % 60)
@@ -99,6 +104,8 @@ function RecorderPanel({
 }) {
   const [name, setName] = useState('')
   const [busy, setBusy] = useState(false)
+  const [starting, setStarting] = useState<string | null>(null) // replay being started
+  const [deleting, setDeleting] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [sessions, setSessions] = useState<SessionSummary[]>([])
   const [polled, setPolled] = useState<RecordingStatus | null>(null)
@@ -172,7 +179,18 @@ function RecorderPanel({
     }
   }
 
+  // One request at a time: the button shows it and cannot be pressed twice (design brief).
   async function replaySession(sessionId: string) {
+    if (starting !== null) return
+    setStarting(sessionId)
+    try {
+      await replaySessionNow(sessionId)
+    } finally {
+      setStarting(null)
+    }
+  }
+
+  async function replaySessionNow(sessionId: string) {
     setError(null)
     try {
       await startReplay(sessionId, speed, includeCommands, currentTime)
@@ -182,7 +200,16 @@ function RecorderPanel({
   }
 
   async function removeSession(sessionId: string) {
-    if (!window.confirm(`Delete session ${sessionId}? This cannot be undone.`)) return
+    if (deleting !== null || !window.confirm(`Delete session ${sessionId}? This cannot be undone.`)) return
+    setDeleting(sessionId)
+    try {
+      await removeSessionNow(sessionId)
+    } finally {
+      setDeleting(null)
+    }
+  }
+
+  async function removeSessionNow(sessionId: string) {
     setError(null)
     try {
       await deleteSession(sessionId)
@@ -267,12 +294,12 @@ function RecorderPanel({
           />
         </label>
         <button type="button" className={recording ? 'danger-button' : ''} disabled={readOnly || busy} title={readOnly ? VIEWER_NOTE : undefined} onClick={toggle}>
-          {recording ? '■ Stop recording' : '● Start recording'}
+          {busy ? (recording ? 'Stopping…' : 'Starting…') : recording ? '■ Stop recording' : '● Start recording'}
         </button>
         {recording && (
           <span className="recording-indicator mono">
             <span className="rec-dot" /> {recording.sessionId} · {formatDuration(elapsed)} ·{' '}
-            {live?.messageCount ?? recording.messageCount} messages · {formatSize(live?.sizeBytes ?? 0)}
+            {live?.messageCount ?? recording.messageCount} messages · {sizeText(live?.sizeBytes)}
             {recording.maxBytes ? ` of ${formatSize(recording.maxBytes)}` : ''}
           </span>
         )}
@@ -293,11 +320,13 @@ function RecorderPanel({
         <label title="Orders and failure injections would be executed by any robot listening">
           <input type="checkbox" checked={includeCommands} onChange={(e) => setIncludeCommands(e.target.checked)} />
           Include commands (orders, failure injections)
-        </label>
+          </label>
+          <span className="muted help"> — robots that are listening would carry them out</span>
         <label title="Each message gets the time it is sent again, for a fleet manager that ignores old state">
           <input type="checkbox" checked={currentTime} onChange={(e) => setCurrentTime(e.target.checked)} />
           Current time
-        </label>
+          </label>
+          <span className="muted help"> — each message gets the time it is sent again, for systems that ignore old state</span>
       </div>
 
       {recordingStopped && !recording && (
@@ -325,16 +354,20 @@ function RecorderPanel({
             disabled={readOnly || uploading}
             title={readOnly ? VIEWER_NOTE : undefined}
             onChange={(e) => {
-              const input = e.target
-              void upload(input.files?.[0]).then(() => {
-                input.value = ''
-              })
-            }}
-          />
-        </label>
+                const input = e.target
+                void upload(input.files?.[0]).then(() => {
+                  input.value = ''
+                })
+              }}
+            />
+          </label>
+          <p className="muted help">
+            A session file (.jsonl), as downloaded here or made by <code>actunode import</code>; up to {MAX_UPLOAD_BYTES} MB.
+          </p>
       </div>
       {uploading && <p className="muted">Uploading…</p>}
-      {uploadMessage && <p role={uploadMessage.error ? 'alert' : 'status'} className={`result mono${uploadMessage.error ? ' error' : ''}`}>{uploadMessage.text}</p>}
+      <div role="status">{uploadMessage && !uploadMessage.error && <p className="result mono">{uploadMessage.text}</p>}</div>
+      {uploadMessage?.error && <p role="alert" className="result mono error">{uploadMessage.text}</p>}
       {storage && (
         <p className="muted">
           Storage: {storage.usedMb.toFixed(1)} MB
@@ -350,7 +383,7 @@ function RecorderPanel({
             <tr>
               <th>Session</th>
               <th>Started</th>
-              <th>Duration</th>
+              <th>Duration (m:ss)</th>
               <th>Messages</th>
               <th>Size</th>
               <th />
@@ -390,7 +423,7 @@ function RecorderPanel({
                 <td className="mono">
                   {session.recording === true ? (live?.messageCount ?? num(session.messageCount) ?? '—') : (num(session.messageCount) ?? '—')}
                 </td>
-                <td className="mono">{formatSize(num(session.sizeBytes) ?? 0)}</td>
+                <td className="mono">{sizeText(num(session.sizeBytes))}</td>
                 <td>
                   {session.recording === true && (
                     <button
@@ -407,11 +440,11 @@ function RecorderPanel({
                       <button
                         type="button"
                         className="link-button"
-                        disabled={readOnly || replaying}
+                        disabled={readOnly || replaying || starting !== null}
                         title={readOnly ? VIEWER_NOTE : undefined}
                         onClick={() => replaySession(session.sessionId)}
                       >
-                        ▶ Replay
+                        {starting === session.sessionId ? 'Starting…' : '▶ Replay'}
                       </button>
                       <button
                         type="button"
@@ -420,7 +453,7 @@ function RecorderPanel({
                         disabled={validating.has(session.sessionId)}
                         onClick={() => validate(session.sessionId)}
                       >
-                        Validate
+                        {validating.has(session.sessionId) ? 'Validating…' : 'Validate'}
                       </button>
                       <a className="link" href={`/api/sessions/${encodeURIComponent(session.sessionId)}/download`} download>
                         Download
@@ -428,11 +461,11 @@ function RecorderPanel({
                       <button
                         type="button"
                         className="link-button danger-link"
-                        disabled={readOnly || (replaying && replay?.sessionId === session.sessionId)}
+                        disabled={readOnly || deleting !== null || (replaying && replay?.sessionId === session.sessionId)}
                         title={readOnly ? VIEWER_NOTE : undefined}
                         onClick={() => removeSession(session.sessionId)}
                       >
-                        Delete
+                        {deleting === session.sessionId ? 'Deleting…' : 'Delete'}
                       </button>
                     </span>
                   )}

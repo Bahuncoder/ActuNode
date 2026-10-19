@@ -4,7 +4,16 @@ What changed, per commit, newest first. Status and plans are in [docs/PROGRESS.m
 
 ## Unreleased
 
-Nothing yet.
+### Accessibility and the design brief (package I, docs/ACCESSIBILITY_REVIEW_2026-10-19.md)
+
+- **Screen readers** hear recording start/stop, replay start/end and action results (errors as alerts), never the
+  message traffic; form fields have a 3:1 border (`--control-border`); `prefers-reduced-motion` is respected; the
+  message stream is one Tab stop with arrow keys.
+- **Copy from the design brief:** "Order published: … Waiting for robot state.", "No robot traffic received…",
+  "Live feed disconnected. Reconnecting…", how each failure ends, the identity a failure reaches, units on positions
+  and durations, unknown sizes as "—", busy labels and no double submissions (replay, stop, delete, inject,
+  validate, record), "not a safety verdict" under Validation, visible help for the replay options and the upload,
+  the command to stop the simulator in the replay-conflict message.
 
 ## 0.3.0 — 2026-10-17
 

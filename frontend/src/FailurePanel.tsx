@@ -4,6 +4,15 @@ import { display, FAILURE_LABELS, injectedFailures, missionStatus, type FailureE
 
 type Result = { ok: boolean; text: string }
 
+// How each failure ends (design brief: say whether it ends by itself). LOW_BATTERY: charging does not end it.
+const FAILURE_ENDS: Record<string, string> = {
+  BLOCKED_PATH: 'Stays until you clear it.',
+  LOW_BATTERY: 'Stays until you clear it (the battery level from before is restored); charging does not end it.',
+  DISCONNECT: 'Ends by itself after the duration set here.',
+  UNRESPONSIVE: 'Ends by itself after the duration set here.',
+  INVALID_PAYLOAD: 'Sends the bad message(s) once; normal traffic goes on.',
+}
+
 const TYPES = [
   { value: 'BLOCKED_PATH', label: FAILURE_LABELS.BLOCKED_PATH, clearable: true },
   { value: 'LOW_BATTERY', label: FAILURE_LABELS.LOW_BATTERY, clearable: true },
@@ -100,7 +109,7 @@ function FailurePanel({ robots: allRobots, failures, readOnly = false }: { robot
           <select value={robotId} onChange={(e) => setChosen(e.target.value)} disabled={robots.length === 0}>
             {serials.map((candidate) => (
               <option key={candidate.robotId} value={candidate.robotId}>
-                {candidate.robotId} · {missionStatus(candidate)}
+                {candidate.robotId} · ActuNode · {missionStatus(candidate)}
               </option>
             ))}
           </select>
@@ -162,9 +171,9 @@ function FailurePanel({ robots: allRobots, failures, readOnly = false }: { robot
           title={readOnly ? VIEWER_NOTE : undefined}
           disabled={readOnly || busy || !robotId || invalid || (needsRoute && !['ACCEPTED', 'MOVING'].includes(status))}
           onClick={() => run('inject')}
-        >
-          Inject
-        </button>
+          >
+            {busy ? 'Sending…' : 'Inject'}
+          </button>
         {type.clearable && (
           <button
             type="button"
@@ -181,12 +190,14 @@ function FailurePanel({ robots: allRobots, failures, readOnly = false }: { robot
       {failure === 'UNRESPONSIVE' && (
         <p className="muted">The robot stays connected but stops answering: no state, orders and commands ignored, while it keeps driving.</p>
       )}
+      {FAILURE_ENDS[failure] && <p className="muted">{FAILURE_ENDS[failure]}</p>}
       {invalid && <p className="muted">Enter a number between {range[1]} and {range[2]}</p>}
       {injected && injected.length > 0 && (
         <p className="muted">Injected: {injected.map((name) => TYPES.find((t) => t.value === name)?.label ?? name).join(', ')}</p>
       )}
 
-      {result && <p role={result.ok ? 'status' : 'alert'} className={`result mono ${result.ok ? 'ok' : 'error'}`}>{result.text}</p>}
+      <div role="status">{result?.ok && <p className="result mono ok">{result.text}</p>}</div>
+      {result && !result.ok && <p role="alert" className="result mono error">{result.text}</p>}
 
       <ol className="failure-log mono">
         {failures.length === 0 && <li className="muted">No failures injected yet.</li>}

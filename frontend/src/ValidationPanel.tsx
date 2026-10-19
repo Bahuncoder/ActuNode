@@ -13,6 +13,7 @@ function ValidationPanel({ validation, readOnly = false }: { validation: Validat
   return (
     <section className="panel panel-wide">
       <h2>Validation</h2>
+      <p className="muted">Protocol checks only: a warning, or a clean result, is not a safety verdict.</p>
       <p>
         Every message is checked against the VDA 5050 schemas and sequence rules (headerId, order sequence, mission
         state machine, topic consistency).

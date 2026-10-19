@@ -188,10 +188,10 @@ describe('F15/F17 forms and accessibility', () => {
   it('labels the topic filter and marks message rows expandable', () => {
     render(<MessageStream messages={[msg('uagv/v2/ActuNode/r1/state', {})]} />)
     expect(screen.getByLabelText('Filter by topic')).toBeTruthy()
-    const row = screen.getByRole('option', { name: /state/ })
-    expect(row.getAttribute('aria-selected')).toBe('false')
+    const row = screen.getByRole('button', { name: /state/ })
+    expect(row.getAttribute('aria-expanded')).toBe('false')
     fireEvent.click(row)
-    expect(row.getAttribute('aria-selected')).toBe('true')
+    expect(row.getAttribute('aria-expanded')).toBe('true')
   })
 
   it('announces only the replay state, not its progress', () => {
@@ -547,7 +547,7 @@ describe('visualization messages', () => {
   const row = (payload: unknown, topic = 'uagv/v2/ROS2/nav2_01/visualization') => {
     cleanup()
     render(<MessageStream messages={[msg(topic, payload)]} />)
-    return screen.getByRole('option', { selected: false })
+    return screen.getByRole('button', { expanded: false })
   }
 
   it('summarise position and speed for 2.x and 3.0', () => {

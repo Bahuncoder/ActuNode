@@ -101,7 +101,8 @@ describe('screen reader announcements', () => {
     respond(false)
     fireEvent.click(screen.getByRole('button', { name: 'Inject' }))
     await waitFor(() => expect(screen.getByRole('alert').textContent).toMatch(/nope|500/))
-    expect(screen.queryByRole('status')).toBeNull()
+    // The status region stays in the page (so later results are announced); after an error it is empty.
+    expect(screen.getByRole('status').textContent).toBe('')
     vi.unstubAllGlobals()
   })
 
@@ -116,10 +117,11 @@ describe('message stream keyboard', () => {
     id, receivedAt: '2026-10-10T12:00:00Z', topic: `uagv/v2/ActuNode/r${id}/state`, retained: false, validJson: true, payload: { id }, issues: [],
   }))
 
-  it('is one Tab stop; arrows, Home and End move; Enter and Space select', () => {
+  it('is one Tab stop; arrows, Home and End move; rows are buttons that open their detail', () => {
     render(<MessageStream messages={messages} />)
-    const list = screen.getByRole('listbox', { name: 'Messages' })
-    const options = screen.getAllByRole('option')
+    const list = screen.getByRole('list', { name: 'Messages' })
+    const options = Array.from(list.querySelectorAll<HTMLButtonElement>('button.stream-row'))
+    expect(options).toHaveLength(3)
     const tabStops = () => Array.from(list.querySelectorAll<HTMLElement>('[tabindex]')).filter((el) => el.tabIndex >= 0)
     const press = (key: string) => fireEvent.keyDown(document.activeElement!, { key })
     expect(tabStops()).toEqual([options[0]])
@@ -136,17 +138,31 @@ describe('message stream keyboard', () => {
     press('Home')
     expect(document.activeElement).toBe(options[0])
 
-    press('Enter')
-    expect(options[0].getAttribute('aria-selected')).toBe('true')
+    // Real buttons: browsers activate them with Enter and Space (jsdom does not simulate that; a click does the same).
+    expect(options[0].tagName).toBe('BUTTON')
+    fireEvent.click(options[0])
+    expect(options[0].getAttribute('aria-expanded')).toBe('true')
     expect(document.querySelector('pre.raw')).toBeTruthy()
-    press(' ')
-    expect(options[0].getAttribute('aria-selected')).toBe('false')
+    fireEvent.click(options[0])
+    expect(options[0].getAttribute('aria-expanded')).toBe('false')
   })
 
   it('keeps the selected row as the Tab stop', () => {
     render(<MessageStream messages={messages} />)
-    const options = screen.getAllByRole('option')
+    const options = Array.from(screen.getByRole('list', { name: 'Messages' }).querySelectorAll<HTMLButtonElement>('button.stream-row'))
     fireEvent.click(options[2])
     expect(options.map((o) => o.tabIndex)).toEqual([-1, -1, 0])
+  })
+})
+
+describe('shortened messages', () => {
+  it('point to the recording for the whole message', () => {
+    const big: MqttMessage = {
+      id: 9, receivedAt: '2026-10-10T12:00:00Z', topic: 'uagv/v2/ActuNode/r9/state', retained: false, validJson: true,
+      payload: '{"a": 1 … (300000 bytes, truncated for display)', issues: [],
+    }
+    render(<MessageStream messages={[big]} />)
+    fireEvent.click(screen.getByRole('button', { name: /state/ }))
+    expect(screen.getByText(/whole message is kept in a recording/)).toBeTruthy()
   })
 })

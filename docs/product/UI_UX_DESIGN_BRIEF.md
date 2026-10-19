@@ -55,7 +55,7 @@ Use Inter/system sans for controls and labels, JetBrains Mono/system monospace f
 
 ## Accessibility and feedback acceptance (proposed)
 
-Target WCAG 2.2 AA as a design objective; conformance has not been established. Verify keyboard access to every control, visible focus, programmatic labels, readable errors, sensible focus after dialogs/details, and escape/close behavior where overlays exist. Use text/icon labels as well as color for state and severity. Validate 4.5:1 normal text contrast and 3:1 non-text control/focus contrast on actual combinations.
+Target WCAG 2.2 AA as a design objective; conformance has not been established. Reviewed 19 October 2026: [ACCESSIBILITY_REVIEW_2026-10-19.md](../ACCESSIBILITY_REVIEW_2026-10-19.md) (fixed: field contrast, announcements, reduced motion, message-stream keyboard, required copy; open: a screen reader pass, long session lists). Verify keyboard access to every control, visible focus, programmatic labels, readable errors, sensible focus after dialogs/details, and escape/close behavior where overlays exist. Use text/icon labels as well as color for state and severity. Validate 4.5:1 normal text contrast and 3:1 non-text control/focus contrast on actual combinations.
 
 Status updates should not flood screen readers; announce actionable failures and recording/replay transitions, not every MQTT message. Respect reduced-motion preferences. The robot table provides a text alternative to interpreting map color/position. Test keyboard-only operation, 200% zoom and at least one screen reader before claiming accessibility readiness.
 

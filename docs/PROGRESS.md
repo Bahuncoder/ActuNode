@@ -639,6 +639,13 @@ Numbered so they can be referenced from commits. Remove an item only when it is 
 
 Newest first. One entry per work session: what was done, what was learned, what is next.
 
+### Mon 19 Oct 2026: package I, accessibility and interaction review
+The design brief's checks run on the v0.3.0 UI (Playwright: screenshots at four sizes, accessible names, a keyboard
+walk, token contrast; and a line-by-line comparison with the brief). Fixed with tests: field contrast (3:1),
+announcements, reduced motion, message-stream keyboard, and fourteen brief items (copy, units, unknown values, busy
+states). Written up in docs/ACCESSIBILITY_REVIEW_2026-10-19.md; open: a screen reader pass, long session lists. The
+builder agents hit their usage limit midway; the second batch was done in the main session.
+
 ### Sat 17 Oct 2026 (night): product specification brought up to date; load re-measured
 The founder's product documents (docs/product/, written 15 Oct) updated to v0.3.0: requirement status (PR-11 done,
 PR-12 in progress, PR-13 open), PR-15..17 and TR-10..12 added, the implementation plan now runs toward v0.4.0
