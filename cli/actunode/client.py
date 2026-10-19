@@ -151,10 +151,13 @@ class Stack:
         return self._shaped(self._call("POST", "/recording/stop"), dict, "a stopped recording")
 
     def open_feed(self, clock=time.monotonic) -> "Feed":
-        cookie = self._http.cookies.get("actunode_session")
+        # The lab's session cookie: `actunode_session`, or `__Host-actunode_session` on a hosted lab (D-61).
+        name, cookie = next(
+            ((n, v) for n, v in self._http.cookies.items() if n.endswith("actunode_session")), ("", None)
+        )
         return Feed(
             "ws" + self.url.removeprefix("http") + "/api/ws",
-            {"Cookie": f"actunode_session={cookie}"} if cookie else {},
+            {"Cookie": f"{name}={cookie}"} if cookie else {},
             self._verify if isinstance(self._verify, ssl.SSLContext) else None,
             clock,
         )

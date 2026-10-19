@@ -67,6 +67,9 @@ flowchart LR
 ## Security for the internet (beyond the lab's own, D-18–D-26, D-56)
 
 - Only 443 and 8883 open to the world; SSH by key from fixed addresses; automatic security updates.
+- No cookie injection between workspaces: hosted labs use `__Host-` cookies (session and sign-in nonce), which only
+  their own host can set, over HTTPS; the edge sends HSTS with `includeSubDomains` (and actunode.com goes on the
+  browsers' preload list), so no subdomain is ever reached over plain HTTP.
 - Workspace networks isolated from each other and from the control plane; no Docker socket in any lab.
 - Secrets per workspace generated at creation (broker logins, SSO key) and stored only in that workspace's volume
   and the control database (encrypted at rest).

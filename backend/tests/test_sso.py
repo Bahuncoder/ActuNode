@@ -194,3 +194,18 @@ def test_hosted_sessions_last_eight_hours(lab):
     response = enter(client, token())
     session_cookie = [c for c in response.headers.get_list("set-cookie") if c.startswith("actunode_session=")][0]
     assert "max-age=28800" in session_cookie.lower()
+
+
+def test_hosted_cookies_cannot_be_planted_by_sibling_subdomains(lab, monkeypatch):
+    """Cookie injection: `__Host-` cookies are only set by this host, over HTTPS, with Path=/ and no Domain."""
+    assert auth.cookie_name(True) == "__Host-actunode_session" and auth.cookie_name(False) == "actunode_session"
+    client, _ = lab
+    start_url = "https://app.actunode.localhost/workspaces/{workspace}/sso?nonce={nonce}"
+    monkeypatch.setattr(sso, "settings", dataclasses.replace(sso.settings, sso_start_url=start_url))
+    response = client.get("/api/sso/start", follow_redirects=False)
+    nonce_cookie = response.headers["set-cookie"]
+    assert nonce_cookie.startswith("__Host-actunode_sso_nonce=")
+    attributes = [part.strip().lower() for part in nonce_cookie.split(";")]
+    assert "secure" in attributes and "path=/" in attributes and not any(a.startswith("domain=") for a in attributes)
+    signed_in = enter(client, token())
+    assert all("secure" in c.lower() for c in signed_in.headers.get_list("set-cookie"))

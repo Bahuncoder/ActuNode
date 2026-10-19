@@ -39,7 +39,16 @@ from app.security import LogThrottle
 
 log = logging.getLogger("actunode.auth")
 
-COOKIE = "actunode_session"
+
+def cookie_name(hosted: bool) -> str:
+    """Hosted labs (D-61) are sibling subdomains of actunode.com: any of them, or a plain-HTTP response, could set a
+    cookie for the whole domain and plant a session (cookie injection). A `__Host-` cookie can only be set by this
+    exact host over HTTPS, with Path=/ and no Domain. Self-hosted labs may run on plain HTTP, so they keep the name."""
+    return "__Host-actunode_session" if hosted else "actunode_session"
+
+
+HOSTED = bool(settings.sso_key_file)
+COOKIE = cookie_name(HOSTED)
 # Reachable without a session: liveness, and what the login screen itself needs.
 OPEN_PATHS = {
     "/api/health",
@@ -457,7 +466,7 @@ def login(body: LoginRequest, request: Request, response: Response) -> dict:
     session_id, user = found
     request.state.user = user
     audit.record_request(request, "login", 200)
-    secure = request.url.scheme == "https" or request.headers.get("x-forwarded-proto") == "https"
+    secure = HOSTED or request.url.scheme == "https" or request.headers.get("x-forwarded-proto") == "https"
     response.set_cookie(
         COOKIE, session_id, max_age=Sessions.lifetime, httponly=True, samesite="strict", secure=secure, path="/"
     )

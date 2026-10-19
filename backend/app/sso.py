@@ -37,7 +37,9 @@ from app.config import settings
 log = logging.getLogger("actunode.sso")
 
 MAX_TOKEN_AGE_S = 120  # a token is for one redirect, not for keeping
-NONCE_COOKIE = "actunode_sso_nonce"
+# __Host-: only this lab, over HTTPS, can set it; a sibling subdomain or a plain-HTTP response cannot plant a nonce
+# of the attacker's choosing (cookie injection), which would bring login CSRF back.
+NONCE_COOKIE = "__Host-actunode_sso_nonce"
 NONCE_S = 300
 SESSION_S = 8 * 3600  # shorter than a password login: the control plane re-checks membership at each sign-in
 CLOCK_SKEW_S = 30
@@ -145,9 +147,9 @@ def single_sign_on_start(request: Request) -> RedirectResponse:
     nonce = secrets.token_urlsafe(32)
     target = settings.sso_start_url.format(workspace=verifier.workspace, nonce=_nonce_hash(nonce))
     response = RedirectResponse(target, status_code=303)
-    secure = request.url.scheme == "https" or request.headers.get("x-forwarded-proto") == "https"
-    response.set_cookie(NONCE_COOKIE, nonce, max_age=NONCE_S, httponly=True, samesite="lax", secure=secure,
-                        path="/api/sso")  # fmt: skip
+    response.set_cookie(
+        NONCE_COOKIE, nonce, max_age=NONCE_S, httponly=True, samesite="lax", secure=True, path="/"
+    )  # fmt: skip (__Host- requires Secure and Path=/)
     return response
 
 
@@ -172,7 +174,6 @@ def single_sign_on(request: Request, token: str = "") -> RedirectResponse:
     session_id, user = opened
     request.state.user = user
     audit.record_request(request, "login.sso", 303)
-    secure = request.url.scheme == "https" or request.headers.get("x-forwarded-proto") == "https"
     response = RedirectResponse("/", status_code=303)
     response.set_cookie(
         # Strict like every lab session (D-25): app.actunode.com and <ws>.actunode.com are the same site.
@@ -181,10 +182,10 @@ def single_sign_on(request: Request, token: str = "") -> RedirectResponse:
         max_age=SESSION_S,
         httponly=True,
         samesite="strict",
-        secure=secure,
+        secure=True,  # hosted labs are HTTPS only
         path="/",
     )
-    response.delete_cookie(NONCE_COOKIE, path="/api/sso")
+    response.delete_cookie(NONCE_COOKIE, path="/", secure=True, httponly=True, samesite="lax")
     return response
 
 
