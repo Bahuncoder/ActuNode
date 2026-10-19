@@ -9,11 +9,14 @@ services:
       - ${ACTUNODE_TRAEFIK_CONFIG:?rendered by prod-up.sh}:/etc/traefik/traefik.yml:ro
       - ./dynamic.prod.yml:/etc/traefik/dynamic.yml:ro
       - letsencrypt:/letsencrypt
-      - ${ACTUNODE_CLOUD_SECRETS}:/run/cloud:ro
+      - ${ACTUNODE_CLOUD_SECRETS}/hetzner-dns-token:/run/cloud/hetzner-dns-token:ro  # the edge's only secret
   control-plane:
     environment:
       ACTUNODE_GITHUB_CLIENT_SECRET_FILE: /run/cloud/github-client-secret
       ACTUNODE_GOOGLE_CLIENT_SECRET_FILE: /run/cloud/google-client-secret
+    volumes:
+      - ${ACTUNODE_CLOUD_SECRETS}/github-client-secret:/run/cloud/github-client-secret:ro
+      - ${ACTUNODE_CLOUD_SECRETS}/google-client-secret:/run/cloud/google-client-secret:ro
     labels:
       # The wildcard certificate is requested here; every workspace router gets it by SNI.
       traefik.http.routers.app.tls.certresolver: letsencrypt

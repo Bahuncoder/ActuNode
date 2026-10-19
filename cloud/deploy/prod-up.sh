@@ -15,7 +15,9 @@ for secret in secret provisioner-token hetzner-dns-token github-client-secret; d
 done
 [ -e "$root/secrets/google-client-secret" ] || : > "$root/secrets/google-client-secret"  # Google is optional
 touch "$root/secrets/allowlist"
-chmod 0644 "$root/secrets"/* && chmod 0755 "$root/secrets"
+# Readable by root (edge, provisioner) and the control plane's user (uid 1001) only; each container mounts just the
+# files it uses (compose.yml, compose.prod.yml).
+chown -R root:1001 "$root/secrets" && chmod 0640 "$root/secrets"/* && chmod 0750 "$root/secrets"
 
 install -d -m 0755 "$root/data/lab/mosquitto" "$root/data/lab/tls" "$root/data/workspaces"
 install -m 0644 "$repo/mosquitto/init-secrets.sh" "$root/data/lab/mosquitto/init-secrets.sh"

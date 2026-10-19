@@ -60,6 +60,11 @@ services:
     image: actunode-cloud:local
     container_name: actunode-control-plane
     read_only: true
+    healthcheck:  # `up --wait` waits for it, and the edge routes to it only once it answers
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/healthz', timeout=2)"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
     tmpfs: ["/tmp"]
     environment:
       ACTUNODE_CLOUD_DOMAIN: ${ACTUNODE_CLOUD_DOMAIN:-actunode.localhost}
@@ -75,7 +80,10 @@ services:
       ACTUNODE_GOOGLE_CLIENT_ID: ${ACTUNODE_GOOGLE_CLIENT_ID:-}
     volumes:
       - cloud-data:/data
-      - ${ACTUNODE_CLOUD_SECRETS:?set by local-up.sh}:/run/cloud:ro
+      # Only the secrets this service uses, one file each (not the whole secrets folder).
+      - ${ACTUNODE_CLOUD_SECRETS:?set by local-up.sh}/secret:/run/cloud/secret:ro
+      - ${ACTUNODE_CLOUD_SECRETS}/provisioner-token:/run/cloud/provisioner-token:ro
+      - ${ACTUNODE_CLOUD_SECRETS}/allowlist:/run/cloud/allowlist:ro
     networks: [edge, cloud]
     labels:
       traefik.enable: "true"
@@ -94,6 +102,11 @@ services:
     image: actunode-provisioner:local
     container_name: actunode-provisioner
     cap_add: [CHOWN, FOWNER, DAC_OVERRIDE]
+    healthcheck:
+      test: ["CMD", "/venv/bin/python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8100/healthz', timeout=2)"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
     environment:
       PROVISIONER_TOKEN_FILE: /run/cloud/provisioner-token
       DOCKER_HOST: tcp://docker-rw:2375
@@ -105,5 +118,5 @@ services:
       ACTUNODE_FRONT_CONTAINERS: actunode-edge,actunode-control-plane
     volumes:
       - ${ACTUNODE_DATA_DIR}:${ACTUNODE_DATA_DIR}  # same path as on the host: labs' bind mounts are host paths
-      - ${ACTUNODE_CLOUD_SECRETS}:/run/cloud:ro
+      - ${ACTUNODE_CLOUD_SECRETS}/provisioner-token:/run/cloud/provisioner-token:ro
     networks: [cloud, docker-write]

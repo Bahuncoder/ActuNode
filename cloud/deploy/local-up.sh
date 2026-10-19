@@ -27,6 +27,8 @@ chmod 0755 "$ACTUNODE_DATA_DIR" "$ACTUNODE_DATA_DIR/lab" "$ACTUNODE_DATA_DIR/lab
 [ -s "$ACTUNODE_CLOUD_SECRETS/secret" ] || openssl rand -hex 32 > "$ACTUNODE_CLOUD_SECRETS/secret"
 [ -s "$ACTUNODE_CLOUD_SECRETS/provisioner-token" ] || openssl rand -hex 32 > "$ACTUNODE_CLOUD_SECRETS/provisioner-token"
 touch "$ACTUNODE_CLOUD_SECRETS/allowlist"
+# Readable inside the containers (the control plane runs as uid 1001); on this computer they sit under $base, which
+# only you can open (0700). The server keeps them 0640 for root and uid 1001 only (prod-up.sh).
 chmod 0755 "$ACTUNODE_CLOUD_SECRETS" && chmod 0644 "$ACTUNODE_CLOUD_SECRETS"/*
 
 # A local CA and a wildcard certificate for *.actunode.localhost (trust ca.crt in your browser to avoid warnings).

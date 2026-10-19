@@ -13,6 +13,7 @@ browser() { curl -s --cacert "$CA" -b "$work/$1" -c "$work/$1" "${@:2}"; }
 status() { browser "$1" -o /dev/null -w '%{http_code}' "${@:2}"; }
 post() { browser "$1" -o /dev/null -w '%{http_code}' -H "Origin: $APP" "${@:2}"; }
 
+for _ in $(seq 1 30); do [ "$(status a "$APP/")" = 200 ] && break; sleep 2; done  # just (re)started
 check "app answers over HTTPS" "$(status a "$APP/")" 200
 check "alice signs in" "$(post a -d login=alice "$APP/dev/login")" 303
 check "bob signs in" "$(post b -d login=bob "$APP/dev/login")" 303
