@@ -1,11 +1,16 @@
 """Single sign-on from the hosted control plane (D-61, docs/HOSTED_SERVICE.md).
 
-In the hosted service, people sign in at app.actunode.com; the control plane then sends the browser to
-`/api/sso?token=…` on their workspace's lab. The token is `<payload>.<signature>`, both base64url: the payload is
-JSON, the signature HMAC-SHA256 over the payload text with this workspace's own key (ACTUNODE_SSO_KEY_FILE). A login
-token says who (`sub`, shown as the lab user), their role, the workspace, when it was issued and when it expires (at
-most 120 s later), and a one-time id. A revoke message (`typ: revoke`, POST /api/sso/revoke) names people removed from
-the workspace: their lab sessions end and their earlier tokens are refused.
+In the hosted service, people sign in at app.actunode.com. Opening a lab starts at the lab, `/api/sso/start`: it
+leaves a one-time nonce in this browser (a cookie) and sends the browser to the control plane with the nonce's hash;
+the control plane, if the person is a member, sends the browser back to `/api/sso?token=…` with that hash in the
+token. The lab opens a session only in the browser holding the nonce, so a sign-in link cannot be used to log
+someone else's browser into your account (login CSRF).
+
+The token is `<payload>.<signature>`, both base64url: the payload is JSON, the signature HMAC-SHA256 over the
+payload text with this workspace's own key (ACTUNODE_SSO_KEY_FILE). A login token says who (`sub`, shown as the lab
+user), their role, the workspace, when it was issued and when it expires (at most 120 s later), and a one-time id. A
+revoke message (`typ: revoke`, POST /api/sso/revoke) names people removed from the workspace: their lab sessions end
+and their earlier tokens are refused.
 
 Off unless login is required and a key and a workspace are configured: self-hosted labs are unchanged.
 """
@@ -16,6 +21,7 @@ import hmac
 import json
 import logging
 import re
+import secrets
 import threading
 import time
 from pathlib import Path
@@ -25,15 +31,20 @@ from fastapi.responses import RedirectResponse
 from pydantic import BaseModel, Field
 
 from app import audit
-from app.auth import COOKIE, OPERATOR, VIEWER, Sessions, _client, sessions
+from app.auth import COOKIE, OPERATOR, VIEWER, _client, sessions
 from app.config import settings
 
 log = logging.getLogger("actunode.sso")
 
 MAX_TOKEN_AGE_S = 120  # a token is for one redirect, not for keeping
+NONCE_COOKIE = "actunode_sso_nonce"
+NONCE_S = 300
+SESSION_S = 8 * 3600  # shorter than a password login: the control plane re-checks membership at each sign-in
 CLOCK_SKEW_S = 30
 MAX_USED_IDS = 10_000
-NAME = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_.@:+-]{0,63}$")
+# Hosted users always carry their provider (`github:octocat`, `google:alice@example.com`); local user names cannot
+# contain ":", so a hosted person can never be mistaken for `admin`, `local` or a users-file login.
+NAME = re.compile(r"^[a-z]{2,16}:[A-Za-z0-9][A-Za-z0-9_.@+-]{0,63}$")
 ROLES = {"owner": OPERATOR, "operator": OPERATOR, "viewer": VIEWER}  # an owner manages members in the control plane
 
 
@@ -122,6 +133,24 @@ def _refused(request: Request, action: str, reason: str) -> HTTPException:
     return HTTPException(401, "This sign-in link is not valid (expired or already used). Sign in again.")
 
 
+def _nonce_hash(nonce: str) -> str:
+    return hashlib.sha256(nonce.encode()).hexdigest()
+
+
+@router.get("/sso/start")
+def single_sign_on_start(request: Request) -> RedirectResponse:
+    """Leave a nonce in this browser and ask the control plane for a sign-in token bound to it."""
+    if not verifier.enabled or not settings.sso_start_url:
+        raise HTTPException(404, "Single sign-on is not configured")
+    nonce = secrets.token_urlsafe(32)
+    target = settings.sso_start_url.format(workspace=verifier.workspace, nonce=_nonce_hash(nonce))
+    response = RedirectResponse(target, status_code=303)
+    secure = request.url.scheme == "https" or request.headers.get("x-forwarded-proto") == "https"
+    response.set_cookie(NONCE_COOKIE, nonce, max_age=NONCE_S, httponly=True, samesite="lax", secure=secure,
+                        path="/api/sso")  # fmt: skip
+    return response
+
+
 @router.get("/sso")
 def single_sign_on(request: Request, token: str = "") -> RedirectResponse:
     if sessions.limited(_client(request)):
@@ -130,10 +159,14 @@ def single_sign_on(request: Request, token: str = "") -> RedirectResponse:
         claims = verifier.verify(token[:4096], "login")
     except SsoError as error:
         raise _refused(request, "login.sso_failed", str(error)) from None
+    nonce = request.cookies.get(NONCE_COOKIE, "")
+    expected = claims.get("nonce")
+    if not nonce or not isinstance(expected, str) or not hmac.compare_digest(_nonce_hash(nonce), expected):
+        raise _refused(request, "login.sso_failed", "link not started in this browser")
     name, role = claims.get("sub"), ROLES.get(claims.get("role"))
     if not isinstance(name, str) or not NAME.fullmatch(name) or role is None:
         raise _refused(request, "login.sso_failed", "bad user or role")
-    opened = sessions.sso_login(name, role, float(claims["iat"]))
+    opened = sessions.sso_login(name, role, float(claims["iat"]), SESSION_S)
     if opened is None:
         raise _refused(request, "login.sso_failed", "user removed from the workspace")
     session_id, user = opened
@@ -145,12 +178,13 @@ def single_sign_on(request: Request, token: str = "") -> RedirectResponse:
         # Strict like every lab session (D-25): app.actunode.com and <ws>.actunode.com are the same site.
         COOKIE,
         session_id,
-        max_age=Sessions.lifetime,
+        max_age=SESSION_S,
         httponly=True,
         samesite="strict",
         secure=secure,
         path="/",
     )
+    response.delete_cookie(NONCE_COOKIE, path="/api/sso")
     return response
 
 

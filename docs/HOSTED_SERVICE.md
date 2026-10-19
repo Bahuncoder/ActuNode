@@ -43,11 +43,14 @@ flowchart LR
   more linked identities (provider + subject); email is taken from the provider.
 - **Workspaces and roles**: a workspace has members with **owner**, **operator** or **viewer** (operator and viewer
   as in the lab, D-56; owner additionally manages members and deletes the workspace).
-- **Into the lab (single sign-on)**: the lab gets a new login mode. The control plane signs a short-lived token
-  (60 s, single use) naming the user, the role and the workspace with that workspace's own key; the browser is sent
-  to `https://<ws>.actunode.com/api/sso?token=…`; the lab checks the signature, workspace, expiry and that the token
-  was not used before, then opens its usual session (cookie, roles, audit trail by person). Removing a member
-  revokes it in the lab at its next check, like `remove-user` today.
+- **Into the lab (single sign-on)**: "Open lab" goes to `https://<ws>.actunode.com/api/sso/start`, which leaves a
+  one-time nonce cookie in the browser and redirects to the control plane with the nonce's hash. The control plane
+  checks membership and redirects back to `/api/sso?token=…`, the token (60 s, single use, signed with that
+  workspace's own key) naming the person, their role, the workspace and the nonce hash. The lab opens its usual
+  session (8 h) only in the browser holding the nonce, so nobody can log your browser into their account (login
+  CSRF). Hosted names always carry their provider (`github:octocat`, `google:alice@example.com`), so they can never
+  be mistaken for a lab's local logins. Removing a member, or changing their role, revokes their lab sessions at
+  once; their next sign-in gets the current role.
 - **Robots and fleet managers** keep broker logins per robot and per master control (D-23, D-47), created from the
   workspace's settings page instead of `mqtt-init` commands.
 

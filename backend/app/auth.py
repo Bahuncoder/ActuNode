@@ -41,7 +41,15 @@ log = logging.getLogger("actunode.auth")
 
 COOKIE = "actunode_session"
 # Reachable without a session: liveness, and what the login screen itself needs.
-OPEN_PATHS = {"/api/health", "/api/login", "/api/logout", "/api/session", "/api/sso", "/api/sso/revoke"}
+OPEN_PATHS = {
+    "/api/health",
+    "/api/login",
+    "/api/logout",
+    "/api/session",
+    "/api/sso",
+    "/api/sso/start",
+    "/api/sso/revoke",
+}
 SAFE_METHODS = {"GET", "HEAD", "OPTIONS"}
 # The one path that also takes `Authorization: Bearer <token>` (a metrics scraper cannot keep a cookie), D-57.
 METRICS_PATH = "/api/metrics"
@@ -204,7 +212,7 @@ class Sessions:
             self._failures.setdefault(client, deque()).append(now)
             self._sweep_failures(now)
 
-    def _new_session(self, now: float, name: str, credential: str, role: str) -> str:
+    def _new_session(self, now: float, name: str, credential: str, role: str, lifetime: float | None = None) -> str:
         """Call with the lock held."""
         if len(self._sessions) >= MAX_SESSIONS:
             for old in [s for s, entry in self._sessions.items() if entry[0] < now]:
@@ -212,16 +220,18 @@ class Sessions:
         if len(self._sessions) >= MAX_SESSIONS:
             del self._sessions[min(self._sessions, key=lambda s: self._sessions[s][0])]
         session_id = secrets.token_urlsafe(32)
-        self._sessions[session_id] = (now + self.lifetime, name, credential, role)
+        self._sessions[session_id] = (now + (lifetime or self.lifetime), name, credential, role)
         return session_id
 
-    def sso_login(self, name: str, role: str, issued_at: float) -> tuple[str, User] | None:
-        """A session for a person the control plane signed in (D-61); None if they were removed after the
-        token was issued."""
+    def sso_login(self, name: str, role: str, issued_at: float, lifetime: float) -> tuple[str, User] | None:
+        """A session for a person the control plane signed in (D-61); None if they were removed (or their role
+        changed: the control plane revokes then) after the token was issued."""
+        if ":" not in name:  # hosted names carry their provider; local names never do (no identity confusion)
+            return None
         with self._lock:
             if self._revoked.get(name, float("-inf")) >= issued_at:
                 return None
-            return self._new_session(time.monotonic(), name, SSO, role), User(name, role)
+            return self._new_session(time.monotonic(), name, SSO, role, lifetime), User(name, role)
 
     def revoke(self, names: list[str], at: float) -> int:
         """End the SSO sessions of these people now and refuse their tokens issued until `at`. Returns how many

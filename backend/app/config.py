@@ -25,6 +25,9 @@ class Settings:
     # Hosted service (D-61): single sign-on from the control plane, with this workspace's key and id.
     sso_key_file: str | None = os.getenv("ACTUNODE_SSO_KEY_FILE") or None
     workspace: str | None = os.getenv("ACTUNODE_WORKSPACE") or None
+    # Where /api/sso/start sends the browser: the control plane's sign-in endpoint for this workspace, with
+    # {workspace} and {nonce} (the nonce's hash), e.g. https://app.actunode.com/workspaces/{workspace}/sso?nonce={nonce}
+    sso_start_url: str | None = os.getenv("ACTUNODE_SSO_START_URL") or None
     # Per-person logins (D-56), written by mqtt-init add-user; next to the API token by default.
     users_file: str | None = os.getenv("ACTUNODE_USERS_FILE") or (
         str(Path(os.environ["ACTUNODE_API_TOKEN_FILE"]).with_name("users"))

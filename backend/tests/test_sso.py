@@ -1,8 +1,11 @@
 """Single sign-on from the hosted control plane (D-61)."""
 
+import dataclasses
+import hashlib
 import json
 import secrets
 import time
+from urllib.parse import parse_qs, urlparse
 
 import pytest
 from fastapi.testclient import TestClient
@@ -13,12 +16,14 @@ from app.mqtt_state import mqtt_bridge
 
 KEY = b"k" * 40
 ADMIN_TOKEN = "a" * 32
+NONCE = "the-nonce-this-browser-holds"
+NONCE_HASH = hashlib.sha256(NONCE.encode()).hexdigest()
 
 
 def claims(**changes) -> dict:
     now = time.time()
     base = {"typ": "login", "ws": "acme", "sub": "github:octocat", "role": "operator", "iat": now, "exp": now + 60,
-            "jti": secrets.token_hex(8)}  # fmt: skip
+            "jti": secrets.token_hex(8), "nonce": NONCE_HASH}  # fmt: skip
     base.update(changes)
     return {k: v for k, v in base.items() if v is not None}
 
@@ -44,9 +49,11 @@ def lab(monkeypatch, tmp_path):
     audit.trail.configure(None)
 
 
-def enter(client, link_token):
+def enter(client, link_token, nonce=NONCE):
+    """Open a sign-in link in a browser that holds `nonce` (as /api/sso/start leaves it), or none."""
     client.cookies.clear()
-    return client.get("/api/sso", params={"token": link_token}, follow_redirects=False)
+    headers = {"cookie": f"{sso.NONCE_COOKIE}={nonce}"} if nonce else {}
+    return client.get("/api/sso", params={"token": link_token}, headers=headers, follow_redirects=False)
 
 
 def test_a_signed_link_opens_a_lab_session_for_that_person(lab):
@@ -80,7 +87,10 @@ def test_roles_come_from_the_workspace_membership(lab):
         {"ws": "other"},  # for another workspace
         {"typ": "revoke"},  # another kind of token
         {"sub": "bad name with spaces"},
-        {"sub": "x" * 65},
+        {"sub": "github:" + "x" * 65},
+        {"sub": "admin"},  # no provider: could be mistaken for the lab's own admin (identity confusion)
+        {"sub": "rupert"},  # ... or for a users-file login
+        {"nonce": None},  # a token not bound to a browser
         {"role": "admin"},
         {"jti": "short"},
         {"iat": None},
@@ -155,3 +165,32 @@ def test_a_short_key_is_refused(tmp_path):
     (tmp_path / "key").write_bytes(b"short")
     with pytest.raises(RuntimeError, match="at least 32 bytes"):
         sso.SsoVerifier().configure(str(tmp_path / "key"), "acme")
+
+
+def test_a_link_works_only_in_the_browser_that_started_it(lab):
+    """Login CSRF: someone else's link must not log your browser into their account."""
+    client, _ = lab
+    assert enter(client, token(), nonce=None).status_code == 401  # a browser that never started the sign-in
+    assert enter(client, token(), nonce="another-browsers-nonce").status_code == 401
+    assert client.get("/api/robots").status_code == 401
+
+
+def test_the_start_step_leaves_a_nonce_and_asks_the_control_plane(lab, monkeypatch):
+    client, _ = lab
+    start_url = "https://app.actunode.localhost/workspaces/{workspace}/sso?nonce={nonce}"
+    monkeypatch.setattr(sso, "settings", dataclasses.replace(sso.settings, sso_start_url=start_url))
+    client.cookies.clear()
+    response = client.get("/api/sso/start", follow_redirects=False)
+    assert response.status_code == 303
+    target = urlparse(response.headers["location"])
+    assert (target.netloc, target.path) == ("app.actunode.localhost", "/workspaces/acme/sso")
+    nonce = response.cookies[sso.NONCE_COOKIE]
+    assert parse_qs(target.query)["nonce"] == [hashlib.sha256(nonce.encode()).hexdigest()]
+    assert "httponly" in response.headers["set-cookie"].lower()
+
+
+def test_hosted_sessions_last_eight_hours(lab):
+    client, _ = lab
+    response = enter(client, token())
+    session_cookie = [c for c in response.headers.get_list("set-cookie") if c.startswith("actunode_session=")][0]
+    assert "max-age=28800" in session_cookie.lower()
