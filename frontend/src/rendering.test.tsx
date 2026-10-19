@@ -54,7 +54,8 @@ describe('memoized rows', () => {
     const { rerender } = render(<MessageStream messages={first} />)
     spy.mockClear()
     rerender(<MessageStream messages={[...first, msg(3)]} />)
-    expect(spy).toHaveBeenCalledTimes(1)
+    // the new row, plus the previous first row that gives up the Tab stop; the rest stay memoized
+    expect(spy).toHaveBeenCalledTimes(2)
     spy.mockRestore()
   })
 })

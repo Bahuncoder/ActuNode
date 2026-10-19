@@ -186,7 +186,7 @@ function FailurePanel({ robots: allRobots, failures, readOnly = false }: { robot
         <p className="muted">Injected: {injected.map((name) => TYPES.find((t) => t.value === name)?.label ?? name).join(', ')}</p>
       )}
 
-      {result && <p className={`result mono ${result.ok ? 'ok' : 'error'}`}>{result.text}</p>}
+      {result && <p role={result.ok ? 'status' : 'alert'} className={`result mono ${result.ok ? 'ok' : 'error'}`}>{result.text}</p>}
 
       <ol className="failure-log mono">
         {failures.length === 0 && <li className="muted">No failures injected yet.</li>}

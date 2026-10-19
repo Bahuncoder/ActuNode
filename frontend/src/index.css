@@ -7,6 +7,8 @@
   --industrial-gray: #8aa1ad; /* AA contrast (4.5:1) on --panel and --node-navy */
   --panel: #10263a;
   --border: #1d3a52;
+  /* Form control boundary (WCAG 1.4.11, 3:1): #527794 is 3.25:1 on --panel (#10263a) and 3.67:1 on --node-navy (#0b1b2b). */
+  --control-border: #527794;
   --danger: #ff6b6b;
 
   color-scheme: dark;
@@ -197,7 +199,7 @@ code,
 .replay-options select {
   height: 30px;
   padding: 0 6px;
-  border: 1px solid var(--border);
+  border: 1px solid var(--control-border);
   border-radius: 6px;
   background: var(--node-navy);
   color: var(--fog-white);
@@ -335,7 +337,7 @@ code,
   min-width: 160px;
   height: 36px;
   padding: 7px 9px;
-  border: 1px solid var(--border);
+  border: 1px solid var(--control-border);
   border-radius: 6px;
   background: var(--node-navy);
   color: var(--fog-white);
@@ -616,7 +618,7 @@ code,
   min-width: 220px;
   height: 32px;
   padding: 0 9px;
-  border: 1px solid var(--border);
+  border: 1px solid var(--control-border);
   border-radius: 6px;
   background: var(--node-navy);
   color: var(--fog-white);
@@ -855,4 +857,32 @@ code,
 .robot.other-map {
   opacity: 0.35;
   filter: grayscale(1);
+}
+
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  margin: -1px;
+  padding: 0;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
+
+.stream-row:focus-visible {
+  outline: 2px solid var(--signal-blue);
+  outline-offset: -2px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
 }

@@ -7,16 +7,31 @@ const STATE_TEXT = { running: 'REPLAYING', finished: 'REPLAY FINISHED', stopped:
 /** Shown while a session replays, so replayed traffic is never mistaken for live robots. */
 export default function ReplayBanner({ replay, readOnly = false }: { replay: ReplayStatus | null; readOnly?: boolean }) {
   const [dismissed, setDismissed] = useState<string | null>(null)
-  if (!replay) return null
+  const [announcement, setAnnouncement] = useState('')
+  const key = `${replay?.sessionId}:${replay?.state}`
+  const [seen, setSeen] = useState(key)
+  // Announce start and end only, never the progress ticks.
+  if (key !== seen) {
+    setSeen(key)
+    if (replay) setAnnouncement(`Replay ${replay.state === 'running' ? 'started' : replay.state}: ${replay.sessionId}`)
+  }
+
+  const live = (
+    <p role="status" className="sr-only">
+      {announcement}
+    </p>
+  )
+  if (!replay) return live
 
   const running = replay.state === 'running'
-  const key = `${replay.sessionId}:${replay.state}`
-  if (!running && dismissed === key) return null
+  if (!running && dismissed === key) return live
 
   const percent = replay.total ? (replay.sent / replay.total) * 100 : 100
   return (
+    <>
+      {live}
     <div className={`replay-banner ${running ? '' : 'done'}`}>
-      <strong role="status">▶ {STATE_TEXT[replay.state]}</strong>
+      <strong>▶ {STATE_TEXT[replay.state]}</strong>
       <span className="mono">{replay.sessionId}</span>
       <span className="mono muted">
         {replay.position.toFixed(1)} / {replay.duration.toFixed(1)} s · {replay.speed}× · {replay.sent}/{replay.total}{' '}
@@ -36,5 +51,6 @@ export default function ReplayBanner({ replay, readOnly = false }: { replay: Rep
         </button>
       )}
     </div>
+    </>
   )
 }

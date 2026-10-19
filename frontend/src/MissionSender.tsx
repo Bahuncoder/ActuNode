@@ -139,9 +139,9 @@ function MissionSender({
         </button>
       </form>
 
-      {hint && <p className="result mono error">{hint}</p>}
-      {result && <p className={`result mono ${result.ok ? 'ok' : 'error'}`}>{result.text}</p>}
-      {result?.warning && <p className="result mono error">⚠ {result.warning}</p>}
+      {hint && <p role="alert" className="result mono error">{hint}</p>}
+      {result && <p role={result.ok ? 'status' : 'alert'} className={`result mono ${result.ok ? 'ok' : 'error'}`}>{result.text}</p>}
+      {result?.warning && <p role="alert" className="result mono error">⚠ {result.warning}</p>}
     </section>
   )
 }

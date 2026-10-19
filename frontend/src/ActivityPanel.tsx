@@ -56,7 +56,7 @@ function ActivityPanel() {
           ))}
         </select>
       </label>
-      {error && <p className="result mono error">Could not load activity: {error}</p>}
+      {error && <p role="alert" className="result mono error">Could not load activity: {error}</p>}
       <div className="table-scroll">
         <table className="robot-table">
           <thead>

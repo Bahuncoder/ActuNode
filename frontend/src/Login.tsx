@@ -45,7 +45,7 @@ export default function Login({ onLoggedIn }: { onLoggedIn: () => void }) {
             {busy ? 'Logging in…' : 'Log in'}
           </button>
         </form>
-        {error && <p className="result mono error">{error}</p>}
+        {error && <p role="alert" className="result mono error">{error}</p>}
       </section>
     </div>
   )

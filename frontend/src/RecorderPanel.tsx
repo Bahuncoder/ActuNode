@@ -229,12 +229,27 @@ function RecorderPanel({
     }
   }
 
+  // Announce transitions only (never the running counters). A session already recording on load is not announced.
+  const [announcement, setAnnouncement] = useState('')
+  const [seenId, setSeenId] = useState(recordingId)
+  if (recordingId !== seenId) {
+    setSeenId(recordingId)
+    if (recordingId) setAnnouncement(`Recording started: ${recordingId}`)
+    else if (seenId) {
+      const reason = recordingStopped?.sessionId === seenId ? stopExplanation(recordingStopped.reason) : 'stopped by user'
+      setAnnouncement(`Recording stopped: ${seenId} (${reason})`)
+    }
+  }
+
   const replaying = replay?.state === 'running'
   const elapsed = recording ? Math.max(0, (now - Date.parse(recording.startedAt)) / 1000) : 0
 
   return (
     <section className="panel panel-wide">
       <h2>Sessions</h2>
+      <p role="status" className="sr-only">
+        {announcement}
+      </p>
       <p>
         Record every MQTT message (orders, states, connections, failures) to a JSONL file, then replay it to
         reproduce the incident.
@@ -286,11 +301,11 @@ function RecorderPanel({
       </div>
 
       {recordingStopped && !recording && (
-        <p className="result mono error">
+        <p role="alert" className="result mono error">
           Recording {recordingStopped.sessionId} stopped automatically: {stopExplanation(recordingStopped.reason)}.
         </p>
       )}
-      {error && <p className="result mono error">{error}</p>}
+      {error && <p role="alert" className="result mono error">{error}</p>}
 
       <div className="mission-form">
         <label>
@@ -319,7 +334,7 @@ function RecorderPanel({
         </label>
       </div>
       {uploading && <p className="muted">Uploading…</p>}
-      {uploadMessage && <p className={`result mono${uploadMessage.error ? ' error' : ''}`}>{uploadMessage.text}</p>}
+      {uploadMessage && <p role={uploadMessage.error ? 'alert' : 'status'} className={`result mono${uploadMessage.error ? ' error' : ''}`}>{uploadMessage.text}</p>}
       {storage && (
         <p className="muted">
           Storage: {storage.usedMb.toFixed(1)} MB
@@ -328,7 +343,7 @@ function RecorderPanel({
         </p>
       )}
 
-      {listError && <p className="result mono error">Could not load the session list: {listError}</p>}
+      {listError && <p role="alert" className="result mono error">Could not load the session list: {listError}</p>}
       <div className="table-scroll">
         <table className="robot-table sessions-table">
           <thead>

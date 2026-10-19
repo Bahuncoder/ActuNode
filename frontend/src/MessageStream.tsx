@@ -1,4 +1,4 @@
-import { memo, useCallback, useState } from 'react'
+import { memo, useCallback, useState, type KeyboardEvent } from 'react'
 import { display, get, num, point, type MqttMessage } from './live'
 
 const SHOWN = 200
@@ -86,6 +86,7 @@ function MessageStream({ messages }: { messages: MqttMessage[] }) {
   const [onlyIssues, setOnlyIssues] = useState(false)
   const [paused, setPaused] = useState<MqttMessage[] | null>(null)
   const [expanded, setExpanded] = useState<number | null>(null)
+  const [active, setActive] = useState<number | null>(null) // the row that was last focused
   const toggle = useCallback((id: number) => setExpanded((current) => (current === id ? null : id)), [])
 
   const source = paused ?? messages
@@ -95,6 +96,20 @@ function MessageStream({ messages }: { messages: MqttMessage[] }) {
     .filter((m) => !onlyIssues || (m.issues ?? []).length > 0)
     .slice(-SHOWN)
     .reverse()
+
+  // Roving tabindex: the list is one Tab stop, on the focused row, else the selected one, else the first.
+  const ids = shown.map((m) => m.id)
+  const tabbable = [active, expanded].find((id) => id !== null && ids.includes(id)) ?? ids[0]
+
+  function onKeyDown(event: KeyboardEvent<HTMLUListElement>) {
+    const rows = Array.from(event.currentTarget.querySelectorAll<HTMLElement>('[role="option"]'))
+    const at = rows.indexOf(event.target as HTMLElement)
+    if (at < 0) return
+    const next = { ArrowDown: Math.min(at + 1, rows.length - 1), ArrowUp: Math.max(at - 1, 0), Home: 0, End: rows.length - 1 }[event.key]
+    if (next === undefined) return
+    event.preventDefault()
+    rows[next].focus()
+  }
 
   return (
     <div>
@@ -114,12 +129,12 @@ function MessageStream({ messages }: { messages: MqttMessage[] }) {
         <span className="muted mono">{messages.length} buffered</span>
       </div>
 
-      <ol className="stream">
-        {shown.length === 0 && <li className="empty">No messages yet.</li>}
+      {shown.length === 0 && <p className="empty">No messages yet.</p>}
+      <ul className="stream" role="listbox" aria-label="Messages" hidden={shown.length === 0} onKeyDown={onKeyDown}>
         {shown.map((message) => (
-          <MessageRow key={message.id} message={message} open={expanded === message.id} onToggle={toggle} />
+          <MessageRow key={message.id} message={message} open={expanded === message.id} tabbable={tabbable === message.id} onToggle={toggle} onFocus={setActive} />
         ))}
-      </ol>
+      </ul>
     </div>
   )
 }
@@ -128,16 +143,33 @@ function MessageStream({ messages }: { messages: MqttMessage[] }) {
 const MessageRow = memo(function MessageRow({
   message,
   open,
+  tabbable,
   onToggle,
+  onFocus,
 }: {
   message: MqttMessage
   open: boolean
+  tabbable: boolean
   onToggle: (id: number) => void
+  onFocus: (id: number) => void
 }) {
   const kind = kindOf(message.topic)
   return (
-    <li className={rowClass(message)}>
-        <button type="button" className="stream-row" aria-expanded={open} onClick={() => onToggle(message.id)}>
+    <li role="none" className={rowClass(message)}>
+        <div
+          role="option"
+          className="stream-row"
+          aria-selected={open}
+          tabIndex={tabbable ? 0 : -1}
+          onClick={() => onToggle(message.id)}
+          onFocus={() => onFocus(message.id)}
+          onKeyDown={(event) => {
+            if (event.key === 'Enter' || event.key === ' ') {
+              event.preventDefault()
+              onToggle(message.id)
+            }
+          }}
+        >
           <span className="mono muted">{time(message.receivedAt)}</span>
           <span className={`kind kind-${kind}`}>{kind}</span>
           <span className="mono">{robotOf(message.topic)}</span>
@@ -147,7 +179,7 @@ const MessageRow = memo(function MessageRow({
               {message.issues.length} issue{message.issues.length > 1 ? 's' : ''}
             </span>
           )}
-        </button>
+        </div>
         {(message.issues ?? []).length > 0 && (
           <ul className="issues">
             {message.issues.map((issue, index) => (

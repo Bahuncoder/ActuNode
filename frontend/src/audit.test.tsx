@@ -188,10 +188,10 @@ describe('F15/F17 forms and accessibility', () => {
   it('labels the topic filter and marks message rows expandable', () => {
     render(<MessageStream messages={[msg('uagv/v2/ActuNode/r1/state', {})]} />)
     expect(screen.getByLabelText('Filter by topic')).toBeTruthy()
-    const row = screen.getByRole('button', { name: /state/ })
-    expect(row.getAttribute('aria-expanded')).toBe('false')
+    const row = screen.getByRole('option', { name: /state/ })
+    expect(row.getAttribute('aria-selected')).toBe('false')
     fireEvent.click(row)
-    expect(row.getAttribute('aria-expanded')).toBe('true')
+    expect(row.getAttribute('aria-selected')).toBe('true')
   })
 
   it('announces only the replay state, not its progress', () => {
@@ -199,7 +199,8 @@ describe('F15/F17 forms and accessibility', () => {
     const { container } = render(<ReplayBanner replay={replay} />)
     const live = container.querySelectorAll('[role="status"]')
     expect(live).toHaveLength(1)
-    expect(live[0].textContent).toBe('▶ REPLAYING')
+    expect(live[0].textContent).toBe('') // nothing announced until the state changes
+    expect(container.textContent).toContain('▶ REPLAYING')
   })
 
   it('uses a muted grey with at least 4.5:1 contrast on the panel and page colours', () => {
@@ -546,7 +547,7 @@ describe('visualization messages', () => {
   const row = (payload: unknown, topic = 'uagv/v2/ROS2/nav2_01/visualization') => {
     cleanup()
     render(<MessageStream messages={[msg(topic, payload)]} />)
-    return screen.getByRole('button', { expanded: false })
+    return screen.getByRole('option', { selected: false })
   }
 
   it('summarise position and speed for 2.x and 3.0', () => {
