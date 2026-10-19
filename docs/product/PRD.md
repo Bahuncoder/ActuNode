@@ -25,7 +25,7 @@ Current baseline (v0.3.0): VDA 5050 2.1.0 and 3.0.0, 1–50 simulated robots, a 
 
 Next release (v0.4.0): observed onboarding and validated external pilot workflows (PR-12, PR-13), plus the release gates that need re-measuring (load, accessibility). Delivered since the 15 October baseline: PR-11 (v0.2.0) and the full audit (v0.3.0). No evidence currently establishes real-hardware compatibility or product-market fit.
 
-Out of scope: production fleet orchestration, collision avoidance, physical safety certification, warehouse map authoring, billing, hosted multitenancy, fine-grained RBAC and SSO (two roles exist, viewer and operator, D-56), autonomous dispatch and a generic WMS/ERP adapter. Replay is open-loop: recorded robots cannot respond dynamically to new fleet-manager commands. Schema validity does not certify full VDA conformance.
+Out of scope: production fleet orchestration, collision avoidance, physical safety certification, warehouse map authoring, fine-grained RBAC and enterprise SSO (roles: viewer, operator, and in the hosted service owner, D-56/D-61), autonomous dispatch and a generic WMS/ERP adapter. **Changed 19 October (D-61):** a hosted service on actunode.com (one isolated lab per workspace, GitHub/Google sign-in) is now in scope; billing follows the beta ([HOSTED_SERVICE.md](../HOSTED_SERVICE.md)). Replay is open-loop: recorded robots cannot respond dynamically to new fleet-manager commands. Schema validity does not certify full VDA conformance.
 
 ## Functional requirements
 

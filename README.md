@@ -556,7 +556,7 @@ is stable between 0.x releases: [docs/COMPATIBILITY.md](docs/COMPATIBILITY.md). 
 | [docs/CONNECT_YOUR_ROBOT.md](docs/CONNECT_YOUR_ROBOT.md) | Bring your robot into the lab; the conformance suite |
 | [docs/COMPATIBILITY.md](docs/COMPATIBILITY.md) | What stays stable between 0.x releases |
 | [docs/TRIAGE.md](docs/TRIAGE.md) | Reporting a problem; how issues are handled |
-| [docs/DECISIONS.md](docs/DECISIONS.md) | Why things are built the way they are (D-1 to D-60) |
+| [docs/DECISIONS.md](docs/DECISIONS.md) | Why things are built the way they are (D-1 to D-61) |
 | [docs/VDA5050_NOTES.md](docs/VDA5050_NOTES.md) | Protocol notes and validator rules |
 | [docs/research/VDA5050_3_0.md](docs/research/VDA5050_3_0.md) | VDA 5050 3.0 compared with 2.1 |
 | [docs/DEMO.md](docs/DEMO.md) | 3-minute demo script and the automated recorder |

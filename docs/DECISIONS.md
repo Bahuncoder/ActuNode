@@ -1095,3 +1095,24 @@ disabled actions are skipped, so a viewer moves through Validate and Download on
 index is kept on the DOM (data attributes), so its buttons need no extra props.
 **Consequences.** The page is about 25 Tab stops regardless of how many sessions or messages there are (measured).
 Screen-reader behaviour of the patterns is still to be checked with a real screen reader.
+
+
+## D-61 · A hosted service on actunode.com: one isolated lab per workspace
+19 Oct 2026 · Accepted (founder: "I wanna go into shared online service", domain actunode.com; Hetzner, EU first;
+GitHub and Google sign-in; billing after the beta)
+
+**Context.** ActuNode was self-hosted only; the PRD listed hosted multitenancy and billing as out of scope. The
+founder chose a shared online service. The backend deliberately holds one lab per process (TRD), and customer data
+(site captures, recordings) must never cross between customers.
+**Decision.** A control plane at app.actunode.com (sign-in with GitHub or Google, workspaces, members with owner,
+operator or viewer, invitations, an invite-only allow list) and one isolated lab per workspace at
+<workspace>.actunode.com, built from the published images (D-58) as its own Compose project and network. A Traefik
+edge terminates TLS with a wildcard certificate and routes HTTPS by host name and MQTT (8883) by SNI. A separate
+provisioner is the only component that starts containers, through a restricted Docker socket proxy. The lab gets a
+single sign-on mode: a 60-second, single-use token signed with the workspace's own key opens a normal lab session
+for that person and role. Hetzner Cloud, EU region first; SQLite for the beta control plane. Billing in phase 3.
+Details: docs/HOSTED_SERVICE.md.
+**Consequences.** Self-hosting stays first-class (same images). The hosted service reuses the lab unchanged except
+for SSO; isolation comes from containers and networks, not from rewriting the backend for tenants. New risks: an
+internet-facing service (security review before outside users), customer data (terms, privacy, deletion), and
+operations (monitoring, backups, upgrades), all phase 2 gates.

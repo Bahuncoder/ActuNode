@@ -38,6 +38,8 @@ published images (D-58), scenario format version and compatibility promise (D-54
 | L. Upstream follow-through | Engineering, as reviews arrive | Answer InOrbit's reviews on PRs #82–#85 and #14; when one merges, move the pin in `ros2/Dockerfile` and delete its patch | No patch kept for a merged fix |
 | M. Discovery-gated (PR-14) | Only with user evidence | Live site-broker bridge, configurable simulated manufacturer, duplicate-mission detection | A user need recorded in PROGRESS first |
 
+| N. Hosted service (D-61) | Phase 1 about 2–3 weeks, phase 2 2–3 weeks, phase 3 2–4 weeks / engineering; founder: accounts (Hetzner, DNS, OAuth apps) | Control plane at app.actunode.com, one lab per workspace, Traefik edge, SSO into labs, Hetzner infrastructure; then operations and security; then billing ([HOSTED_SERVICE.md](../HOSTED_SERVICE.md)) | Phase 1: a workspace end to end locally; phase 2: security review and restore drill before outside users |
+
 H and I need no outside people and come first. J and K run whenever participants are available; L whenever
 InOrbit answers.
 
