@@ -18,6 +18,13 @@ COOKIE = "__Host-actunode_cloud"  # see oauth.STATE_COOKIE: no sibling subdomain
 NONCE_HASH = re.compile(r"^[0-9a-f]{64}$")
 GITHUB_LOGIN = re.compile(r"^[A-Za-z0-9](?:[A-Za-z0-9-]{0,38})$")
 EMAIL = re.compile(r"^[^@\s]{1,64}@[^@\s]{1,190}\.[^@\s]{2,}$")
+# The only messages /workspaces?error= shows: a link cannot put words of its own on our page (content injection).
+ERRORS = {
+    "address": "The address must be 4 to 31 characters: lower-case letters, digits and dashes, starting with a letter.",
+    "reserved": "That address is reserved.",
+    "taken": "That address is taken.",
+    "limit": "Beta: one workspace per person.",
+}
 
 STYLE = """
 :root{--bg:#0b1b2b;--panel:#10263a;--text:#eaf2f7;--muted:#8aa1ad;--blue:#00aeef;--border:#527794;--danger:#ff6b6b}
@@ -184,6 +191,7 @@ def create_app(config: Settings = settings, store: Store | None = None, http: ht
     @app.get("/workspaces", response_class=HTMLResponse)
     def workspaces(request: Request, error: str = ""):
         user = signed_in(request)
+        error = ERRORS.get(error, "")
         rows = "".join(
             f"<tr><td><a href='/workspaces/{esc(w.slug)}'>{esc(w.name)}</a></td><td><code>{esc(w.slug)}</code></td>"
             f"<td>{esc(w.role)}</td><td>{esc(w.state)}</td></tr>"
@@ -208,10 +216,9 @@ def create_app(config: Settings = settings, store: Store | None = None, http: ht
         user = signed_in(request)
         slug = slug.strip().lower()
         problem = (
-            "The address must be 4 to 31 characters: lower-case letters, digits and dashes, starting with a letter."
-            if not SLUG.fullmatch(slug) else "That address is reserved." if slug in RESERVED
-            else "That address is taken." if store.slug_taken(slug)
-            else "Beta: one workspace per person." if store.owned_count(user) >= config.workspaces_per_user else ""
+            "address" if not SLUG.fullmatch(slug) else "reserved" if slug in RESERVED
+            else "taken" if store.slug_taken(slug)
+            else "limit" if store.owned_count(user) >= config.workspaces_per_user else ""
         )  # fmt: skip
         if problem:
             return RedirectResponse(f"/workspaces?error={problem}", status_code=303)

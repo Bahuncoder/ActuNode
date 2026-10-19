@@ -97,7 +97,7 @@ class Store:
             subject,
         )
         if found:
-            return User(*found)
+            return self._refresh(User(*found), provider, subject, handle, email, login)
         unique = handle
         while self._one("SELECT 1 FROM users WHERE handle = ?", unique):
             unique = f"{handle[:56]}-{secrets.token_hex(3)}"
@@ -105,6 +105,17 @@ class Store:
         user_id = self._one("SELECT id FROM users WHERE handle = ?", unique)[0]
         self._run(("INSERT INTO identities VALUES (?, ?, ?, ?)", provider, subject, user_id, login))
         return User(user_id, unique, email)
+
+    def _refresh(self, user: User, provider: str, subject: str, handle: str, email: str | None, login: str) -> User:
+        """Logins and emails change at the provider (a GitHub rename frees the old login for someone else): keep
+        what we match invitations against current, at every sign-in, so an invitation to a login reaches whoever
+        holds it now."""
+        statements = [("UPDATE identities SET login = ? WHERE provider = ? AND subject = ?", login, provider, subject),
+                      ("UPDATE users SET email = ? WHERE id = ?", email, user.id)]  # fmt: skip
+        if handle != user.handle and not self._one("SELECT 1 FROM users WHERE handle = ? AND id != ?", handle, user.id):
+            statements.append(("UPDATE users SET handle = ? WHERE id = ?", handle, user.id))
+        self._run(*statements)
+        return self.user(user.id)
 
     def user(self, user_id: int) -> User | None:
         found = self._one("SELECT id, handle, email FROM users WHERE id = ?", user_id)

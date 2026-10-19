@@ -40,7 +40,8 @@ class World:
             code = request.headers["authorization"].removeprefix("Bearer token-")
             user = self.users[code]
             if url.endswith("/emails"):
-                return httpx.Response(200, json=[{"email": f"{user['login'].lower()}@example.com", "verified": True,
+                email = user.get("email", f"{user['login'].lower()}@example.com")
+                return httpx.Response(200, json=[{"email": email, "verified": True,
                                                   "primary": True}])  # fmt: skip
             return httpx.Response(200, json=user)
         if url.startswith("http://provisioner/"):
@@ -150,7 +151,7 @@ def test_one_workspace_per_person_in_the_beta_and_addresses_are_unique(cloud):
     sign_in(owner, "code-octocat")
     sign_in(other, "code-mallory")
     create(owner, "acme")
-    assert "one+workspace" in create(owner, "acme-two").headers["location"].replace("%20", "+").replace(" ", "+")
+    assert create(owner, "acme-two").headers["location"] == "/workspaces?error=limit"
     assert "taken" in create(other, "acme").headers["location"]
 
 
@@ -238,3 +239,32 @@ def test_pages_carry_security_headers(cloud):
     response = browser().get("/")
     assert "frame-ancestors 'none'" in response.headers["content-security-policy"]
     assert response.headers["x-content-type-options"] == "nosniff"
+
+
+def test_a_link_cannot_put_its_own_words_on_our_pages(cloud):
+    """Content injection: ?error= shows only our own messages."""
+    _, _, browser = cloud
+    client = browser()
+    sign_in(client, "code-octocat")
+    page = client.get("/workspaces", params={"error": "Your account is suspended: email help@evil.example"}).text
+    assert "suspended" not in page and "evil.example" not in page
+    assert "That address is taken." in client.get("/workspaces", params={"error": "taken"}).text
+
+
+def test_a_github_rename_does_not_keep_invitations_meant_for_the_new_owner_of_the_login(cloud):
+    """Stale identity: logins are refreshed at every sign-in, so an invitation reaches whoever holds the login now."""
+    world, store, browser = cloud
+    owner = browser()
+    sign_in(owner, "code-octocat")
+    create(owner)
+    mallory = browser()
+    sign_in(mallory, "code-mallory")  # GitHub id 3, login "mallory"
+    # Renames on GitHub (the email stays): "mallory" is free for someone else now.
+    world.users["code-mallory"] = {"id": 3, "login": "mallory-renamed", "email": "mallory@example.com"}
+    assert sign_in(mallory, "code-mallory").status_code == 303
+    owner.post(
+        "/workspaces/acme/invite", data={"invitee": "github:mallory", "role": "operator"}
+    )  # meant for the new holder
+    assert sign_in(mallory, "code-mallory").status_code == 303  # invitations are accepted at sign-in
+    assert mallory.get("/workspaces/acme").status_code == 404
+    assert "github:mallory-renamed" in mallory.get("/workspaces").text  # the handle follows the rename
