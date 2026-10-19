@@ -645,6 +645,11 @@ walk, token contrast; and a line-by-line comparison with the brief). Fixed with 
 announcements, reduced motion, message-stream keyboard, and fourteen brief items (copy, units, unknown values, busy
 states). Written up in docs/ACCESSIBILITY_REVIEW_2026-10-19.md; open: a screen reader pass, long session lists. The
 builder agents hit their usage limit midway; the second batch was done in the main session.
+Then D-60 (skip links; the session actions one Tab stop: 25 stops for the whole page on a lab with 100+ sessions).
+CI was red on d75b0a2, 1fa786c and 567f3dd: the browser e2e test looked for the stream as an ordered list and for
+the old "Sent" wording, which the unit tests do not see. Fixed in d6524ad (the stream is an `ol` again; the test
+expects "Order published"); the full e2e suite passed locally first and CI is green. Rule kept: a change to UI
+structure or copy runs the browser e2e locally before it is pushed.
 
 ### Sat 17 Oct 2026 (night): product specification brought up to date; load re-measured
 The founder's product documents (docs/product/, written 15 Oct) updated to v0.3.0: requirement status (PR-11 done,
