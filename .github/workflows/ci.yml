@@ -36,6 +36,22 @@ jobs:
       - run: pip install -r requirements-dev.txt
       - run: pytest -q
 
+  cloud:
+    # The hosted service's control plane (D-61).
+    runs-on: ubuntu-24.04
+    defaults:
+      run:
+        working-directory: cloud
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7
+        with:
+          python-version: "3.12"
+      - run: pip install -r requirements-dev.txt
+      - run: pytest -q
+
   simulator:
     runs-on: ubuntu-24.04
     steps:
