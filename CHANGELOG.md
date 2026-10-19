@@ -4,6 +4,20 @@ What changed, per commit, newest first. Status and plans are in [docs/PROGRESS.m
 
 ## Unreleased
 
+### Hosted service, phase 1 (D-61, docs/HOSTED_SERVICE.md)
+
+- **Labs: single sign-on** from the hosted control plane (`/api/sso/start` → control plane → `/api/sso`), bound to the
+  browser (no login CSRF), provider-prefixed names (no confusion with local logins), `__Host-` cookies (no cookie
+  injection between workspaces), revocation when a member is removed or changes role. Off for self-hosted labs.
+- **Control plane** (`cloud/`): GitHub and Google sign-in (state, PKCE), invite-only beta, workspaces, members and
+  roles, the way into each lab; same-origin forms, security headers, fixed error texts, identities refreshed at
+  sign-in with stable handles.
+- **Provisioner and edge** (`cloud/provisioner`, `cloud/deploy`): one isolated lab per workspace (own networks, own
+  volume), Traefik with TLS and MQTT routed by SNI, Docker access only through restricted proxies; a local stack
+  (`local-up.sh`) and a 16-step end-to-end check (`local-check.sh`), passing.
+- **Infrastructure** (`cloud/infra`): Terraform for Hetzner (server with backups, data volume, firewall),
+  cloud-init, production edge with a Let's Encrypt wildcard; deployment guide docs/HOSTED_DEPLOY.md.
+
 ### Accessibility and the design brief (package I, docs/ACCESSIBILITY_REVIEW_2026-10-19.md)
 
 - **Screen readers** hear recording start/stop, replay start/end and action results (errors as alerts), never the

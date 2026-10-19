@@ -1,0 +1,15 @@
+# Production: certificates come from Let's Encrypt (traefik.prod.yml); shared TLS options and middlewares.
+tls:
+  options:
+    default:
+      minVersion: VersionTLS12
+      sniStrict: true
+http:
+  middlewares:
+    secure-headers:
+      headers:
+        stsSeconds: 31536000
+        stsIncludeSubdomains: true
+        stsPreload: true
+        contentTypeNosniff: true
+        referrerPolicy: same-origin

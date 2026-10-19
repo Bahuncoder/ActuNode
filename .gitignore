@@ -44,3 +44,9 @@ test-results/
 *.sqlite3
 *.sqlite3-wal
 *.sqlite3-shm
+
+# Terraform working files (cloud/infra): providers and state never committed.
+.terraform/
+*.tfstate
+*.tfstate.*
+*.tfvars

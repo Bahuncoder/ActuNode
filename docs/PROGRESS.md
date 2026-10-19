@@ -639,6 +639,13 @@ Numbered so they can be referenced from commits. Remove an item only when it is 
 
 Newest first. One entry per work session: what was done, what was learned, what is next.
 
+### Mon 19 Oct 2026 (night): hosted service phase 1 (D-61)
+The founder chose a shared online service on actunode.com (Hetzner EU, GitHub/Google sign-in, billing after the
+beta). Built: lab SSO, control plane, provisioner, Traefik edge, local stack, Terraform. Five rounds of security
+review findings fixed with tests (login CSRF, identity confusion, cookie injection, content injection, stale
+identities). Local end-to-end check: 16 of 16 (two people, two isolated workspaces, SSO, a robot over TLS by SNI,
+cross-workspace attempts refused). Waiting on: the founder's Hetzner/DNS/OAuth accounts and the v0.4.0 release.
+
 ### Mon 19 Oct 2026 (evening): the founder used the lab as a user
 Login on (`.env`, now ignored by git), personal accounts `rupert` (operator) and `guest` (viewer) made with
 `mqtt-init add-user`; tokens kept in docs/company/ (private). The founder logged in through the browser and went

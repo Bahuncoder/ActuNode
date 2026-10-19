@@ -5,7 +5,7 @@ workspace, and get their own lab at **&lt;workspace&gt;.actunode.com**, with rob
 **&lt;workspace&gt;.actunode.com:8883** (MQTT over TLS). Self-hosting stays fully supported; the hosted service runs the
 same lab images.
 
-Status: **phase 1 (invite-only beta) in design**. Billing after the beta.
+Status (19 Oct): **phase 1 built and verified locally**: lab SSO, control plane, provisioner, edge, Hetzner infrastructure as code; `cloud/deploy/local-check.sh` passes all 16 steps (sign-in, two workspaces, SSO, a robot over TLS by SNI, isolation). Deployment: [HOSTED_DEPLOY.md](HOSTED_DEPLOY.md), waiting on the founder's accounts and the v0.4.0 release. Billing after the beta.
 
 ## Architecture: one isolated lab per workspace
 

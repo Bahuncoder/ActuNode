@@ -1,0 +1,44 @@
+#cloud-config
+# The ActuNode Cloud server (D-61): Docker, automatic security updates, SSH by key only, the data volume at
+# /srv/actunode, and the release checked out. Secrets and OAuth settings are added by hand (docs/HOSTED_DEPLOY.md),
+# then cloud/deploy/prod-up.sh starts the service.
+package_update: true
+package_upgrade: true
+apt:
+  sources:
+    docker:
+      source: "deb [arch=amd64 signed-by=$KEY_FILE] https://download.docker.com/linux/ubuntu $RELEASE stable"
+      keyid: 9DC858229FC7DD38854AE2D88D81803C0EBFCD88
+packages:
+  - docker-ce
+  - docker-ce-cli
+  - containerd.io
+  - docker-compose-plugin
+  - unattended-upgrades
+  - fail2ban
+  - git
+  - gettext-base  # envsubst, for prod-up.sh
+write_files:
+  - path: /etc/ssh/sshd_config.d/10-actunode.conf
+    content: |
+      PasswordAuthentication no
+      KbdInteractiveAuthentication no
+      PermitRootLogin prohibit-password
+  - path: /etc/apt/apt.conf.d/20auto-upgrades
+    content: |
+      APT::Periodic::Update-Package-Lists "1";
+      APT::Periodic::Unattended-Upgrade "1";
+  - path: /etc/docker/daemon.json
+    content: |
+      {"log-driver": "json-file", "log-opts": {"max-size": "10m", "max-file": "3"}, "live-restore": true}
+runcmd:
+  - mkdir -p /srv/actunode
+  - echo '/dev/disk/by-id/scsi-0HC_Volume_${volume_id} /srv/actunode ext4 discard,nofail,defaults 0 0' >> /etc/fstab
+  - for i in $(seq 1 30); do [ -e /dev/disk/by-id/scsi-0HC_Volume_${volume_id} ] && break; sleep 2; done
+  - mount /srv/actunode
+  - mkdir -p /srv/actunode/secrets /srv/actunode/data
+  - chmod 700 /srv/actunode/secrets
+  - git clone --branch ${release} --depth 1 https://github.com/Bahuncoder/ActuNode /srv/actunode/actunode
+  - printf 'ACTUNODE_CLOUD_DOMAIN=${domain}\nACTUNODE_RELEASE=${release}\n' > /srv/actunode/config.env
+  - systemctl restart ssh
+  - systemctl enable --now docker fail2ban

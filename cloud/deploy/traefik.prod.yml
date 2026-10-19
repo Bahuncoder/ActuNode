@@ -1,0 +1,31 @@
+# The production edge (D-61): Let's Encrypt for actunode.com and *.actunode.com (DNS-01 through the Hetzner DNS API;
+# token in /run/secrets/hetzner-dns-token), HTTPS and MQTT over TLS routed by host name / SNI.
+entryPoints:
+  web:
+    address: ":80"
+    http:
+      redirections:
+        entryPoint: {to: websecure, scheme: https}
+  websecure:
+    address: ":443"
+  mqtts:
+    address: ":8883"
+providers:
+  docker:
+    endpoint: "tcp://docker-ro:2375"
+    exposedByDefault: false
+  file:
+    filename: /etc/traefik/dynamic.yml
+certificatesResolvers:
+  letsencrypt:
+    acme:
+      email: "${ACME_EMAIL}"
+      storage: /letsencrypt/acme.json
+      dnsChallenge:
+        provider: hetzner
+        resolvers: ["1.1.1.1:53", "9.9.9.9:53"]
+api:
+  dashboard: false
+log:
+  level: INFO
+accessLog: {}

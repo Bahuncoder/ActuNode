@@ -1,0 +1,24 @@
+# Production overrides for compose.yml (D-61): real certificates, the published lab images, OAuth sign-in.
+# Started by prod-up.sh on the server.
+services:
+  edge:
+    environment:
+      HETZNER_API_KEY_FILE: /run/cloud/hetzner-dns-token
+    command: ["--configFile=/etc/traefik/traefik.yml"]
+    volumes:
+      - ${ACTUNODE_TRAEFIK_CONFIG:?rendered by prod-up.sh}:/etc/traefik/traefik.yml:ro
+      - ./dynamic.prod.yml:/etc/traefik/dynamic.yml:ro
+      - letsencrypt:/letsencrypt
+      - ${ACTUNODE_CLOUD_SECRETS}:/run/cloud:ro
+  control-plane:
+    environment:
+      ACTUNODE_GITHUB_CLIENT_SECRET_FILE: /run/cloud/github-client-secret
+      ACTUNODE_GOOGLE_CLIENT_SECRET_FILE: /run/cloud/google-client-secret
+    labels:
+      # The wildcard certificate is requested here; every workspace router gets it by SNI.
+      traefik.http.routers.app.tls.certresolver: letsencrypt
+      traefik.http.routers.app.tls.domains[0].main: "${ACTUNODE_CLOUD_DOMAIN}"
+      traefik.http.routers.app.tls.domains[0].sans: "*.${ACTUNODE_CLOUD_DOMAIN}"
+
+volumes:
+  letsencrypt: {}
