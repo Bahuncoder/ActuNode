@@ -80,8 +80,9 @@ def unseal(secret: str, value: str) -> dict:
         raise OAuthError("sign-in state unreadable") from error
 
 
-def start(provider: Provider, client_id: str, redirect_uri: str, secret: str) -> tuple[str, str]:
-    """(URL to send the browser to, sealed state cookie value)."""
+def start(provider: Provider, client_id: str, redirect_uri: str, secret: str, next_path: str = "") -> tuple[str, str]:
+    """(URL to send the browser to, sealed state cookie value). `next_path` (already checked as a local path) is where
+    the browser goes after signing in."""
     state, verifier = secrets.token_urlsafe(24), secrets.token_urlsafe(48)
     challenge = _b64(hashlib.sha256(verifier.encode()).digest())
     query = {
@@ -90,12 +91,12 @@ def start(provider: Provider, client_id: str, redirect_uri: str, secret: str) ->
     }  # fmt: skip
     if provider.name == "google":
         query["prompt"] = "select_account"
-    cookie = seal(secret, {"p": provider.name, "s": state, "v": verifier, "t": time.time()})
+    cookie = seal(secret, {"p": provider.name, "s": state, "v": verifier, "t": time.time(), "n": next_path})
     return f"{provider.authorize_url}?{urlencode(query)}", cookie
 
 
-def check_state(secret: str, cookie: str | None, provider: str, state: str) -> str:
-    """The PKCE verifier, if the callback belongs to the sign-in this browser started."""
+def check_state(secret: str, cookie: str | None, provider: str, state: str) -> tuple[str, str]:
+    """(the PKCE verifier, where to go next), if the callback belongs to the sign-in this browser started."""
     if not cookie:
         raise OAuthError("sign-in was not started in this browser (or took too long)")
     data = unseal(secret, cookie)
@@ -103,7 +104,7 @@ def check_state(secret: str, cookie: str | None, provider: str, state: str) -> s
         raise OAuthError("sign-in state does not match")
     if time.time() - float(data.get("t", 0)) > STATE_S:
         raise OAuthError("sign-in took too long; start again")
-    return str(data["v"])
+    return str(data["v"]), str(data.get("n") or "")
 
 
 def identity(provider: Provider, code: str, verifier: str, client_id: str, client_secret: str, redirect_uri: str,

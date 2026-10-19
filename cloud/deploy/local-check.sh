@@ -19,7 +19,7 @@ check "alice signs in" "$(post a -d login=alice "$APP/dev/login")" 303
 check "bob signs in" "$(post b -d login=bob "$APP/dev/login")" 303
 check "alice creates workspace alpha" "$(post a --max-time 600 -d name=Alpha -d slug=alpha "$APP/workspaces")" 303
 check "bob creates workspace beta" "$(post b --max-time 600 -d name=Beta -d slug=beta "$APP/workspaces")" 303
-check "alpha is ready" "$(browser a "$APP/workspaces/alpha" | grep -o 'state: [a-z]*')" "state: ready"
+check "alpha is ready (Open lab shown)" "$(browser a "$APP/workspaces/alpha" | grep -o '>Open lab<' | head -1)" ">Open lab<"
 
 lab() { echo "https://$1.actunode.localhost:9443"; }
 check "alice opens alpha (SSO round trip)" "$(browser a -L -o /dev/null -w '%{http_code} %{url_effective}' --max-redirs 5 "$(lab alpha)/api/sso/start")" "200 $(lab alpha)/"

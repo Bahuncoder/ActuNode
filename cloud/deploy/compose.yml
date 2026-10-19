@@ -69,6 +69,7 @@ services:
     environment:
       ACTUNODE_CLOUD_DOMAIN: ${ACTUNODE_CLOUD_DOMAIN:-actunode.localhost}
       ACTUNODE_CLOUD_PUBLIC_PORT: ${ACTUNODE_CLOUD_PUBLIC_PORT:-}
+      ACTUNODE_CLOUD_MQTT_PORT: ${EDGE_MQTTS_PORT:-8883}
       ACTUNODE_CLOUD_DB: /data/cloud.sqlite3
       ACTUNODE_CLOUD_SECRET_FILE: /run/cloud/secret
       ACTUNODE_PROVISIONER_URL: http://provisioner:8100

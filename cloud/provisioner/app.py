@@ -21,6 +21,9 @@ from pydantic import BaseModel, Field
 log = logging.getLogger("actunode.provisioner")
 SLUG = re.compile(r"^[a-z][a-z0-9-]{2,29}[a-z0-9]$")
 SSO_KEY = re.compile(r"^[0-9a-f]{64}$")
+NAME = re.compile(r"^[A-Za-z0-9_-]{1,64}$")  # manufacturer, serial, master name: as mqtt-init's valid_name
+PASSWORD = re.compile(r"password=([A-Za-z0-9]+)")
+LIST_LOGINS = "ls /secrets/robots /secrets/masters 2>/dev/null; true"  # a fixed command, no input in it
 TEMPLATE = Path(__file__).with_name("workspace-compose.yml")
 LAB_UID = 1000  # the backend's user inside its container
 
@@ -61,6 +64,16 @@ def render(config: Config, slug: str) -> str:
         slug=slug, domain=config.domain, port=config.port, images=config.images, version=config.version,
         lab=str(config.data / "lab"), dir=str(config.workspaces / slug), robots=str(config.robots),
     )  # fmt: skip
+
+
+class LoginRequest(BaseModel):
+    """A robot (`manufacturer` + `serial`) or a fleet manager / master control (`name`, commanding `manufacturers`)."""
+
+    kind: str = Field(pattern=r"^(robot|master)$")
+    manufacturer: str | None = Field(default=None, pattern=NAME.pattern)
+    serial: str | None = Field(default=None, pattern=NAME.pattern)
+    name: str | None = Field(default=None, pattern=NAME.pattern)
+    manufacturers: list[str] = Field(default_factory=list, max_length=10)
 
 
 class CreateRequest(BaseModel):
@@ -140,6 +153,64 @@ def create_app(config: Config | None = None, runner=run) -> FastAPI:
             runner(compose(slug, "down", "--volumes", "--remove-orphans"))
         shutil.rmtree(folder, ignore_errors=True)  # recordings and keys go with the workspace
         return {"workspace": slug, "state": "deleted"}
+
+    def existing(slug: str) -> str:
+        slug = checked(slug)
+        if not (config.workspaces / slug / "compose.yml").exists():
+            raise HTTPException(404, "No such workspace")
+        return slug
+
+    def reload_broker(slug: str) -> None:
+        runner(compose(slug, "kill", "-s", "HUP", "mosquitto"), timeout=60)  # new logins apply, nobody disconnected
+
+    @app.get("/workspaces/{slug}/logins", dependencies=[Depends(authorized)])
+    def logins(slug: str) -> dict:
+        """The workspace's robot and master control logins (names only)."""
+        slug = existing(slug)
+        command = compose(slug, "run", "--rm", "--no-deps", "--entrypoint", "sh", "mqtt-init", "-c", LIST_LOGINS)
+        listing = runner(command, timeout=120).stdout
+        robots, masters, section = [], [], None
+        for line in listing.splitlines():
+            line = line.strip()
+            if line.endswith(":"):
+                section = line[:-1].rsplit("/", 1)[-1]
+            elif line.endswith(".password"):
+                login = line.removesuffix(".password")
+                (robots if section == "robots" else masters).append(login)
+        return {"robots": sorted(robots), "masters": sorted(f"master@{m}" for m in masters)}
+
+    @app.post("/workspaces/{slug}/logins", dependencies=[Depends(authorized)])
+    def add_login(slug: str, body: LoginRequest) -> dict:
+        slug = existing(slug)
+        if body.kind == "robot":
+            if not (body.manufacturer and body.serial):
+                raise HTTPException(400, "A robot login needs a manufacturer and a serial number")
+            args = ["add-robot", body.manufacturer, body.serial]
+        else:
+            if not body.name or not all(NAME.fullmatch(m) for m in body.manufacturers):
+                raise HTTPException(400, "A fleet manager login needs a name (and valid manufacturers)")
+            args = ["add-master", body.name, *body.manufacturers]
+        output = runner(compose(slug, "run", "--rm", "--no-deps", "mqtt-init", *args), timeout=120).stdout
+        found = PASSWORD.search(output)
+        if not found:
+            log.error("add login on %s: no password in the output", slug)
+            raise HTTPException(502, "The login could not be created")
+        reload_broker(slug)
+        username = f"{body.manufacturer}.{body.serial}" if body.kind == "robot" else f"master@{body.name}"
+        return {"username": username, "password": found[1]}
+
+    @app.delete("/workspaces/{slug}/logins/{kind}/{login}", dependencies=[Depends(authorized)])
+    def remove_login(slug: str, kind: str, login: str) -> dict:
+        slug = existing(slug)
+        if kind == "robot" and login.count(".") == 1 and all(NAME.fullmatch(p) for p in login.split(".")):
+            args = ["remove-robot", *login.split(".")]
+        elif kind == "master" and NAME.fullmatch(login.removeprefix("master@")):
+            args = ["remove-master", login.removeprefix("master@")]
+        else:
+            raise HTTPException(400, "Bad login")
+        runner(compose(slug, "run", "--rm", "--no-deps", "mqtt-init", *args), timeout=120)
+        reload_broker(slug)
+        return {"removed": login}
 
     @app.get("/healthz")
     def healthz() -> dict:

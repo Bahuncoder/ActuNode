@@ -9,9 +9,11 @@ from types import SimpleNamespace
 import pytest
 from fastapi import HTTPException
 from fastapi.testclient import TestClient
-from provisioner.app import Config, create_app, render
+from provisioner.app import LIST_LOGINS, Config, create_app, render
 
 KEY = "ab" * 32
+ADDED = "mqtt-init: credentials ready\nrobot login: username=x password=Secr3tPassw0rd\n"
+LISTING = "/secrets/robots:\nAcme.r1.password\n\n/secrets/masters:\nfleet.manufacturers\nfleet.password\n"
 
 
 class Docker:
@@ -24,6 +26,10 @@ class Docker:
 
     def __call__(self, args, timeout=600):
         self.calls.append(args)
+        if "add-robot" in args or "add-master" in args:
+            return SimpleNamespace(stdout=ADDED, returncode=0)
+        if args[-1:] == [LIST_LOGINS]:
+            return SimpleNamespace(stdout=LISTING, returncode=0)
         if self.fail_on and self.fail_on in args:
             raise HTTPException(502, "failed")
         if args[:3] == ["docker", "network", "connect"]:
@@ -117,3 +123,38 @@ def test_the_rendered_lab_is_a_valid_compose_project(tmp_path):
     result = subprocess.run(["docker", "compose", "-f", str(tmp_path / "compose.yml"), "config", "-q"],
                             capture_output=True, text=True, timeout=60)  # fmt: skip
     assert result.returncode == 0, result.stderr
+
+
+def test_robot_and_fleet_manager_logins(provisioner):
+    client, docker, config = provisioner
+    client.put("/workspaces/acme", json={"ssoKey": KEY})
+    added = client.post(
+        "/workspaces/acme/logins", json={"kind": "robot", "manufacturer": "Acme", "serial": "r1"}
+    ).json()
+    assert added == {"username": "Acme.r1", "password": "Secr3tPassw0rd"}
+    assert [c for c in docker.calls if "add-robot" in c][0][-3:] == ["add-robot", "Acme", "r1"]
+    assert any(c[-4:] == ["kill", "-s", "HUP", "mosquitto"] for c in docker.calls)  # applied without a restart
+    master = client.post("/workspaces/acme/logins", json={"kind": "master", "name": "fleet", "manufacturers": ["Acme"]})
+    assert master.json()["username"] == "master@fleet"
+    assert client.get("/workspaces/acme/logins").json() == {"robots": ["Acme.r1"], "masters": ["master@fleet"]}
+    assert client.delete("/workspaces/acme/logins/robot/Acme.r1").json() == {"removed": "Acme.r1"}
+    assert [c for c in docker.calls if "remove-robot" in c][0][-3:] == ["remove-robot", "Acme", "r1"]
+
+
+@pytest.mark.parametrize(
+    "body",
+    [
+        {"kind": "robot", "manufacturer": "Acme;rm", "serial": "r1"},
+        {"kind": "robot", "manufacturer": "Acme", "serial": "../x"},
+        {"kind": "robot", "manufacturer": "Acme"},
+        {"kind": "master", "name": "fleet", "manufacturers": ["ok", "$(id)"]},
+        {"kind": "admin", "name": "x"},
+    ],
+)
+def test_login_names_are_checked_before_any_command(provisioner, body):
+    client, docker, _ = provisioner
+    client.put("/workspaces/acme", json={"ssoKey": KEY})
+    before = len(docker.calls)
+    assert client.post("/workspaces/acme/logins", json=body).status_code in (400, 422)
+    assert len(docker.calls) == before
+    assert client.delete("/workspaces/acme/logins/robot/a.b.c").status_code == 400

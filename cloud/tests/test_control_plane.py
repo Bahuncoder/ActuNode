@@ -28,6 +28,8 @@ class World:
         self.provisioned: list[tuple[str, str, dict | None]] = []
         self.revoked: list[tuple[str, dict]] = []
         self.token_requests: list[dict] = []
+        self.fail_provisioning = False
+        self.logins: set[str] = set()
 
     def handle(self, request: httpx.Request) -> httpx.Response:
         url = str(request.url)
@@ -45,8 +47,22 @@ class World:
                                                   "primary": True}])  # fmt: skip
             return httpx.Response(200, json=user)
         if url.startswith("http://provisioner/"):
-            self.provisioned.append((request.method, url, json.loads(request.content) if request.content else None))
+            body = json.loads(request.content) if request.content else None
+            self.provisioned.append((request.method, url, body))
             assert request.headers["authorization"] == "Bearer prov-token"
+            if self.fail_provisioning and request.method == "PUT":
+                return httpx.Response(502, json={"detail": "failed"})
+            if url.endswith("/logins") and request.method == "GET":
+                return httpx.Response(200, json={"robots": sorted(self.logins), "masters": []})
+            if url.endswith("/logins") and request.method == "POST":
+                username = (
+                    f"{body['manufacturer']}.{body['serial']}" if body["kind"] == "robot" else f"master@{body['name']}"
+                )
+                self.logins.add(username)
+                return httpx.Response(200, json={"username": username, "password": "Pa55word"})
+            if "/logins/" in url and request.method == "DELETE":
+                self.logins.discard(url.rsplit("/", 1)[-1])
+                return httpx.Response(200, json={"removed": True})
             return httpx.Response(200, json={"ok": True})
         if url.endswith("/api/sso/revoke"):
             self.revoked.append((url, json.loads(request.content)))
@@ -131,7 +147,8 @@ def test_creating_a_workspace_provisions_its_lab(cloud):
     method, url, body = world.provisioned[0]
     assert (method, url) == ("PUT", "http://provisioner/workspaces/acme") and len(body["ssoKey"]) == 64
     page = client.get("/workspaces/acme").text
-    assert "https://acme.actunode.localhost/api/sso/start" in page and "ready" in page
+    assert "https://acme.actunode.localhost/api/sso/start" in page  # the Open lab button: the lab is up
+    assert "ready" in client.get("/workspaces").text
 
 
 @pytest.mark.parametrize("slug", ["app", "ab", "acme_1", "-acme", "acme-", "a" * 40])
@@ -317,3 +334,114 @@ def test_development_sign_in_exists_only_on_localhost(tmp_path):
     local.headers["origin"] = APP
     assert local.post("/dev/login", data={"login": "tester"}, follow_redirects=False).status_code == 303
     assert "dev:tester" in local.get("/workspaces").text
+
+
+def test_errors_are_pages_not_raw_json(cloud):
+    _, _, browser = cloud
+    client = browser()
+    sign_in(client, "code-octocat")
+    response = client.get("/workspaces/nowhere")
+    assert response.status_code == 404 and response.headers["content-type"].startswith("text/html")
+    assert "Not found" in response.text and '{"detail"' not in response.text
+    invalid = client.post("/workspaces", data={"name": "x"})  # no address
+    assert invalid.status_code == 422 and "These fields were not valid: slug" in invalid.text
+
+
+def test_signing_in_returns_to_the_page_you_were_opening(cloud):
+    _, _, browser = cloud
+    owner = browser()
+    sign_in(owner, "code-octocat")
+    create(owner)
+    stranger = browser()
+    first = stranger.get("/workspaces/acme/sso", params={"nonce": NONCE}, follow_redirects=False)
+    assert first.headers["location"] == f"/?next=%2Fworkspaces%2Facme%2Fsso%3Fnonce%3D{NONCE}"
+    start = stranger.get(
+        "/login/github", params={"next": f"/workspaces/acme/sso?nonce={NONCE}"}, follow_redirects=False
+    )
+    state = parse_qs(urlparse(start.headers["location"]).query)["state"][0]
+    done = stranger.get(
+        "/auth/github/callback", params={"code": "code-octocat", "state": state}, follow_redirects=False
+    )
+    assert done.headers["location"] == f"/workspaces/acme/sso?nonce={NONCE}"
+
+
+@pytest.mark.parametrize(
+    "target", ["//evil.example/x", "https://evil.example", "/\\evil.example", "javascript:alert(1)"]
+)
+def test_returning_after_sign_in_never_leaves_the_site(cloud, target):
+    _, _, browser = cloud
+    client = browser()
+    start = client.get("/login/github", params={"next": target}, follow_redirects=False)
+    state = parse_qs(urlparse(start.headers["location"]).query)["state"][0]
+    done = client.get("/auth/github/callback", params={"code": "code-octocat", "state": state}, follow_redirects=False)
+    assert done.headers["location"] == "/workspaces"
+
+
+def test_a_lab_that_failed_to_start_can_be_retried(cloud):
+    world, _, browser = cloud
+    client = browser()
+    sign_in(client, "code-octocat")
+    world.fail_provisioning = True
+    create(client)
+    page = client.get("/workspaces/acme").text
+    assert "could not be started" in page and "Try again" in page
+    world.fail_provisioning = False
+    client.post("/workspaces/acme/retry")
+    assert ">Open lab<" in client.get("/workspaces/acme").text
+
+
+def test_robot_logins_are_created_shown_once_and_removed(cloud):
+    world, _, browser = cloud
+    client = browser()
+    sign_in(client, "code-octocat")
+    create(client)
+    created = client.post("/workspaces/acme/logins", data={"kind": "robot", "manufacturer": "Acme", "serial": "r1"})
+    assert created.status_code == 200 and "Pa55word" in created.text and "shown only once" in created.text
+    page = client.get("/workspaces/acme").text
+    assert "Acme.r1" in page and "Pa55word" not in page  # listed by name; the password is not shown again
+    assert "acme.actunode.localhost" in page and ">8883<" in page  # how to connect
+    client.post("/workspaces/acme/logins/remove", data={"kind": "robot", "login": "Acme.r1"})
+    assert "Acme.r1" not in client.get("/workspaces/acme").text
+
+
+def test_viewers_cannot_manage_logins_and_names_are_checked_first(cloud):
+    world, _, browser = cloud
+    owner, alice = browser(), browser()
+    sign_in(owner, "code-octocat")
+    create(owner)
+    owner.post("/workspaces/acme/invite", data={"invitee": "github:alice", "role": "viewer"})
+    sign_in(alice, "code-alice")
+    assert (
+        alice.post("/workspaces/acme/logins", data={"kind": "robot", "manufacturer": "A", "serial": "b"}).status_code
+        == 403
+    )
+    before = len(world.provisioned)
+    for bad in (
+        {"kind": "robot", "manufacturer": "A;id", "serial": "b"},
+        {"kind": "master", "name": "f", "manufacturers": "x,$(id)"},
+    ):
+        assert owner.post("/workspaces/acme/logins", data=bad).status_code == 400
+    assert len(world.provisioned) == before
+
+
+def test_pages_use_valid_browser_patterns_and_a_removal_is_confirmed(cloud):
+    _, store, browser = cloud
+    owner, alice = browser(), browser()
+    sign_in(owner, "code-octocat")
+    assert r"[a-z][a-z0-9\-]{2,29}[a-z0-9]" in owner.get("/workspaces").text
+    create(owner)
+    owner.post("/workspaces/acme/invite", data={"invitee": "github:alice", "role": "operator"})
+    sign_in(alice, "code-alice")
+    alice_id = next(m.id for m, _ in store.members("acme") if m.handle == "github:Alice")
+    confirm = owner.get(f"/workspaces/acme/members/{alice_id}/remove")
+    assert "Remove <code>github:Alice</code> from Acme?" in confirm.text
+    assert alice.get("/workspaces/acme").status_code == 200  # nothing removed by looking
+
+
+def test_static_files_and_script_policy(cloud):
+    _, _, browser = cloud
+    client = browser()
+    assert client.get("/static/logo.png").headers["content-type"] == "image/png"
+    assert client.get("/static/copy.js").status_code == 200
+    assert client.get("/static/../app/main.py").status_code == 404
+    assert "script-src 'self'" in client.get("/").headers["content-security-policy"]

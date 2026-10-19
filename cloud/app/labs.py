@@ -71,3 +71,12 @@ class Provisioner:
 
     def delete(self, slug: str) -> dict:
         return self._call("DELETE", f"/workspaces/{slug}")
+
+    def logins(self, slug: str) -> dict:
+        return self._call("GET", f"/workspaces/{slug}/logins")
+
+    def add_login(self, slug: str, body: dict) -> dict:
+        return self._call("POST", f"/workspaces/{slug}/logins", body)
+
+    def remove_login(self, slug: str, kind: str, login: str) -> dict:
+        return self._call("DELETE", f"/workspaces/{slug}/logins/{kind}/{login}")

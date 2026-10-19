@@ -29,6 +29,8 @@ class Settings:
     scheme: str = os.getenv("ACTUNODE_CLOUD_SCHEME", "https")
     # Only when the edge is not on 443 (local development next to another web server): ":9443".
     port: str = os.getenv("ACTUNODE_CLOUD_PUBLIC_PORT", "")
+    # Where robots connect (MQTT over TLS through the edge): 8883, or 18883 on the local stack.
+    mqtt_port: str = os.getenv("ACTUNODE_CLOUD_MQTT_PORT", "8883")
     database: Path = field(default_factory=lambda: Path(os.getenv("ACTUNODE_CLOUD_DB", "cloud.sqlite3")))
     # Signs the OAuth state cookie; sessions are random ids in the database.
     secret: str | None = _secret("ACTUNODE_CLOUD_SECRET_FILE")
