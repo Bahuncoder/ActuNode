@@ -1,10 +1,13 @@
 """Idle time of a hosted lab, so the control plane can stop unused labs (D-61)."""
 
+import secrets
+import time
+
 import pytest
 from fastapi.testclient import TestClient
 
 from app import activity as activity_module
-from app import auth
+from app import auth, sso
 from app.activity import Activity, activity
 from app.live import LiveHub
 from app.main import app
@@ -84,16 +87,62 @@ def test_a_request_with_a_session_touches_and_one_without_does_not(client, touch
     assert touches
 
 
-def test_health_reports_idle_seconds_only_when_hosted(client, monkeypatch):
+def _status(key=b"k" * 40, **changes):
+    now = time.time()
+    claims = {"typ": "status", "ws": "acme", "iat": now, "exp": now + 60, "jti": secrets.token_hex(8)} | changes
+    return sso.sign(key, claims)
+
+
+@pytest.fixture
+def hosted(client, monkeypatch, tmp_path):
+    (tmp_path / "sso-key").write_bytes(b"k" * 40)
+    sso.verifier.configure(str(tmp_path / "sso-key"), "acme")
+    monkeypatch.setattr(auth, "HOSTED", True)
+    yield client
+    sso.verifier.configure(None, None)
+
+
+def test_health_has_no_idle_seconds_when_self_hosted(client):
     assert "idleSeconds" not in client.get("/api/health").json()
-    monkeypatch.setattr(auth, "HOSTED", True)
-    before = client.get("/api/health").json()
+    assert "idleSeconds" not in client.get("/api/health", params={"token": _status()}).json()
+
+
+def test_health_reports_idle_seconds_only_to_the_control_plane(hosted):
+    answer = hosted.get("/api/health", params={"token": _status()}).json()
+    assert isinstance(answer["idleSeconds"], float)
+    assert "version" not in answer
+
+
+@pytest.mark.parametrize(
+    "bad",
+    [
+        None,
+        "garbage",
+        _status(typ="revoke"),
+        _status(typ="login"),
+        _status(ws="other"),
+        _status(iat=time.time() - 200, exp=time.time() - 100),
+        _status(key=b"x" * 40),
+    ],
+)
+def test_health_hides_idle_seconds_without_a_valid_status_token(hosted, bad):
+    response = hosted.get("/api/health", params={"token": bad} if bad else None)
+    assert response.status_code == 200 and "idleSeconds" not in response.json()
+    assert not auth.sessions.limited("testclient")
+
+
+def test_a_status_token_works_once(hosted):
+    link = _status()
+    assert "idleSeconds" in hosted.get("/api/health", params={"token": link}).json()
+    assert "idleSeconds" not in hosted.get("/api/health", params={"token": link}).json()
+
+
+def test_health_for_a_logged_in_person_still_has_the_version(hosted, monkeypatch):
     monkeypatch.setattr(auth, "HOSTED", False)
-    client.post("/api/login", json={"token": TOKEN})  # (a hosted cookie is Secure; this client is plain HTTP)
+    hosted.post("/api/login", json={"token": TOKEN})
     monkeypatch.setattr(auth, "HOSTED", True)
-    after = client.get("/api/health").json()
-    assert isinstance(before["idleSeconds"], float) and isinstance(after["idleSeconds"], float)
-    assert "version" in after
+    answer = hosted.get("/api/health").json()
+    assert "version" in answer and "idleSeconds" not in answer
 
 
 def test_metrics_has_the_idle_gauge(client):

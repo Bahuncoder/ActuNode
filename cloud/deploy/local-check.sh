@@ -50,6 +50,18 @@ check "alpha's robot login is refused by beta's broker" "$(mqtt beta AcmeRobotic
 check "alpha's internal backend login is refused from outside" "$(mqtt alpha actunode-backend "$backend_pw" uagv/v2/ActuNode/robot_01/order)" refused
 check "alpha's containers cannot reach beta's" "$(docker exec ws-alpha-frontend-1 sh -c 'wget -q -T 3 -O /dev/null http://ws-beta-frontend-1/ >/dev/null 2>&1 && echo reachable || echo unreachable')" unreachable
 
+check "alice's account page shows what deletion would do" "$(browser a "$APP/account" | grep -o 'Would be deleted: <code>alpha</code>' | head -1)" "Would be deleted: <code>alpha</code>"
+check "a wrong confirmation deletes nothing" "$(post a -d confirm=nope "$APP/account/delete")" 400
+
+# Abuse limits at the edge (phase 2): a flood from one address is slowed, and the app takes small forms only.
+flood() {  # 150 requests, 25 at a time: well past the burst of 60
+  seq 1 150 | xargs -P 25 -I{} curl -s --cacert "$CA" -o /dev/null -w '%{http_code}\n' "$APP/static/logo.png" | grep -c 429
+}
+check "a flood from one address is slowed (429s among 150 concurrent requests)" "$([ "$(flood)" -gt 0 ] && echo slowed || echo unslowed)" slowed
+sleep 3  # let the limit recover
+head -c 100000 /dev/zero | tr '\0' a > "$work/big"
+check "a 100 KB form is refused by the edge" "$(post a -H 'Content-Type: application/x-www-form-urlencoded' --data-binary "@$work/big" "$APP/workspaces")" 413
+
 # Idle labs (phase 2): only when the stack was started with a short limit (see local-up.sh), e.g.
 # ACTUNODE_IDLE_STOP_S=30 cloud/deploy/local-check.sh
 if [ "${ACTUNODE_IDLE_STOP_S:-1800}" -le 120 ]; then

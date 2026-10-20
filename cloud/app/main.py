@@ -352,11 +352,13 @@ def create_app(config: Settings = settings, store: Store | None = None, http: ht
             log.error("Provisioning %s failed: %s", slug, error)
             store.set_state(slug, "failed")
 
-    def lab_health(slug: str) -> dict | None:
-        """The lab's health answer, or None if it does not answer (stopped, starting, or broken)."""
+    def lab_health(w: Workspace) -> dict | None:
+        """The lab's health answer (with its idle time, for our signed status token), or None if it does not answer
+        (stopped, starting, or broken)."""
+        slug = w.slug
         try:
             response = http.get(f"{config.lab_api(slug)}/api/health", headers={"Host": f"{slug}.{config.domain}"},
-                                timeout=5)  # fmt: skip
+                                params={"token": labs.status_token(w.sso_key, slug)}, timeout=5)  # fmt: skip
             return response.json() if response.status_code == 200 else None
         except (httpx.HTTPError, ValueError):
             return None
@@ -374,7 +376,7 @@ def create_app(config: Settings = settings, store: Store | None = None, http: ht
         except (httpx.HTTPError, RuntimeError) as error:
             log.warning("Re-attaching the front networks failed: %s", error)
         for w in store.workspaces_in("ready"):
-            health = lab_health(w.slug)
+            health = lab_health(w)
             if health is None:
                 log.debug("%s did not answer the idle check", w.slug)
                 continue
@@ -388,7 +390,7 @@ def create_app(config: Settings = settings, store: Store | None = None, http: ht
                 store.transition(w.slug, "ready", "stopped")
                 log.info("%s stopped after %d s idle", w.slug, idle)
         for w in store.workspaces_in("starting"):
-            if lab_health(w.slug) is not None:
+            if lab_health(w) is not None:
                 store.transition(w.slug, "starting", "ready")
 
     app.state.sweep_idle = sweep_idle
@@ -711,9 +713,8 @@ def create_app(config: Settings = settings, store: Store | None = None, http: ht
         roles = dict((m.id, r) for m, r in store.members(slug))
         if user_id not in roles:
             raise HTTPException(400, "Unknown member.")
-        if roles[user_id] == "owner" and store.owners(slug) <= 1:
+        if not store.remove_member(slug, user_id):  # refused only for the last owner (checked atomically)
             raise HTTPException(409, "A workspace needs an owner: make someone else owner first.")
-        store.remove_member(slug, user_id)
         revoke(w, user_id)
         return RedirectResponse("/workspaces" if user_id == user.id else f"/workspaces/{slug}", status_code=303)
 
@@ -770,10 +771,13 @@ def create_app(config: Settings = settings, store: Store | None = None, http: ht
         user = signed_in(request)
         if confirm.strip() != user.handle:
             raise HTTPException(400, "Type your handle exactly to confirm.")
-        gone, _ = split_workspaces(user)
         removed: list[str] = []
         for w in store.workspaces_of(user):
-            if w in gone:
+            # Leave it when another owner remains (refused, in one atomic statement, only for the last owner: a
+            # co-owner leaving at the same moment cannot leave it ownerless); theirs alone, it goes with the account.
+            if store.remove_member(w.slug, user.id):
+                revoke(w, user.id)
+            else:
                 if config.provisioner_url:
                     try:
                         provisioner.delete(w.slug)
@@ -784,9 +788,6 @@ def create_app(config: Settings = settings, store: Store | None = None, http: ht
                                                  f"deleted. Try again.{done}") from None  # fmt: skip
                 store.delete_workspace(w.slug)
                 removed.append(w.slug)
-            else:
-                store.remove_member(w.slug, user.id)
-                revoke(w, user.id)
         store.delete_user(user.id)
         log.info("%s deleted their account", user.handle)
         deleted = f" Deleted workspaces: {', '.join(removed)}." if removed else ""

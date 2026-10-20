@@ -95,14 +95,14 @@ services:
       traefik.http.routers.app.rule: "Host(`app.${ACTUNODE_CLOUD_DOMAIN:-actunode.localhost}`)"
       traefik.http.routers.app.entrypoints: websecure
       traefik.http.routers.app.tls: "true"
-      traefik.http.routers.app.middlewares: "secure-headers@file"
+      traefik.http.routers.app.middlewares: "secure-headers@file,app-limits@file,app-body@file"
       traefik.http.services.app.loadbalancer.server.port: "8000"
       # A stopped lab has no router of its own: its address lands here (lowest priority) and gets the wake page.
       traefik.http.routers.lab-fallback.rule: "HostRegexp(`^[a-z0-9-]+\\.${ACTUNODE_CLOUD_DOMAIN:-actunode.localhost}$$`)"
       traefik.http.routers.lab-fallback.priority: "1"
       traefik.http.routers.lab-fallback.entrypoints: websecure
       traefik.http.routers.lab-fallback.tls: "true"
-      traefik.http.routers.lab-fallback.middlewares: "secure-headers@file"
+      traefik.http.routers.lab-fallback.middlewares: "secure-headers@file,app-limits@file,app-body@file"
       traefik.http.routers.lab-fallback.service: app
 
   provisioner:

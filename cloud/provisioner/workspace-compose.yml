@@ -61,6 +61,7 @@ services:
       traefik.tcp.routers.mq-%{slug}.rule: "HostSNI(`%{slug}.%{domain}`)"
       traefik.tcp.routers.mq-%{slug}.entrypoints: mqtts
       traefik.tcp.routers.mq-%{slug}.tls: "true"
+      traefik.tcp.routers.mq-%{slug}.middlewares: mqtt-limits@file
       traefik.tcp.services.mq-%{slug}.loadbalancer.server.port: "1884"
     healthcheck:
       test: ["CMD-SHELL", "mosquitto_sub -u healthcheck -P \"$$(cat /mosquitto/secrets/healthcheck.password)\" -t '$$SYS/broker/uptime' -C 1 -W 3"]
@@ -136,7 +137,7 @@ services:
       traefik.http.routers.ws-%{slug}.rule: "Host(`%{slug}.%{domain}`)"
       traefik.http.routers.ws-%{slug}.entrypoints: websecure
       traefik.http.routers.ws-%{slug}.tls: "true"
-      traefik.http.routers.ws-%{slug}.middlewares: "secure-headers@file"
+      traefik.http.routers.ws-%{slug}.middlewares: "secure-headers@file,lab-limits@file"
       traefik.http.services.ws-%{slug}.loadbalancer.server.port: "80"
     healthcheck:
       test: ["CMD", "wget", "-qO", "/dev/null", "http://127.0.0.1/"]

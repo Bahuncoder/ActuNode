@@ -57,8 +57,17 @@ app.include_router(failures.router)
 app.include_router(sessions.router)
 
 
+def _is_control_plane(token: str) -> bool:
+    """A signed, unused, 60 s status token; any failure is silent (no error, no failure count)."""
+    try:
+        sso.verifier.verify(token[:4096], "status")
+    except sso.SsoError:
+        return False
+    return True
+
+
 @app.get("/api/health")
-def health(request: Request) -> dict:
+def health(request: Request, token: str = "") -> dict:
     if not auth.sessions.valid(request.cookies.get(auth.COOKIE)):
         # Liveness only: the broker's address and our version are for people who are logged in (W11).
         answer = {"status": "ok", "mqtt": {"connected": mqtt_bridge.connected}}
@@ -72,7 +81,7 @@ def health(request: Request) -> dict:
                 "connected": mqtt_bridge.connected,
             },
         }
-    if auth.HOSTED:  # the control plane stops labs that nobody uses
+    if auth.HOSTED and _is_control_plane(token):  # the control plane stops labs that nobody uses
         answer["idleSeconds"] = round(activity.idle_seconds(hub.metrics()["clients"]), 1)
     return answer
 

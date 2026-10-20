@@ -31,6 +31,7 @@ class World:
         self.fail_provisioning = False
         self.logins: set[str] = set()
         self.idle: dict[str, float] = {}
+        self.health_tokens: list[str] = []
         self.unreachable: set[str] = set()
         self.lifecycle: list[tuple[str, str]] = []
         self.fail_start = False
@@ -88,13 +89,20 @@ class World:
                 self.logins.discard(url.rsplit("/", 1)[-1])
                 return httpx.Response(200, json={"removed": True})
             return httpx.Response(200, json={"ok": True})
-        if url.endswith("/api/health"):
+        if url.startswith(f"https://{request.url.host}/api/health"):
             slug = request.url.host.split(".")[0]
             self.events.append(f"health:{slug}")
             if slug in self.unreachable:
                 return httpx.Response(502)
-            return httpx.Response(200, json={"status": "ok", "mqtt": {"connected": True},
-                                             "idleSeconds": self.idle.get(slug, 0)})  # fmt: skip
+            answer = {"status": "ok", "mqtt": {"connected": True}}
+            token = request.url.params.get("token", "")
+            payload = token.partition(".")[0]
+            claims = json.loads(base64.urlsafe_b64decode(payload + "=" * (-len(payload) % 4))) if payload else {}
+            # Like the lab: the idle time only for a fresh status token for this workspace (single use).
+            if claims.get("typ") == "status" and claims.get("ws") == slug and token not in self.health_tokens:
+                self.health_tokens.append(token)
+                answer["idleSeconds"] = self.idle.get(slug, 0)
+            return httpx.Response(200, json=answer)
         if url.endswith("/api/sso/revoke"):
             self.revoked.append((url, json.loads(request.content)))
             return httpx.Response(200, json={"revoked": 1, "sessionsEnded": 1})
@@ -666,6 +674,8 @@ def test_deleting_an_account_removes_sole_owned_workspaces_and_memberships(cloud
     sign_in(client, "code-octocat")
     assert client.get("/workspaces").status_code == 200
     assert "None yet." in client.get("/workspaces").text
+    # The old handle is retired: a later holder of the login is a different identity inside the labs.
+    assert "github:octocat-" in client.get("/account").text and ">github:octocat<" not in client.get("/account").text
 
 
 def test_a_co_owned_workspace_is_left_not_deleted(cloud):
@@ -701,3 +711,35 @@ def test_a_provisioner_failure_keeps_the_account(cloud):
     response = client.post("/account/delete", data={"confirm": "github:octocat"})
     assert response.status_code == 502 and "could not be deleted" in response.text
     assert store.user(1) and store.workspaces_of(store.user(1))
+
+
+def test_the_idle_check_carries_a_fresh_signed_status_token(cloud):
+    """Strangers reading a lab's health must not learn whether it is in use: the idle time comes only with a token
+    signed with the workspace's key, and each poll signs a new one (the lab accepts each once)."""
+    world, store, browser = cloud
+    client = browser()
+    sign_in(client, "code-octocat")
+    create(client)
+    world.idle["acme"] = 1800
+    world.health_tokens.append("")  # no token at all would count as "seen"
+    client.app.state.sweep_idle()
+    stopped = store.workspaces_in("stopped")
+    assert [w.slug for w in stopped] == ["acme"]
+    tokens = [t for t in world.health_tokens if t]
+    assert len(tokens) == 1
+    claims = claims_of(f"https://x/?token={tokens[0]}", stopped[0].sso_key)  # checks the signature too
+    assert claims["typ"] == "status" and claims["ws"] == "acme" and claims["exp"] - claims["iat"] == 60
+    assert len(claims["jti"]) >= 8
+
+
+def test_the_last_owner_cannot_leave_even_in_a_race(cloud):
+    """The owner check and the removal are one statement (TOCTOU): Store.remove_member refuses the last owner."""
+    _, store, browser = cloud
+    client = browser()
+    sign_in(client, "code-octocat")
+    create(client)
+    ((octocat, role),) = store.members("acme")
+    assert role == "owner" and store.remove_member("acme", octocat.id) is False
+    assert [r for _, r in store.members("acme")] == ["owner"]
+    assert client.post("/account/delete", data={"confirm": "github:octocat"}).status_code == 200
+    assert store.slug_taken("acme") is False  # alone, so the workspace went with the account

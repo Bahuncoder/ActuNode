@@ -639,6 +639,16 @@ Numbered so they can be referenced from commits. Remove an item only when it is 
 
 Newest first. One entry per work session: what was done, what was learned, what is next.
 
+### Tue 20 Oct 2026 (night): phase 2 continued: account deletion, abuse limits, two review findings
+Account page and deletion (D-61 phase 2, customer data): sole-owned workspaces go with the account, shared ones are
+left, identities and sessions deleted, a failed lab deletion keeps the account. Abuse limits at the edge (rate
+limits per address for the app and the labs, a 64 KB form cap, 100 MQTT connections per address) and 50 logins per
+workspace in the provisioner. Review findings fixed with tests: the public health answer revealed whether a lab was
+in use (now a signed single-use status token per poll); leaving a shared workspace was check-then-remove (now one
+statement, also for "Remove"); deleted handles are retired so a later holder of the login is told apart in the
+labs' audit trails. Local check extended (account page, flood slowed, big form refused). CI: the e2e flake on
+b7f86c3 passed on rerun; 262c310 green.
+
 ### Tue 20 Oct 2026 (later): hosted service phase 2, idle labs stop and wake
 Phase 2 of D-61 started with the items that need no founder accounts. Built: a hosted lab reports `idleSeconds`
 (backend: signed-in requests, the live feed, external robot or fleet manager messages and commands count; the lab's

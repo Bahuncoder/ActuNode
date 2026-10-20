@@ -31,6 +31,7 @@ CREATE TABLE IF NOT EXISTS invitations (
   PRIMARY KEY (slug, invitee));
 CREATE TABLE IF NOT EXISTS sessions (
   id TEXT PRIMARY KEY, user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE, expires REAL NOT NULL);
+CREATE TABLE IF NOT EXISTS retired_handles (handle TEXT PRIMARY KEY, retired REAL NOT NULL);
 """
 
 SLUG = re.compile(r"^[a-z][a-z0-9-]{2,29}[a-z0-9]$")
@@ -99,7 +100,10 @@ class Store:
         if found:
             return self._refresh(User(*found), provider, subject, handle, email, login)
         unique = handle
-        while self._one("SELECT 1 FROM users WHERE handle = ?", unique):
+        # A handle is a person's identity inside the labs (sessions, audit trail): never one that someone else holds
+        # or held (a deleted account's handle is retired, so a later holder of the same login is told apart).
+        while self._one("SELECT 1 FROM users WHERE handle = ? UNION SELECT 1 FROM retired_handles WHERE handle = ?",
+                        unique, unique):  # fmt: skip
             unique = f"{handle[:56]}-{secrets.token_hex(3)}"
         self._run(("INSERT INTO users (handle, email, created) VALUES (?, ?, ?)", unique, email, time.time()))
         user_id = self._one("SELECT id FROM users WHERE handle = ?", unique)[0]
@@ -138,8 +142,10 @@ class Store:
 
     def delete_user(self, user_id: int) -> None:
         """The person and everything tied to them. Their workspaces are already deleted or left; created_by of one
-        they left moves to a remaining owner. Invitations they sent stay (invited_by has no constraint)."""
+        they left moves to a remaining owner. Invitations they sent stay (invited_by has no constraint). The handle
+        is retired: it stays unique forever (see user_for_identity)."""
         self._run(
+            ("INSERT OR IGNORE INTO retired_handles SELECT handle, ? FROM users WHERE id = ?", time.time(), user_id),
             ("UPDATE workspaces SET created_by = (SELECT m.user_id FROM members m WHERE m.slug = workspaces.slug"
              " AND m.role = 'owner' AND m.user_id != ? LIMIT 1) WHERE created_by = ?", user_id, user_id),
             ("DELETE FROM sessions WHERE user_id = ?", user_id),
@@ -269,8 +275,22 @@ class Store:
     def set_role(self, slug: str, user_id: int, role: str) -> None:
         self._run(("UPDATE members SET role = ? WHERE slug = ? AND user_id = ?", role, slug, user_id))
 
-    def remove_member(self, slug: str, user_id: int) -> None:
-        self._run(("DELETE FROM members WHERE slug = ? AND user_id = ?", slug, user_id))
+    def remove_member(self, slug: str, user_id: int) -> bool:
+        """Remove a member, unless they are the workspace's last owner: the check and the removal are one statement,
+        so two owners leaving at the same moment cannot leave the workspace without one. True if removed."""
+        with self._lock:
+            self._db.execute("BEGIN IMMEDIATE")
+            try:
+                changed = self._db.execute(
+                    "DELETE FROM members WHERE slug = ? AND user_id = ? AND (role != 'owner'"
+                    " OR (SELECT COUNT(*) FROM members WHERE slug = ? AND role = 'owner') > 1)",
+                    (slug, user_id, slug),
+                ).rowcount
+                self._db.execute("COMMIT")
+            except Exception:
+                self._db.execute("ROLLBACK")
+                raise
+        return changed == 1
 
     def owners(self, slug: str) -> int:
         return self._one("SELECT COUNT(*) FROM members WHERE slug = ? AND role = 'owner'", slug)[0]

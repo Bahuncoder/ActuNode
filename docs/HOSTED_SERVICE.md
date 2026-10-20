@@ -62,11 +62,15 @@ flowchart LR
 - Idle labs stop after a period without use and wake at the next open (about 10 seconds), so a single server
   holds many workspaces. The lab reports how long it has been idle (`idleSeconds` in its health answer: 0 while
   anyone has the live feed open; otherwise seconds since the last signed-in request, external robot or fleet
-  manager message, or command). The control plane checks every minute (`ACTUNODE_IDLE_SWEEP_S`) and stops a lab
+  manager message, or command; reported only to a single-use status token signed with the workspace's key, so
+  strangers learn nothing from the health answer). The control plane checks every minute (`ACTUNODE_IDLE_SWEEP_S`) and stops a lab
   idle for 30 minutes (`ACTUNODE_IDLE_STOP_S`; 0 never). **Open lab** goes through the control plane, which
   wakes a stopped lab and waits; a stopped lab's own address falls back to the control plane at the edge, which
   sends a member to the wake page. A stopped lab takes no robot connections: open it first. Two people opening
   at once wake it once (an atomic state change). Workspace states: creating, ready, failed, stopped, starting.
+- Abuse limits at the edge, per client address: the control plane 20 requests/s (burst 60) and forms up to 64 KB;
+  a lab 100 requests/s (burst 300); 100 open MQTT connections. In the provisioner: 50 robot and fleet manager logins
+  per workspace. Labs keep their own login throttles and input limits (TRD).
 - Start: one Hetzner Cloud server in Germany or Finland (CPX41-class: 8 vCPU, 16 GB, about €30/month) plus a volume
   and backups; a second server and PostgreSQL when the beta outgrows it. US and Singapore regions exist for later.
 

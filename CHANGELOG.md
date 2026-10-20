@@ -26,6 +26,20 @@ What changed, per commit, newest first. Status and plans are in [docs/PROGRESS.m
   (`ACTUNODE_IDLE_STOP_S`, checked every `ACTUNODE_IDLE_SWEEP_S`); **Open lab** wakes a stopped lab and waits, a
   stopped lab's own address leads to the wake page (an edge fallback route), two people wake it once. The local
   check gains nine idle steps (`ACTUNODE_IDLE_STOP_S=30` on both scripts).
+- **Account deletion (phase 2)**: an Account page (handle, sign-in identities, workspaces) where a person deletes
+  their own account by typing their handle: workspaces only they own are deleted with all their data, they are
+  removed from shared ones (lab sessions ended), identities and sessions deleted; a lab that cannot be deleted
+  keeps the account. The privacy page says so.
+- **Fixed (security review):** a hosted lab's public health answer told anyone whether the lab was in use; the
+  idle time now comes only with a single-use status token signed with the workspace's key, which the control plane
+  signs afresh for every poll. Leaving a shared workspace checks for a remaining owner and removes the member in
+  one statement (two owners leaving at the same moment can no longer leave it ownerless), for account deletion and
+  for "Remove". A deleted account's handle is retired: a later holder of the same login gets a distinct handle,
+  so lab audit trails never conflate two people.
+- **Abuse limits (phase 2)**: per client address at the edge, the control plane takes 20 requests/s (burst 60) and
+  forms up to 64 KB (429 and 413 beyond), a lab 100 requests/s (burst 300), 100 open MQTT connections; the
+  provisioner caps robot and fleet manager logins at 50 per workspace. Two local checks (a flood is slowed, a 100 KB
+  form is refused).
 - **Fixed:** the edge and the control plane lost every workspace's front network when their containers were
   recreated (an upgrade), so labs were unreachable and revocation failed until each lab was started again. The
   provisioner now re-attaches them on request (`POST /front`), which the control plane does at start and before

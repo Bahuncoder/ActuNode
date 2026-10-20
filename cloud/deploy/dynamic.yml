@@ -23,3 +23,14 @@ http:
         stsPreload: true
         contentTypeNosniff: true
         referrerPolicy: same-origin
+    # Abuse limits per client address (phase 2): people need far less; a stuck script or a scraper gets 429.
+    app-limits:
+      rateLimit: {average: 20, burst: 60, period: 1s}
+    app-body:
+      buffering: {maxRequestBodyBytes: 65536}  # the control plane takes small forms only (413 above)
+    lab-limits:
+      rateLimit: {average: 100, burst: 300, period: 1s}
+tcp:
+  middlewares:
+    mqtt-limits:
+      inFlightConn: {amount: 100}  # open MQTT connections per client address (a site's robots share one)

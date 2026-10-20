@@ -34,6 +34,13 @@ def login_token(key: str, workspace: str, handle: str, role: str, nonce_hash: st
                       "jti": secrets.token_hex(12), "nonce": nonce_hash})  # fmt: skip
 
 
+def status_token(key: str, workspace: str) -> str:
+    """Lets the control plane read the lab's idle time from its health answer (strangers get liveness only).
+    Single use at the lab: a fresh one for every poll."""
+    now = time.time()
+    return sign(key, {"typ": "status", "ws": workspace, "iat": now, "exp": now + TOKEN_S, "jti": secrets.token_hex(12)})
+
+
 def revoke(lab_api: str, host: str, key: str, workspace: str, handles: list[str], client: httpx.Client) -> bool:
     """End these people's lab sessions now (a member removed, or a role changed). False if the lab did not answer:
     then its sessions still end within their lifetime (8 h), and the next start re-checks membership."""
