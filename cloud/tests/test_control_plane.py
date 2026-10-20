@@ -858,3 +858,60 @@ def test_rotating_the_ci_token_needs_the_name_and_failures_show_no_token(cloud):
     for path, data in (("/workspaces/acme/ci-token", {}), ("/workspaces/acme/ci-token/rotate", {"confirm": "acme"})):
         failed = owner.post(path, data=data)
         assert failed.status_code == 502 and CI_TOKEN not in failed.text
+
+
+def ci_setup(cloud, view=True, role="operator"):
+    world, store, browser = cloud
+    owner, bob = browser(), browser()
+    sign_in(owner, "code-octocat")
+    create(owner)
+    owner.post("/workspaces/acme/invite", data={"invitee": "github:alice", "role": role})
+    sign_in(bob, "code-alice")
+    bob_id = next(m.id for m, _ in store.members("acme") if m.handle.lower() == "github:alice")
+    if view:
+        assert bob.post("/workspaces/acme/ci-token").status_code == 200
+    return world, store, owner, bob, bob_id
+
+
+def rotations(world):
+    return [url for method, url, _ in world.provisioned if method == "POST" and url.endswith("/ci-token/rotate")]
+
+
+def test_removing_a_member_who_saw_the_ci_token_rotates_it(cloud):
+    world, store, owner, _, bob_id = ci_setup(cloud)
+    assert store.has_seen_ci_token("acme", bob_id)
+    assert owner.get(f"/workspaces/acme/members/{bob_id}/remove").text.count("They have seen the CI token") == 1
+    assert owner.post(f"/workspaces/acme/members/{bob_id}/remove", follow_redirects=False).status_code == 303
+    assert rotations(world) == ["http://provisioner/workspaces/acme/ci-token/rotate"]
+    assert not store.has_seen_ci_token("acme", bob_id)
+
+
+def test_removing_a_member_who_never_saw_it_rotates_nothing(cloud):
+    world, store, owner, _, bob_id = ci_setup(cloud, view=False)
+    assert "They have seen the CI token" not in owner.get(f"/workspaces/acme/members/{bob_id}/remove").text
+    owner.post(f"/workspaces/acme/members/{bob_id}/remove")
+    assert rotations(world) == []
+
+
+def test_demoting_to_viewer_rotates_only_after_viewing(cloud):
+    world, store, owner, _, bob_id = ci_setup(cloud)
+    owner.post(f"/workspaces/acme/members/{bob_id}/role", data={"role": "operator"})
+    owner.post(f"/workspaces/acme/members/{bob_id}/role", data={"role": "owner"})
+    assert rotations(world) == []
+    owner.post(f"/workspaces/acme/members/{bob_id}/role", data={"role": "viewer"})
+    assert len(rotations(world)) == 1 and not store.has_seen_ci_token("acme", bob_id)
+
+
+def test_deleting_an_account_that_saw_the_ci_token_rotates_it(cloud):
+    world, store, owner, bob, bob_id = ci_setup(cloud)
+    bob_handle = store.user(bob_id).handle
+    assert bob.post("/account/delete", data={"confirm": bob_handle}).status_code == 200
+    assert len(rotations(world)) == 1 and store.members("acme")[0][0].handle == "github:octocat"
+
+
+def test_a_failed_rotation_does_not_block_the_removal(cloud, caplog):
+    world, store, owner, _, bob_id = ci_setup(cloud)
+    world.fail_ci = True
+    response = owner.post(f"/workspaces/acme/members/{bob_id}/remove", follow_redirects=False)
+    assert response.status_code == 303 and bob_id not in [m.id for m, _ in store.members("acme")]
+    assert "rotate it by hand" in caplog.text

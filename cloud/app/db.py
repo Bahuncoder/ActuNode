@@ -32,6 +32,9 @@ CREATE TABLE IF NOT EXISTS invitations (
 CREATE TABLE IF NOT EXISTS sessions (
   id TEXT PRIMARY KEY, user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE, expires REAL NOT NULL);
 CREATE TABLE IF NOT EXISTS retired_handles (handle TEXT PRIMARY KEY, retired REAL NOT NULL);
+CREATE TABLE IF NOT EXISTS ci_token_views (
+  slug TEXT NOT NULL REFERENCES workspaces(slug) ON DELETE CASCADE,
+  user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE, seen REAL NOT NULL, PRIMARY KEY (slug, user_id));
 """
 
 SLUG = re.compile(r"^[a-z][a-z0-9-]{2,29}[a-z0-9]$")
@@ -271,6 +274,21 @@ class Store:
                 )
                 joined.append(slug)
         return joined
+
+    def saw_ci_token(self, slug: str, user_id: int) -> None:
+        self._run(("INSERT OR REPLACE INTO ci_token_views (slug, user_id, seen) VALUES (?, ?, ?)",
+                   slug, user_id, time.time()))  # fmt: skip
+
+    def has_seen_ci_token(self, slug: str, user_id: int) -> bool:
+        return self._one("SELECT 1 FROM ci_token_views WHERE slug = ? AND user_id = ?", slug, user_id) is not None
+
+    def ci_token_rotated(self, slug: str, by_user_id: int | None) -> None:
+        """Everyone who saw the old token no longer holds a valid one; the rotator has seen the new one."""
+        statements = [("DELETE FROM ci_token_views WHERE slug = ?", slug)]
+        if by_user_id is not None:
+            statements.append(("INSERT INTO ci_token_views (slug, user_id, seen) VALUES (?, ?, ?)",
+                               slug, by_user_id, time.time()))  # fmt: skip
+        self._run(*statements)
 
     def set_role(self, slug: str, user_id: int, role: str) -> None:
         self._run(("UPDATE members SET role = ? WHERE slug = ? AND user_id = ?", role, slug, user_id))

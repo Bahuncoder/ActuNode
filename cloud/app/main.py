@@ -592,6 +592,7 @@ def create_app(config: Settings = settings, store: Store | None = None, http: ht
         )
         return ("<section><h2>Run scenario tests from CI</h2><p>The CI token logs the test runner in to this lab as "
                 f"the operator <code>admin</code>. Save it in a file and run:</p>{copyable('Command', command)}"
+                "<p class=muted>The token is rotated by itself when a member who has seen it loses access.</p>"
                 "<p class=muted>Guide: <a href='https://github.com/Bahuncoder/ActuNode/blob/main/docs/"
                 "GETTING_STARTED.md'>Getting started</a>.</p>"
                 f"<form method=post action='/workspaces/{slug}/ci-token'><button>Show CI token</button></form>"
@@ -714,6 +715,10 @@ def create_app(config: Settings = settings, store: Store | None = None, http: ht
             token = (provisioner.rotate_ci_token(slug) if rotate else provisioner.ci_token(slug))["token"]
         except (httpx.HTTPError, RuntimeError, KeyError):
             raise HTTPException(502, "The CI token could not be read. Try again.") from None
+        if rotate:
+            store.ci_token_rotated(slug, user.id)
+        else:
+            store.saw_ci_token(slug, user.id)
         log.info("%s %s the CI token of %s", user.handle, "rotated" if rotate else "showed", slug)
         note = ("The old token stopped working; everyone signed in to the lab must sign in again."
                 if rotate else "")  # fmt: skip
@@ -758,6 +763,22 @@ def create_app(config: Settings = settings, store: Store | None = None, http: ht
         if target:
             labs.revoke(config.lab_api(w.slug), f"{w.slug}.{config.domain}", w.sso_key, w.slug, [target.handle], http)
 
+    def drop_ci_access(w: Workspace, user_id: int) -> bool:
+        """The CI token is the lab's operator login: whoever saw it keeps access until it changes, so rotate it when
+        a person who saw it loses their role. The removal stands even if the rotation fails."""
+        if not (config.provisioner_url and store.has_seen_ci_token(w.slug, user_id)):
+            return False
+        target = store.user(user_id)
+        who = target.handle if target else user_id
+        try:
+            provisioner.rotate_ci_token(w.slug)
+        except (httpx.HTTPError, RuntimeError) as error:
+            log.error("CI token of %s NOT rotated after %s lost access (%s): rotate it by hand", w.slug, who, error)
+            return False
+        store.ci_token_rotated(w.slug, None)
+        log.info("CI token of %s rotated: %s lost access after seeing it", w.slug, who)
+        return True
+
     @app.post("/workspaces/{slug}/invite")
     def invite(slug: str, request: Request, invitee: str = Form(..., max_length=254), role: str = Form(...)):
         w = member(signed_in(request), slug, owner=True)
@@ -791,6 +812,8 @@ def create_app(config: Settings = settings, store: Store | None = None, http: ht
             raise HTTPException(409, "A workspace needs an owner: make someone else owner first.")
         store.set_role(slug, user_id, role)
         revoke(w, user_id)  # the lab session keeps no stale role: the next sign-in gets the new one
+        if role == "viewer" and current_role in ("owner", "operator"):
+            drop_ci_access(w, user_id)
         return RedirectResponse(f"/workspaces/{slug}", status_code=303)
 
     @app.get("/workspaces/{slug}/members/{user_id}/remove", response_class=HTMLResponse)
@@ -801,8 +824,10 @@ def create_app(config: Settings = settings, store: Store | None = None, http: ht
         if target is None:
             raise HTTPException(404, "No such member.")
         who = "yourself" if user_id == user.id else f"<code>{esc(target.handle)}</code>"
+        seen = ("<p>They have seen the CI token: it will be rotated, and CI jobs using it need the new one (the lab "
+                "restarts for a moment).</p>" if store.has_seen_ci_token(slug, user_id) else "")  # fmt: skip
         return page("Remove member", f"<section><h1>Remove {who} from {esc(w.name)}?</h1><p>Their lab sessions end at "
-                                     "once.</p><form method=post action='/workspaces/"
+                                     "once.</p>" + seen + "<form method=post action='/workspaces/"
                                      f"{esc(slug)}/members/{user_id}/remove'><button class=danger>Remove</button> "
                                      f"<a class='button secondary' href='/workspaces/{esc(slug)}'>Cancel</a></form>"
                                      "</section>", user=user)  # fmt: skip
@@ -820,6 +845,7 @@ def create_app(config: Settings = settings, store: Store | None = None, http: ht
         if outcome == "absent":
             raise HTTPException(400, "Unknown member.")
         revoke(w, user_id)
+        drop_ci_access(w, user_id)
         return RedirectResponse("/workspaces" if user_id == user.id else f"/workspaces/{slug}", status_code=303)
 
     @app.post("/workspaces/{slug}/delete")
@@ -882,6 +908,7 @@ def create_app(config: Settings = settings, store: Store | None = None, http: ht
             outcome = store.remove_member(w.slug, user.id)
             if outcome == "removed":
                 revoke(w, user.id)
+                drop_ci_access(w, user.id)
             elif outcome == "last_owner":
                 if config.provisioner_url:
                     try:
