@@ -35,6 +35,7 @@ class World:
         self.lifecycle: list[tuple[str, str]] = []
         self.fail_start = False
         self.fail_front = False
+        self.fail_delete = False
         self.events: list[str] = []  # front and health calls, in order
 
     def handle(self, request: httpx.Request) -> httpx.Response:
@@ -66,6 +67,8 @@ class World:
                     self.lifecycle.append((action, url.split("/")[-2]))
                     if action == "start" and self.fail_start:
                         return httpx.Response(502, json={"detail": "failed"})
+            if self.fail_delete and request.method == "DELETE":
+                return httpx.Response(502, json={"detail": "failed"})
             if self.fail_provisioning and request.method == "PUT":
                 return httpx.Response(502, json={"detail": "failed"})
             if url.endswith("/logins") and request.method == "GET":
@@ -621,3 +624,80 @@ def test_only_members_can_open(cloud):
     mallory = browser()
     sign_in(mallory, "code-mallory")
     assert mallory.get("/workspaces/acme/open", follow_redirects=False).status_code == 404
+
+
+def test_the_header_links_to_the_account_page(cloud):
+    _, _, browser = cloud
+    client = browser()
+    sign_in(client, "code-octocat")
+    assert "href='/account'" in client.get("/workspaces").text
+
+
+def test_the_account_page_shows_identities_and_what_deletion_does(cloud):
+    _, _, browser = cloud
+    client = browser()
+    sign_in(client, "code-octocat")
+    create(client)
+    text = client.get("/account").text
+    assert "github" in text and "<code>octocat</code>" in text
+    assert "<code>acme</code></td><td>owner" in text
+    assert "Would be deleted: <code>acme</code>" in text
+
+
+def test_deleting_an_account_removes_sole_owned_workspaces_and_memberships(cloud):
+    world, store, browser = cloud
+    mallory, client = browser(), browser()
+    sign_in(mallory, "code-mallory")
+    create(mallory, "globex", "Globex")
+    mallory.post("/workspaces/globex/invite", data={"invitee": "octocat", "role": "operator"})
+    sign_in(client, "code-octocat")
+    create(client)
+    old_id = next(u.id for u, _ in store.members("acme"))
+    assert client.post("/account/delete", data={"confirm": "x"}).status_code == 400
+    response = client.post("/account/delete", data={"confirm": "github:octocat"})
+    assert response.status_code == 200 and "Your account is deleted" in response.text
+    deletes = [url for method, url, _ in world.provisioned if method == "DELETE"]
+    assert deletes == ["http://provisioner/workspaces/acme"]
+    assert [(m.handle, r) for m, r in store.members("globex")] == [("github:mallory", "owner")]
+    token = world.revoked[-1][1]["token"]
+    assert json.loads(base64.urlsafe_b64decode(token.partition(".")[0] + "=="))["revoke"] == ["github:octocat"]
+    assert client.get("/workspaces", follow_redirects=False).status_code == 303
+    assert store.user(old_id) is None
+    sign_in(client, "code-octocat")
+    assert client.get("/workspaces").status_code == 200
+    assert "None yet." in client.get("/workspaces").text
+
+
+def test_a_co_owned_workspace_is_left_not_deleted(cloud):
+    world, store, browser = cloud
+    client, mallory = browser(), browser()
+    sign_in(client, "code-octocat")
+    create(client)
+    client.post("/workspaces/acme/invite", data={"invitee": "github:mallory", "role": "operator"})
+    sign_in(mallory, "code-mallory")
+    mallory_id = next(m.id for m, _ in store.members("acme") if m.handle == "github:mallory")
+    client.post(f"/workspaces/acme/members/{mallory_id}/role", data={"role": "owner"})
+    assert client.post("/account/delete", data={"confirm": "github:octocat"}).status_code == 200
+    assert not [1 for method, *_ in world.provisioned if method == "DELETE"]
+    assert [(m.id, r) for m, r in store.members("acme")] == [(mallory_id, "owner")]
+    assert store._one("SELECT created_by FROM workspaces WHERE slug = 'acme'") == (mallory_id,)
+
+
+def test_the_wrong_confirmation_deletes_nothing(cloud):
+    _, store, browser = cloud
+    client = browser()
+    sign_in(client, "code-octocat")
+    create(client)
+    assert client.post("/account/delete", data={"confirm": "octocat"}).status_code == 400
+    assert store.user(1) and store.workspaces_of(store.user(1))
+
+
+def test_a_provisioner_failure_keeps_the_account(cloud):
+    world, store, browser = cloud
+    client = browser()
+    sign_in(client, "code-octocat")
+    create(client)
+    world.fail_delete = True
+    response = client.post("/account/delete", data={"confirm": "github:octocat"})
+    assert response.status_code == 502 and "could not be deleted" in response.text
+    assert store.user(1) and store.workspaces_of(store.user(1))

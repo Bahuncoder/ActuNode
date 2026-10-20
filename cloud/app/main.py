@@ -165,7 +165,8 @@ def create_app(config: Settings = settings, store: Store | None = None, http: ht
     def page(
         title: str, body: str, status: int = 200, user: User | None = None, refresh: int = 0, refresh_to: str = ""
     ) -> HTMLResponse:
-        who = (f"<div class=who><code>{esc(user.handle)}</code><form class=inline method=post action='/logout'>"
+        who = (f"<div class=who><code>{esc(user.handle)}</code><a href='/account'>Account</a>"
+               "<form class=inline method=post action='/logout'>"
                "<button class='secondary small'>Sign out</button></form></div>") if user else ""  # fmt: skip
         target = f";url={esc(refresh_to)}" if refresh_to else ""
         meta = f"<meta http-equiv=refresh content='{refresh}{target}'>" if refresh else ""
@@ -248,7 +249,9 @@ def create_app(config: Settings = settings, store: Store | None = None, http: ht
         return page(title, f"<section><h1>{title}</h1><p>The {title.lower()} for ActuNode Cloud will be published here "
                            "before the beta opens to outside users. Until then the service is used only by the team "
                            "and invited testers, with test data.</p><p>Your workspace's data stays in the EU "
-                           "(Hetzner, Germany or Finland) and is deleted with the workspace.</p></section>",
+                           "(Hetzner, Germany or Finland) and is deleted with the workspace.</p>"
+                           "<p>You can delete your account, and the workspaces only you own, at any time on the "
+                           "Account page.</p></section>",
                     user=current(request))  # fmt: skip
 
     # --- sign-in ----------------------------------------------------------------------------------------------
@@ -727,6 +730,71 @@ def create_app(config: Settings = settings, store: Store | None = None, http: ht
                 raise HTTPException(502, "The lab could not be deleted; nothing was removed. Try again.") from None
         store.delete_workspace(slug)
         return RedirectResponse("/workspaces", status_code=303)
+
+    # --- account ----------------------------------------------------------------------------------------------
+
+    def split_workspaces(user: User) -> tuple[list[Workspace], list[Workspace]]:
+        """(workspaces deleted with the account, workspaces the person would only leave)"""
+        mine = store.workspaces_of(user)
+        gone = [w for w in mine if w.role == "owner" and store.owners(w.slug) == 1]
+        return gone, [w for w in mine if w not in gone]
+
+    @app.get("/account", response_class=HTMLResponse)
+    def account_page(request: Request):
+        user = signed_in(request)
+        gone, left = split_workspaces(user)
+        identities = "".join(f"<tr><td>{esc(p)}</td><td><code>{esc(name)}</code></td></tr>"
+                             for p, name in store.identities_of(user))  # fmt: skip
+        rows = "".join(f"<tr><td><code>{esc(w.slug)}</code></td><td>{esc(w.role)}</td></tr>"
+                       for w in store.workspaces_of(user))  # fmt: skip
+
+        def names(found: list[Workspace]) -> str:
+            return ", ".join(f"<code>{esc(w.slug)}</code>" for w in found) or "none"
+
+        return page("Account", f"<section><h1>Account</h1><p>Handle: <code>{esc(user.handle)}</code><br>"
+                               f"Email: {esc(user.email or '—')}</p><h2>Sign-in identities</h2><table><tr><th>Provider"
+                               f"</th><th>Login</th></tr>{identities}</table><h2>Workspaces</h2><table><tr><th>Address"
+                               f"</th><th>Role</th></tr>{rows or '<tr><td colspan=2 class=muted>None.</td></tr>'}"
+                               "</table></section><section><h2>Delete my account</h2><p>Workspaces where you are the "
+                               "only owner are deleted with all their data (labs, recordings, robot logins). From "
+                               "workspaces with other owners you are removed. Your sign-in identities and sessions are "
+                               "deleted. Invitations you sent stay.</p>"
+                               f"<p>Would be deleted: {names(gone)}.<br>You would leave: {names(left)}.</p>"
+                               "<form method=post action='/account/delete'>"
+                               f"<label>Type <code>{esc(user.handle)}</code> to confirm <input name=confirm required>"
+                               "</label> <button class=danger>Delete my account</button></form></section>",
+                    user=user)  # fmt: skip
+
+    @app.post("/account/delete", response_class=HTMLResponse)
+    def delete_account(request: Request, confirm: str = Form(...)):
+        user = signed_in(request)
+        if confirm.strip() != user.handle:
+            raise HTTPException(400, "Type your handle exactly to confirm.")
+        gone, _ = split_workspaces(user)
+        removed: list[str] = []
+        for w in store.workspaces_of(user):
+            if w in gone:
+                if config.provisioner_url:
+                    try:
+                        provisioner.delete(w.slug)
+                    except (httpx.HTTPError, RuntimeError) as error:
+                        log.error("Deleting %s failed: %s", w.slug, error)
+                        done = f" Already removed: {', '.join(removed)}." if removed else ""
+                        raise HTTPException(502, f"Workspace {w.slug} could not be deleted; your account was not "
+                                                 f"deleted. Try again.{done}") from None  # fmt: skip
+                store.delete_workspace(w.slug)
+                removed.append(w.slug)
+            else:
+                store.remove_member(w.slug, user.id)
+                revoke(w, user.id)
+        store.delete_user(user.id)
+        log.info("%s deleted their account", user.handle)
+        deleted = f" Deleted workspaces: {', '.join(removed)}." if removed else ""
+        response = page("Account deleted", "<section><h1>Your account is deleted</h1><p>Your sign-in identities and "
+                                           "sessions are gone, and you were removed from the workspaces you shared."
+                                           f"{esc(deleted)}</p><p><a href='/'>Home</a></p></section>")  # fmt: skip
+        response.delete_cookie(COOKIE, path="/", secure=True, httponly=True, samesite="lax")
+        return response
 
     @app.get("/healthz")
     def healthz():

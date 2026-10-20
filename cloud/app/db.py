@@ -131,6 +131,23 @@ class Store:
             names.add(user.email.lower())
         return names
 
+    def identities_of(self, user: User) -> list[tuple[str, str]]:
+        rows = self._all("SELECT provider, subject, login FROM identities WHERE user_id = ? ORDER BY provider, subject",
+                         user.id)  # fmt: skip
+        return [(provider, login or subject) for provider, subject, login in rows]
+
+    def delete_user(self, user_id: int) -> None:
+        """The person and everything tied to them. Their workspaces are already deleted or left; created_by of one
+        they left moves to a remaining owner. Invitations they sent stay (invited_by has no constraint)."""
+        self._run(
+            ("UPDATE workspaces SET created_by = (SELECT m.user_id FROM members m WHERE m.slug = workspaces.slug"
+             " AND m.role = 'owner' AND m.user_id != ? LIMIT 1) WHERE created_by = ?", user_id, user_id),
+            ("DELETE FROM sessions WHERE user_id = ?", user_id),
+            ("DELETE FROM members WHERE user_id = ?", user_id),
+            ("DELETE FROM identities WHERE user_id = ?", user_id),
+            ("DELETE FROM users WHERE id = ?", user_id),
+        )  # fmt: skip
+
     # --- sessions -------------------------------------------------------------------------------------------
 
     def new_session(self, user: User) -> str:
