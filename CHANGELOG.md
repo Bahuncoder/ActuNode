@@ -26,6 +26,13 @@ What changed, per commit, newest first. Status and plans are in [docs/PROGRESS.m
   (`ACTUNODE_IDLE_STOP_S`, checked every `ACTUNODE_IDLE_SWEEP_S`); **Open lab** wakes a stopped lab and waits, a
   stopped lab's own address leads to the wake page (an edge fallback route), two people wake it once. The local
   check gains nine idle steps (`ACTUNODE_IDLE_STOP_S=30` on both scripts).
+- **Backups and restore (phase 2, D-62)**: `backup.sh` (daily at 03:30 UTC by a systemd timer that `prod-up.sh`
+  installs; 14 kept; optional off-site copy with `ACTUNODE_BACKUP_REMOTE` and rclone), `restore.sh` (stops the
+  stack, restores the control database, lab secrets volumes, workspace folders, secrets and settings; keeps the old
+  folders aside), `restore-drill.sh` (local: back up, destroy, restore, start, prove a robot's old login works).
+- **Monitoring and alerts (phase 2)**: `healthcheck.sh` every 5 minutes (app, certificate, control plane,
+  provisioner, edge, disk, backup age, lab containers) with alerts to `ACTUNODE_ALERT_WEBHOOK` when the set of
+  failures changes and daily while it persists.
 - **Upgrades of all workspaces (phase 2)**: the provisioner re-renders every workspace's lab at the current release
   and recreates the running ones (`POST /upgrade`, or `python -m provisioner.app upgrade` inside the provisioner);
   stopped labs upgrade at their next wake. `prod-up.sh` and `local-up.sh` run it at the end.

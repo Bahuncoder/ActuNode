@@ -13,8 +13,8 @@ the status line, the schedule table, the session log, and the open issues.
 | | |
 |---|---|
 | **Calendar** | Week 1 of 8 by date (Fri 9 Oct – Thu 15 Oct 2026); dates no longer gate the work (D-30) |
-| **Last updated** | Tue 20 Oct 2026 |
-| **Status** | **Phase 1 (weeks 1–8) complete; v0.1.0 released 13 Oct 2026** (D-43). Phase 2 (weeks 9–16, D-44) under way: **Weeks 9 and 10 done** (D-45, D-46: `actunode test`, timing and message expectations, every run recorded, five sample scenarios). **Decision point** (D-44): the founder's first user conversations decide the order of weeks 11–16; without new input, Week 11 is next. **Product audit 14 Oct (D-47):** outside fleet managers can now connect; security headers added. **Week 11 done (D-48):** the plan's demo question runs as a scenario against a fleet manager; `UNRESPONSIVE`; replay with current time. **Week 12 done (D-49).** **Full audit of weeks 0–12 done (D-50, docs/AUDIT_2026-10-14.md):** six reviews, ~95 findings (13 High), all fixed with tests; gate green. **Week 13 done (D-51):** a real ROS 2 stack (Nav2 + InOrbit's VDA 5050 connector) in the lab; eight deviations found. **Week 14 done (D-52):** conformance suite, the connector's report (4/9), five upstream drafts (not filed: founder's call), robot guide. **Week 15 done (D-53):** failure catalogue, scenario gallery, message flows from real recordings; two blog drafts (private, for the founder). **Week 16 done (D-54):** getting started guide, compatibility promise, triage routine; 0.2.0 built and verified (fresh clone, CI green); v0.2.0 released (tag on 6c234f2). **Phase 2 complete.** **After Phase 2 (17 Oct):** the ROS 2 robot's conformance failures fixed (D-55, five upstream PRs open), per-person logins and an audit trail (D-56), metrics (D-57), published images (D-58), robot-scoped scenario checks (D-59); the full audit has no open items. **v0.3.0 released 17 Oct** (tag on 238509e); images public on ghcr.io for amd64 and arm64, provenance verified. No open issues. |
+| **Last updated** | Wed 21 Oct 2026 |
+| **Status** | **Phase 1 (weeks 1–8) complete; v0.1.0 released 13 Oct 2026** (D-43). Phase 2 (weeks 9–16, D-44) under way: **Weeks 9 and 10 done** (D-45, D-46: `actunode test`, timing and message expectations, every run recorded, five sample scenarios). **Decision point** (D-44): the founder's first user conversations decide the order of weeks 11–16; without new input, Week 11 is next. **Product audit 14 Oct (D-47):** outside fleet managers can now connect; security headers added. **Week 11 done (D-48):** the plan's demo question runs as a scenario against a fleet manager; `UNRESPONSIVE`; replay with current time. **Week 12 done (D-49).** **Full audit of weeks 0–12 done (D-50, docs/AUDIT_2026-10-14.md):** six reviews, ~95 findings (13 High), all fixed with tests; gate green. **Week 13 done (D-51):** a real ROS 2 stack (Nav2 + InOrbit's VDA 5050 connector) in the lab; eight deviations found. **Week 14 done (D-52):** conformance suite, the connector's report (4/9), five upstream drafts (not filed: founder's call), robot guide. **Week 15 done (D-53):** failure catalogue, scenario gallery, message flows from real recordings; two blog drafts (private, for the founder). **Week 16 done (D-54):** getting started guide, compatibility promise, triage routine; 0.2.0 built and verified (fresh clone, CI green); v0.2.0 released (tag on 6c234f2). **Phase 2 complete.** **After Phase 2 (17 Oct):** the ROS 2 robot's conformance failures fixed (D-55, five upstream PRs open), per-person logins and an audit trail (D-56), metrics (D-57), published images (D-58), robot-scoped scenario checks (D-59); the full audit has no open items. **v0.3.0 released 17 Oct** (tag on 238509e); images public on ghcr.io for amd64 and arm64, provenance verified. **Hosted service (D-61):** phase 1 built 19 Oct; **phase 2 built 20–21 Oct (D-62)**: idle labs, account deletion, abuse limits, upgrades, backups with a passing restore drill, alerts; waiting on the founder's accounts (Hetzner, DNS, OAuth, backup storage, alert webhook) and the v0.4.0 release. No open issues. |
 | **Working rule** | A week is done when its work is fully done (D-30): features, then a quality gate (independent bug and security review, scans, a test for every fix, all suites and e2e green, docs). Then the next week starts, whatever the date. |
 
 ## Schedule
@@ -638,6 +638,22 @@ Numbered so they can be referenced from commits. Remove an item only when it is 
 ## Session log
 
 Newest first. One entry per work session: what was done, what was learned, what is next.
+
+### Wed 21 Oct 2026 (early): phase 2 built: upgrades, backups and a restore drill, alerts (D-62)
+Upgrades of all workspace labs (provisioner `upgrade`, run by the deploy scripts; verified: the running labs were
+recreated, the sleeping ones re-rendered). Backups (`backup.sh`: online SQLite copy, every lab's secrets volume,
+workspace folders, secrets; daily timer; optional off-site copy by rclone), `restore.sh`, and `restore-drill.sh`,
+which **passed 11 of 11** on the local stack: back up, destroy everything (control database and lab secrets volumes
+gone), restore, start, the database and alpha back, the robot connects with its old password, recordings back.
+`healthcheck.sh` every 5 minutes with webhook alerts (8 of 8 locally). Found by the drill and fixed: a freshly
+restored database volume was root-owned (the control plane could not write its journal); a restored database says
+"ready" for labs whose containers are gone, and Open lab bounced between the lab's address and the wake page (now it
+wakes an unreachable ready lab); a fourth review finding (a member removed at the same instant as deleting their
+account could take the workspace with them) fixed with a test. Scripts hardened: tolerant polling through the
+few seconds between a recreated lab and the edge seeing it; the check wakes the labs before the robot steps.
+**Phase 2 of D-61 is built**; what remains needs the founder: an off-site backup target, the alert webhook, an
+outside uptime monitor, terms and privacy text, then the first invited users. Cloud 89 and backend 669 tests; the
+deep review for the phase 2 gate was done inline (no open finding). CI green on every push of this session.
 
 ### Tue 20 Oct 2026 (night): phase 2 continued: account deletion, abuse limits, two review findings
 Account page and deletion (D-61 phase 2, customer data): sole-owned workspaces go with the account, shared ones are

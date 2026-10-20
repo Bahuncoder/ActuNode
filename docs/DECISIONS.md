@@ -1116,3 +1116,26 @@ Details: docs/HOSTED_SERVICE.md.
 for SSO; isolation comes from containers and networks, not from rewriting the backend for tenants. New risks: an
 internet-facing service (security review before outside users), customer data (terms, privacy, deletion), and
 operations (monitoring, backups, upgrades), all phase 2 gates.
+
+## D-62 · Running the hosted service: idle labs, in-place upgrades, backups on the server, webhook alerts
+20 Oct 2026 · Accepted (phase 2 of D-61, built before the founder's accounts exist)
+
+**Context.** One server holds many workspace labs (D-61). Every lab costs memory whether anyone uses it; an upgrade
+must reach every lab; Hetzner's server backups cover the root disk only, not the attached data volume that holds the
+workspace folders; nobody is watching the server.
+**Decision.** (1) **Idle labs stop**: the lab reports its idle time (people, external robots and fleet managers, and
+commands count; its own simulator does not) to a single-use status token signed with the workspace's key; the control
+plane stops a lab idle for 30 min and wakes it when a member opens it (an atomic state change; a stopped lab's own
+address falls back to the wake page at the edge). (2) **Upgrades in place**: the provisioner re-renders every lab at
+the current release and recreates the running ones; stopped labs upgrade at their next wake; the deploy scripts do it
+at the end. (3) **Backups**: a daily archive on the server (the control database by SQLite's online backup, every
+lab's secrets volume, the workspace folders, secrets and settings), 14 kept, with an optional off-site copy by rclone
+to storage the founder chooses; `restore.sh` rebuilds a host from one; `restore-drill.sh` proves it locally and runs
+after every change to these scripts. (4) **Alerts**: a 5-minute health check (app, certificate, containers, disk,
+backup age, lab containers) posting to a webhook when the set of failures changes; an outside uptime monitor is still
+the founder's. (5) **Abuse limits** at the edge per client address, 50 logins per workspace; (6) **account deletion**
+takes sole-owned workspaces with it and retires the handle.
+**Consequences.** A stopped lab takes no robot connections until opened; a connected robot keeps its lab awake. An
+upgrade interrupts each running lab for a few seconds and ends its lab sessions. Backups live on the same server until
+the off-site copy is configured (a phase 2 gate for outside users, with the security review). The idle timer resets
+when a lab restarts.

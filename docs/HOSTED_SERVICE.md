@@ -84,7 +84,8 @@ flowchart LR
 - Secrets per workspace generated at creation (broker logins, SSO key) and stored only in that workspace's volume
   and the control database (encrypted at rest).
 - Site captures and recordings are customer data: per-workspace storage, deleted with the workspace; terms and a
-  privacy policy before the beta opens; EU region by default.
+  privacy policy before the beta opens; EU region by default. Hetzner server backups do not cover the attached
+  data volume: `backup.sh` archives (daily, copied off the server) are the backup (docs/HOSTED_DEPLOY.md).
 - A security review of the hosted setup before inviting outside users (phase 2 gate).
 
 ## Phases

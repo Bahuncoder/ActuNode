@@ -24,7 +24,7 @@ check "alpha is ready (Open lab shown)" "$(browser a "$APP/workspaces/alpha" | g
 lab() { echo "https://$1.actunode.localhost:9443"; }
 open_lab() {  # open_lab <cookie jar> <workspace>: the Open lab button; a sleeping lab is woken first (waits for it)
   for _ in $(seq 1 30); do
-    result="$(browser "$1" -L -o /dev/null -w '%{http_code} %{url_effective}' --max-redirs 6 "$APP/workspaces/$2/open")"
+    result="$(browser "$1" -L -o /dev/null -w '%{http_code} %{url_effective}' --max-redirs 6 "$APP/workspaces/$2/open" || true)"
     [ "$result" = "200 $(lab "$2")/" ] && break; sleep 3
   done; echo "$result"
 }
@@ -45,6 +45,7 @@ mqtt() {  # mqtt <workspace> <user> <password> <topic>
     mosquitto_pub -h "$1.actunode.localhost" -p 18883 --cafile /ca.crt -u "$2" -P "$3" -t "$4" -m '{}' -q 1 \
     >/dev/null 2>&1 && echo accepted || echo refused
 }
+open_lab a alpha >/dev/null; open_lab b beta >/dev/null  # awake for the next checks (a short idle limit may have stopped them)
 check "alpha's robot connects through the edge (TLS, SNI)" "$(mqtt alpha AcmeRobotics.amr-7 "$robot_pw" uagv/v2/AcmeRobotics/amr-7/connection)" accepted
 check "alpha's robot login is refused by beta's broker" "$(mqtt beta AcmeRobotics.amr-7 "$robot_pw" uagv/v2/AcmeRobotics/amr-7/connection)" refused
 check "alpha's internal backend login is refused from outside" "$(mqtt alpha actunode-backend "$backend_pw" uagv/v2/ActuNode/robot_01/order)" refused

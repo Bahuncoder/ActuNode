@@ -96,7 +96,55 @@ certificate, no CA to install).
 ## Updating
 
 Pull the new release on the server (`git -C /srv/actunode/actunode fetch --tags && git -C /srv/actunode/actunode
-checkout vX.Y.Z`), set `ACTUNODE_RELEASE` in `config.env`, run `prod-up.sh`. Existing workspace labs keep their
-version until restarted by the provisioner (phase 2 adds rolling upgrades). Right after an upgrade the recreated
+checkout vX.Y.Z`), set `ACTUNODE_RELEASE` in `config.env`, run `prod-up.sh`. `prod-up.sh` then upgrades every running
+workspace lab, one after the other (each is unavailable for a few seconds); stopped labs upgrade at their next wake.
+By hand: `docker compose -f compose.yml -f compose.prod.yml exec -T provisioner /venv/bin/python -m provisioner.app
+upgrade`. Right after an upgrade the recreated
 edge and control plane are re-attached to every workspace's network by the control plane's first idle sweep, so
 labs may answer 502 for up to a minute.
+
+## Backups and restore
+
+`prod-up.sh` installs a systemd timer that runs `cloud/deploy/backup.sh` daily at 03:30 UTC. Each run writes
+`/srv/actunode/backups/actunode-<time>.tar.gz` (owner-only) with the control database (SQLite online backup), every
+lab's secrets volume (`ws-<slug>_secrets`), the workspace folders with their recordings, and `secrets/` and
+`config.env`; the newest 14 are kept (`ACTUNODE_BACKUP_KEEP`). Not included: the Let's Encrypt volume (re-issued) and
+images. Run it by hand any time: `sudo /srv/actunode/actunode/cloud/deploy/backup.sh`.
+
+Hetzner's server backups (`backups = true` in Terraform) cover only the server's root disk, not the attached data
+volume at `/srv/actunode` and not reliably the Docker volumes. A backup on the same server is not enough: copy the
+archives away. Install `rclone`, configure a remote for Hetzner Object Storage or a Storage Box (your account), and
+put `ACTUNODE_BACKUP_REMOTE=<remote>:actunode-backups` in `config.env`; each backup is then copied there (a failed
+copy makes the backup job fail, visible in `systemctl status actunode-backup`).
+
+Restore on a new server: Terraform (section 3), put `secrets/` and `config.env` in place (or let the archive supply
+them), fetch an archive to the server, then
+`ACTUNODE_RESTORE_CONFIRM=yes cloud/deploy/restore.sh <archive>` and `cloud/deploy/prod-up.sh`. `restore.sh` stops the labs
+and the control plane, replaces the database, secrets volumes, workspace folders and settings (old folders are kept
+as `*.before-restore-<time>`), and starts nothing. Labs start again at their owners' next visit.
+
+`cloud/deploy/restore-drill.sh` proves it on your computer (after `local-up.sh` and `local-check.sh`): it backs up,
+destroys the local stack, restores, and checks that the app, the workspace, the lab and a robot's old password work.
+Run it after every change to these scripts.
+
+## Monitoring and alerts
+
+`prod-up.sh` installs a systemd timer that runs `cloud/deploy/healthcheck.sh` every 5 minutes. It prints one line per
+check (`ok <name>` or `FAIL <name>: <detail>`) and exits 1 on any failure; `--quiet` prints only failures. Checks:
+
+- `app`: `https://app.<domain>/healthz` answers.
+- `edge-tls`: the certificate for `app.<domain>` is valid for more than 14 days.
+- `control-plane`, `provisioner`: the container is healthy. `edge`: the container is running.
+- `disk`: the filesystem holding `/srv/actunode` is below 85 % full (`ACTUNODE_DISK_ALERT_PCT`).
+- `backup`: the newest archive in `/srv/actunode/backups` is younger than 36 hours (`ACTUNODE_BACKUP_MAX_AGE_H`).
+- `labs`: no running workspace lab has an exited, restarting or unhealthy container (stopped labs are asleep, fine).
+
+Alerts: put `ACTUNODE_ALERT_WEBHOOK=<url>` in `config.env`: a Slack incoming webhook, a Discord webhook or an ntfy
+topic URL, your choice. A message (JSON with `text` and `content`; it names the failing checks, never secrets) is
+sent when the set of failures changes, including recovery, and once a day while a failure persists. The previous
+state is kept in `/srv/actunode/healthcheck.state`. Without a webhook the results only go to the journal
+(`journalctl -u actunode-healthcheck`). Run it by hand any time: `sudo /srv/actunode/actunode/cloud/deploy/healthcheck.sh`.
+
+A check on the server cannot tell you the server is down. Also set up an outside uptime monitor (UptimeRobot or
+similar, free tier) on `https://app.<domain>/healthz`; that is your account to create. The labs' own metrics
+(`/api/metrics`, D-57) are available for a Prometheus later.

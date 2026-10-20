@@ -30,4 +30,54 @@ export ACTUNODE_TRAEFIK_CONFIG="$root/traefik.yml"
 for image in backend simulator frontend; do docker pull "$ACTUNODE_IMAGES-$image:$ACTUNODE_VERSION"; done
 cd "$here"
 docker compose -f compose.yml -f compose.prod.yml up -d --build --wait
+# Every running lab is recreated on the new images (a short interruption per lab); stopped labs upgrade at their next wake.
+docker compose -f compose.yml -f compose.prod.yml exec -T provisioner /venv/bin/python -m provisioner.app upgrade
+# Daily backup (03:30 UTC) of the database, lab secrets, workspace folders and settings: backup.sh, docs/HOSTED_DEPLOY.md.
+if [ "$(id -u)" = 0 ] && [ -d /run/systemd/system ]; then
+  cat > /etc/systemd/system/actunode-backup.service <<UNIT
+[Unit]
+Description=ActuNode Cloud backup
+
+[Service]
+Type=oneshot
+EnvironmentFile=$root/config.env
+ExecStart=$here/backup.sh
+UNIT
+  cat > /etc/systemd/system/actunode-backup.timer <<'UNIT'
+[Unit]
+Description=Daily ActuNode Cloud backup
+
+[Timer]
+OnCalendar=*-*-* 03:30:00 UTC
+Persistent=true
+
+[Install]
+WantedBy=timers.target
+UNIT
+  systemctl daemon-reload && systemctl enable --now actunode-backup.timer
+  # Health check every 5 minutes, alerts to ACTUNODE_ALERT_WEBHOOK (config.env): healthcheck.sh, docs/HOSTED_DEPLOY.md.
+  cat > /etc/systemd/system/actunode-healthcheck.service <<UNIT
+[Unit]
+Description=ActuNode Cloud health check
+
+[Service]
+Type=oneshot
+EnvironmentFile=$root/config.env
+ExecStart=$here/healthcheck.sh --quiet
+UNIT
+  cat > /etc/systemd/system/actunode-healthcheck.timer <<'UNIT'
+[Unit]
+Description=ActuNode Cloud health check every 5 minutes
+
+[Timer]
+OnCalendar=*:0/5
+Persistent=false
+
+[Install]
+WantedBy=timers.target
+UNIT
+  systemctl daemon-reload && systemctl enable --now actunode-healthcheck.timer
+else
+  echo "backup and health check timers not installed (needs root and systemd); run $here/backup.sh and $here/healthcheck.sh yourself"
+fi
 echo "ActuNode Cloud is running: https://app.$ACTUNODE_CLOUD_DOMAIN"
