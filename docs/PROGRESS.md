@@ -639,6 +639,20 @@ Numbered so they can be referenced from commits. Remove an item only when it is 
 
 Newest first. One entry per work session: what was done, what was learned, what is next.
 
+### Wed 21 Oct 2026: the hosted pages and the lab's reporting, checked in a browser
+Asked to check the sign-in and the other pages and make the reporting better. Screenshots of every control plane
+page (headless Chromium; the Chrome extension cannot attach to the local self-signed site) and of the lab itself.
+**Found: the hosted lab had no live feed at all** ("Live: offline", no robots): the frontend's nginx forwarded its
+own scheme (http) and Traefik names a WebSocket upgrade's protocol `wss`, so the backend's cross-site check refused
+every WebSocket from a hosted lab; the check script never saw it because curl sends no Origin. Fixed in nginx (map
+https/wss/http/ws) and normalised in the backend, with tests; the local check now does the handshake and a
+browser-origin POST through the edge. Also fixed: a redirect loop for a few seconds after a lab wakes (the control
+plane reached it before the edge routed to it): a "Connecting you" page instead. Control plane pages: state badges
+(Running, Asleep, Waking up, Could not start) instead of database words, "0 minutes" (30 s rounded down) now "30
+seconds", a spinner on waiting pages, an error box, 44 px controls on phones, aligned footer and copy rows. The
+lab's Activity panel: plain-words actions and OK/Refused/Error badges instead of red HTTP codes on every row (176
+frontend tests). Self-hosted e2e (security, users, browser) green on the new nginx.
+
 ### Wed 21 Oct 2026 (early): phase 2 built: upgrades, backups and a restore drill, alerts (D-62)
 Upgrades of all workspace labs (provisioner `upgrade`, run by the deploy scripts; verified: the running labs were
 recreated, the sleeping ones re-rendered). Backups (`backup.sh`: online SQLite copy, every lab's secrets volume,

@@ -89,9 +89,9 @@ class LocalWebGuard:
         origin = headers.get("origin")
         changes_state = scope["type"] == "websocket" or scope["method"] not in SAFE_METHODS
         if changes_state and origin is not None:
-            scheme = headers.get("x-forwarded-proto") or {"ws": "http", "wss": "https"}.get(
-                scope["scheme"], scope["scheme"]
-            )
+            # A proxy may name a WebSocket upgrade's protocol ws/wss (Traefik does): the Origin always says http(s).
+            forwarded = headers.get("x-forwarded-proto", "").lower()
+            scheme = {"ws": "http", "wss": "https"}.get(forwarded or scope["scheme"], forwarded or scope["scheme"])
             if not same_origin(origin, headers.get("host", ""), scheme):
                 await self._refuse(scope, receive, send, 403, "Cross-site request refused")
                 return

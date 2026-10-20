@@ -1,4 +1,5 @@
 import { memo, useEffect, useState } from 'react'
+import { actionLabel, STATUS_BADGE, statusKind, statusLabel } from './activityLabels'
 import { fetchAudit, type AuditEntry } from './api'
 
 const POLL_MS = 5000
@@ -80,9 +81,16 @@ function ActivityPanel() {
               <tr key={`${entry.at}-${index}`}>
                 <td className="mono">{time(entry.at)}</td>
                 <td>{entry.user ?? '—'}</td>
-                <td className="mono">{entry.action}</td>
+                <td title={entry.action}>
+                  {actionLabel(entry.action)} <small className="muted mono">{entry.action}</small>
+                </td>
                 <td className="mono">{target(entry)}</td>
-                <td className={`mono${entry.status >= 200 && entry.status < 300 ? '' : ' error-text'}`}>{entry.status}</td>
+                <td>
+                  <span className={`badge ${STATUS_BADGE[statusKind(entry.status)]}`} title={String(entry.status)}>
+                    {statusLabel(entry.status)}
+                  </span>{' '}
+                  <small className="muted mono">· {entry.status}</small>
+                </td>
               </tr>
             ))}
           </tbody>

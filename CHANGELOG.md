@@ -6,6 +6,16 @@ What changed, per commit, newest first. Status and plans are in [docs/PROGRESS.m
 
 ### Hosted service, phase 1 (D-61, docs/HOSTED_SERVICE.md)
 
+- **Fixed: no live feed behind the TLS edge.** The frontend's nginx told the backend the scheme it saw itself
+  (`http`), while the browser's Origin is `https`, so the backend's cross-site check refused every WebSocket and
+  every state-changing request from a hosted lab's UI ("Live: offline", no robots). nginx now forwards the edge's
+  `X-Forwarded-Proto`; the local check does the handshake and a browser-origin POST through the edge.
+- **Activity panel reads in plain words:** "Signed in (workspace sign-on)", "Mission sent", … with the raw
+  action name alongside, and a status badge (OK, Refused, Error) instead of a red HTTP code on every row.
+- **Control plane pages:** state badges (Running, Asleep, Waking up, Could not start) instead of database words,
+  idle time in minutes or seconds, a spinner on waiting pages, a "Connecting you to your lab" page for the few
+  seconds between a woken lab and the edge routing to it (was a redirect loop), 44 px controls on phones.
+
 - **Labs: single sign-on** from the hosted control plane (`/api/sso/start` → control plane → `/api/sso`), bound to the
   browser (no login CSRF), provider-prefixed names (no confusion with local logins), `__Host-` cookies (no cookie
   injection between workspaces), revocation when a member is removed or changes role. Off for self-hosted labs.

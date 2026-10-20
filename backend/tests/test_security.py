@@ -95,9 +95,26 @@ def test_same_site_websocket_works(client):
         assert ws.receive_json()["type"] == "snapshot"
 
 
+def test_websocket_behind_a_tls_edge_needs_the_forwarded_https_scheme(client):
+    """Hosted lab: the browser's Origin is https and nginx forwards the edge's X-Forwarded-Proto (nginx fix guard)."""
+    headers = {"Origin": "https://localhost:9443", "Host": "localhost:9443"}
+    with client.websocket_connect("/api/ws", headers={**headers, "X-Forwarded-Proto": "https"}) as ws:
+        assert ws.receive_json()["type"] == "snapshot"
+    with pytest.raises(WebSocketDisconnect):
+        with client.websocket_connect("/api/ws", headers={**headers, "X-Forwarded-Proto": "http"}) as ws:
+            ws.receive_json()
+
+
 def test_api_docs_are_served_under_api_so_the_ui_port_reaches_them(client):
     """nginx forwards only /api; with docs at /docs they were reachable only on port 8000, which a strict
     host firewall can block (PROGRESS issue 15)."""
     assert client.get("/api/docs").status_code == 200
     assert client.get("/api/openapi.json").json()["info"]["title"] == "ActuNode API"
     assert client.get("/docs").status_code == 404
+
+
+def test_a_proxy_that_says_wss_for_the_upgrade_still_matches_an_https_origin(client):
+    """Traefik forwards X-Forwarded-Proto: wss for a WebSocket upgrade over TLS; the Origin says https."""
+    with client.websocket_connect("/api/ws", headers={"Origin": "https://localhost:9443", "Host": "localhost:9443",
+                                                      "X-Forwarded-Proto": "wss"}):  # fmt: skip
+        pass

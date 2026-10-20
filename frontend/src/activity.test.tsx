@@ -3,6 +3,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 import ActivityPanel from './ActivityPanel'
 import App from './App'
 import { injectFailure } from './api'
+import { actionLabel, statusKind } from './activityLabels'
 
 afterEach(() => {
   cleanup()
@@ -28,8 +29,8 @@ describe('ActivityPanel', () => {
     expect(within(rows[0]).getByText('bob')).toBeTruthy()
     expect(within(rows[1]).getByText('r1 · DOCK')).toBeTruthy()
     expect(within(rows[2]).getByText('—', { selector: 'td:nth-child(2)' })).toBeTruthy()
-    expect(within(rows[0]).getByText('403').className).toContain('error-text')
-    expect(within(rows[1]).getByText('200').className).not.toContain('error-text')
+    expect(within(rows[0]).getByText('Refused').className).toContain('warn')
+    expect(within(rows[1]).getByText('OK').className).toContain('ok')
   })
 
   it('filters by user', async () => {
@@ -86,5 +87,33 @@ describe('plain-text errors', () => {
   it('shows the body of a plain-text 403', async () => {
     vi.stubGlobal('fetch', vi.fn(() => Promise.resolve(new Response('Viewers cannot change the lab', { status: 403 }))))
     await expect(injectFailure('r1', 'BLOCKED', 'inject')).rejects.toThrow('Viewers cannot change the lab')
+  })
+})
+
+describe('activity labels', () => {
+  it('maps known actions and falls back for unknown ones', () => {
+    expect(actionLabel('login.sso')).toBe('Signed in (workspace sign-on)')
+    expect(actionLabel('sso.revoke')).toBe('Access removed')
+    expect(actionLabel('failure.inject')).toBe('Failure injected')
+    expect(actionLabel('thing.some_step')).toBe('Thing some step')
+  })
+
+  it('classifies statuses', () => {
+    expect([200, 303, 400, 401, 500].map(statusKind)).toEqual(['ok', 'ok', 'refused', 'refused', 'error'])
+  })
+
+  it('shows readable action and status with raw values in titles', async () => {
+    const rows = [
+      { at: '2026-10-10T12:01:00Z', user: 'a', role: 'viewer', client: 'x', action: 'login.sso', method: 'GET', path: '/sso', status: 303 },
+      { at: '2026-10-10T12:00:00Z', user: null, role: null, client: 'x', action: 'login.sso_failed', method: 'GET', path: '/sso', status: 401 },
+    ]
+    vi.stubGlobal('fetch', vi.fn(() => json({ entries: rows })))
+    render(<ActivityPanel />)
+    await screen.findByText(/Signed in \(workspace sign-on\)/)
+    const ok = screen.getByText('OK')
+    expect(ok.className).toContain('ok')
+    expect(ok.getAttribute('title')).toBe('303')
+    expect(screen.getByText('Refused').getAttribute('title')).toBe('401')
+    expect(document.querySelector('td[title="login.sso"]')).toBeTruthy()
   })
 })

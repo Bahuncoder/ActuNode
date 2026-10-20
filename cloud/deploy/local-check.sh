@@ -31,6 +31,8 @@ open_lab() {  # open_lab <cookie jar> <workspace>: the Open lab button; a sleepi
 check "alice opens alpha (wake if asleep, SSO round trip)" "$(open_lab a alpha)" "200 $(lab alpha)/"
 check "bob opens beta" "$(open_lab b beta)" "200 $(lab beta)/"
 check "alpha knows alice" "$(browser a "$(lab alpha)/api/session" | grep -o '"user":"[^"]*","role":"[a-z]*"')" '"user":"dev:alice","role":"operator"'
+check "alpha's live feed connects through the edge (browser origin)" "$(browser a --http1.1 -o /dev/null -w '%{http_code}' --max-time 5 -H "Origin: $(lab alpha)" -H 'Connection: Upgrade' -H 'Upgrade: websocket' -H 'Sec-WebSocket-Version: 13' -H 'Sec-WebSocket-Key: dGhlIHNhbXBsZSBub25jZQ==' "$(lab alpha)/api/ws" || true)" 101
+check "a browser POST with the lab's own origin is not treated as cross-site" "$([ "$(post a -H "Origin: $(lab alpha)" "$(lab alpha)/api/validation/reset")" = 403 ] && echo refused || echo accepted)" accepted
 check "alpha's robots are online" "$(browser a "$(lab alpha)/api/robots" | grep -o '"connection":"ONLINE"' | wc -l | tr -d ' ')" 3
 check "bob cannot open alpha" "$(browser b -L -o /dev/null -w '%{http_code}' --max-redirs 5 "$APP/workspaces/alpha/open")" 404
 check "alice's alpha session does not open beta" "$(status a "$(lab beta)/api/robots")" 401
@@ -69,7 +71,7 @@ if [ "${ACTUNODE_IDLE_STOP_S:-1800}" -le 120 ]; then
   asleep() { browser "$1" "$APP/workspaces/$2" | grep -o 'Your lab is asleep' | head -1; }
   for _ in $(seq 1 40); do [ "$(asleep a alpha)" = "Your lab is asleep" ] && break; sleep 3; done
   check "alpha falls asleep when nobody uses it" "$(asleep a alpha)" "Your lab is asleep"
-  check "a sleeping lab's address leads to the wake page" "$(browser a -o /dev/null -w '%{http_code} %{redirect_url}' "$(lab alpha)/")" "303 $APP/workspaces/alpha/open"
+  check "a sleeping lab's address leads to the wake page" "$(browser a -o /dev/null -w '%{http_code} %{redirect_url}' "$(lab alpha)/")" "303 $APP/workspaces/alpha/open?edge=1"
   check "a sleeping lab's address is not a way in for strangers" "$(status c "$(lab alpha)/api/robots")" 303
   check "a sleeping lab takes no robot connections" "$(mqtt alpha AcmeRobotics.amr-7 "$robot_pw" uagv/v2/AcmeRobotics/amr-7/connection)" refused
   check "alice wakes alpha" "$(browser a "$APP/workspaces/alpha/open" | grep -o 'Waking up your lab' | head -1)" "Waking up your lab"
