@@ -493,6 +493,10 @@ def create_app(config: Settings = settings, store: Store | None = None, http: ht
             raise HTTPException(400, "Names: letters, digits, _ and - only (up to 64).")
         try:
             created = provisioner.add_login(slug, body)
+        except httpx.HTTPStatusError as error:
+            if error.response.status_code == 409:
+                raise HTTPException(409, "That login exists. Remove it first to make a new password.") from None
+            raise HTTPException(502, "The login could not be created. Try again.") from None
         except (httpx.HTTPError, RuntimeError):
             raise HTTPException(502, "The login could not be created. Try again.") from None
         log.info("%s added login %s in %s", user.handle, created.get("username"), slug)
@@ -508,7 +512,13 @@ def create_app(config: Settings = settings, store: Store | None = None, http: ht
         w = member(user, slug)
         if w.role not in ("owner", "operator"):
             raise HTTPException(403, "Only owners and operators manage logins.")
-        if kind not in ("robot", "master"):
+        # Checked by kind before it goes anywhere: a crafted value must not reach the provisioner (path traversal to
+        # another workspace); the client also encodes every path segment.
+        parts = login.split(".")
+        valid = (kind == "robot" and len(parts) == 2 and all(NAME.fullmatch(p) for p in parts)) or (
+            kind == "master" and login.startswith("master@") and NAME.fullmatch(login.removeprefix("master@"))
+        )
+        if not valid:
             raise HTTPException(400, "Bad login.")
         try:
             provisioner.remove_login(slug, kind, login)

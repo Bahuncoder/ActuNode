@@ -10,6 +10,7 @@ import json
 import logging
 import secrets
 import time
+from urllib.parse import quote
 
 import httpx
 
@@ -55,6 +56,11 @@ class Provisioner:
     def __init__(self, url: str | None, token: str | None, client: httpx.Client):
         self.url, self.token, self.client = url, token, client
 
+    @staticmethod
+    def _path(*segments: str) -> str:
+        """Every segment percent-encoded: no caller-supplied value can add `/`, `..` or `?` to the provisioner path."""
+        return "".join(f"/{quote(str(s), safe='')}" for s in segments)
+
     def _call(self, method: str, path: str, body: dict | None = None) -> dict:
         if not self.url:
             raise RuntimeError("no provisioner configured")
@@ -64,19 +70,19 @@ class Provisioner:
         return response.json()
 
     def create(self, slug: str, sso_key: str) -> dict:
-        return self._call("PUT", f"/workspaces/{slug}", {"ssoKey": sso_key})
+        return self._call("PUT", self._path("workspaces", slug), {"ssoKey": sso_key})
 
     def start(self, slug: str) -> dict:
-        return self._call("POST", f"/workspaces/{slug}/start")
+        return self._call("POST", self._path("workspaces", slug, "start"))
 
     def delete(self, slug: str) -> dict:
-        return self._call("DELETE", f"/workspaces/{slug}")
+        return self._call("DELETE", self._path("workspaces", slug))
 
     def logins(self, slug: str) -> dict:
-        return self._call("GET", f"/workspaces/{slug}/logins")
+        return self._call("GET", self._path("workspaces", slug, "logins"))
 
     def add_login(self, slug: str, body: dict) -> dict:
-        return self._call("POST", f"/workspaces/{slug}/logins", body)
+        return self._call("POST", self._path("workspaces", slug, "logins"), body)
 
     def remove_login(self, slug: str, kind: str, login: str) -> dict:
-        return self._call("DELETE", f"/workspaces/{slug}/logins/{kind}/{login}")
+        return self._call("DELETE", self._path("workspaces", slug, "logins", kind, login))

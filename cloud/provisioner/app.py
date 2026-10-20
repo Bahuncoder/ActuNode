@@ -190,13 +190,18 @@ def create_app(config: Config | None = None, runner=run) -> FastAPI:
             if not body.name or not all(NAME.fullmatch(m) for m in body.manufacturers):
                 raise HTTPException(400, "A fleet manager login needs a name (and valid manufacturers)")
             args = ["add-master", body.name, *body.manufacturers]
+        # mqtt-init keeps an existing login's password and prints it: "adding" an existing login would hand out its
+        # current password without changing it (credential disclosure). Refuse; a new password needs remove + add.
+        username = f"{body.manufacturer}.{body.serial}" if body.kind == "robot" else f"master@{body.name}"
+        present = logins(slug)
+        if username in present["robots"] or username in present["masters"]:
+            raise HTTPException(409, "That login exists. Remove it first to make a new password.")
         output = runner(compose(slug, "run", "--rm", "--no-deps", "mqtt-init", *args), timeout=120).stdout
         found = PASSWORD.search(output)
         if not found:
             log.error("add login on %s: no password in the output", slug)
             raise HTTPException(502, "The login could not be created")
         reload_broker(slug)
-        username = f"{body.manufacturer}.{body.serial}" if body.kind == "robot" else f"master@{body.name}"
         return {"username": username, "password": found[1]}
 
     @app.delete("/workspaces/{slug}/logins/{kind}/{login}", dependencies=[Depends(authorized)])

@@ -13,7 +13,7 @@ the status line, the schedule table, the session log, and the open issues.
 | | |
 |---|---|
 | **Calendar** | Week 1 of 8 by date (Fri 9 Oct – Thu 15 Oct 2026); dates no longer gate the work (D-30) |
-| **Last updated** | Sat 17 Oct 2026 |
+| **Last updated** | Tue 20 Oct 2026 |
 | **Status** | **Phase 1 (weeks 1–8) complete; v0.1.0 released 13 Oct 2026** (D-43). Phase 2 (weeks 9–16, D-44) under way: **Weeks 9 and 10 done** (D-45, D-46: `actunode test`, timing and message expectations, every run recorded, five sample scenarios). **Decision point** (D-44): the founder's first user conversations decide the order of weeks 11–16; without new input, Week 11 is next. **Product audit 14 Oct (D-47):** outside fleet managers can now connect; security headers added. **Week 11 done (D-48):** the plan's demo question runs as a scenario against a fleet manager; `UNRESPONSIVE`; replay with current time. **Week 12 done (D-49).** **Full audit of weeks 0–12 done (D-50, docs/AUDIT_2026-10-14.md):** six reviews, ~95 findings (13 High), all fixed with tests; gate green. **Week 13 done (D-51):** a real ROS 2 stack (Nav2 + InOrbit's VDA 5050 connector) in the lab; eight deviations found. **Week 14 done (D-52):** conformance suite, the connector's report (4/9), five upstream drafts (not filed: founder's call), robot guide. **Week 15 done (D-53):** failure catalogue, scenario gallery, message flows from real recordings; two blog drafts (private, for the founder). **Week 16 done (D-54):** getting started guide, compatibility promise, triage routine; 0.2.0 built and verified (fresh clone, CI green); v0.2.0 released (tag on 6c234f2). **Phase 2 complete.** **After Phase 2 (17 Oct):** the ROS 2 robot's conformance failures fixed (D-55, five upstream PRs open), per-person logins and an audit trail (D-56), metrics (D-57), published images (D-58), robot-scoped scenario checks (D-59); the full audit has no open items. **v0.3.0 released 17 Oct** (tag on 238509e); images public on ghcr.io for amd64 and arm64, provenance verified. No open issues. |
 | **Working rule** | A week is done when its work is fully done (D-30): features, then a quality gate (independent bug and security review, scans, a test for every fix, all suites and e2e green, docs). Then the next week starts, whatever the date. |
 
@@ -638,6 +638,15 @@ Numbered so they can be referenced from commits. Remove an item only when it is 
 ## Session log
 
 Newest first. One entry per work session: what was done, what was learned, what is next.
+
+### Tue 20 Oct 2026: hosted service, security review round 6
+Two findings in the new login pages, fixed with tests: **cross-workspace path traversal** (a login name such as
+`x/../../globex` in the remove form became `DELETE /workspaces/globex` at the provisioner; now checked by kind before
+any call, and the client percent-encodes every path segment) and **credential disclosure** (adding an existing login
+returned its current password, because mqtt-init keeps and prints it; the provisioner now answers 409 and the page says
+to remove it first). Known and accepted: two operators of the same workspace adding the same name at the same instant
+can still get past the exists check (one extra listing per add; no cross-workspace effect). Cloud suite 62 passing,
+lint clean. Still waiting on the founder's Hetzner/DNS/OAuth accounts and the v0.4.0 release.
 
 ### Mon 19 Oct 2026 (night): hosted service phase 1 (D-61)
 The founder chose a shared online service on actunode.com (Hetzner EU, GitHub/Google sign-in, billing after the

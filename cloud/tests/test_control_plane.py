@@ -55,6 +55,11 @@ class World:
             if url.endswith("/logins") and request.method == "GET":
                 return httpx.Response(200, json={"robots": sorted(self.logins), "masters": []})
             if url.endswith("/logins") and request.method == "POST":
+                wanted = (
+                    f"{body['manufacturer']}.{body['serial']}" if body["kind"] == "robot" else f"master@{body['name']}"
+                )
+                if wanted in self.logins:
+                    return httpx.Response(409, json={"detail": "exists"})
                 username = (
                     f"{body['manufacturer']}.{body['serial']}" if body["kind"] == "robot" else f"master@{body['name']}"
                 )
@@ -445,3 +450,44 @@ def test_static_files_and_script_policy(cloud):
     assert client.get("/static/copy.js").status_code == 200
     assert client.get("/static/../app/main.py").status_code == 404
     assert "script-src 'self'" in client.get("/").headers["content-security-policy"]
+
+
+@pytest.mark.parametrize(
+    "kind, login",
+    [
+        ("robot", "x/../../../globex"),  # would turn into DELETE /workspaces/globex
+        ("robot", "../globex"),
+        ("robot", "a.b?x=1"),
+        ("robot", "a.b.c"),
+        ("robot", "a%2F..%2Fb.c"),
+        ("master", "master@../../globex"),
+        ("master", "fleet"),
+    ],
+)
+def test_a_crafted_login_never_reaches_the_provisioner(cloud, kind, login):
+    """Cross-workspace path traversal: login names are checked by kind before any provisioner call."""
+    world, _, browser = cloud
+    client = browser()
+    sign_in(client, "code-octocat")
+    create(client)
+    before = list(world.provisioned)
+    assert client.post("/workspaces/acme/logins/remove", data={"kind": kind, "login": login}).status_code == 400
+    assert world.provisioned == before
+
+
+def test_every_provisioner_path_segment_is_encoded():
+    from app.labs import Provisioner
+
+    assert Provisioner._path("workspaces", "acme", "logins", "robot", "a/../../b?c") == (
+        "/workspaces/acme/logins/robot/a%2F..%2F..%2Fb%3Fc"
+    )
+
+
+def test_an_existing_login_is_refused_not_revealed(cloud):
+    world, _, browser = cloud
+    client = browser()
+    sign_in(client, "code-octocat")
+    create(client)
+    client.post("/workspaces/acme/logins", data={"kind": "robot", "manufacturer": "Acme", "serial": "r1"})
+    again = client.post("/workspaces/acme/logins", data={"kind": "robot", "manufacturer": "Acme", "serial": "r1"})
+    assert again.status_code == 409 and "Pa55word" not in again.text and "Remove it first" in again.text

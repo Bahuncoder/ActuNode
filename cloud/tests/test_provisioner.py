@@ -128,14 +128,17 @@ def test_the_rendered_lab_is_a_valid_compose_project(tmp_path):
 def test_robot_and_fleet_manager_logins(provisioner):
     client, docker, config = provisioner
     client.put("/workspaces/acme", json={"ssoKey": KEY})
+    # Acme.r2 and fleet2: the fake listing already holds Acme.r1 and fleet, which may not be added again
     added = client.post(
-        "/workspaces/acme/logins", json={"kind": "robot", "manufacturer": "Acme", "serial": "r1"}
+        "/workspaces/acme/logins", json={"kind": "robot", "manufacturer": "Acme", "serial": "r2"}
     ).json()
-    assert added == {"username": "Acme.r1", "password": "Secr3tPassw0rd"}
-    assert [c for c in docker.calls if "add-robot" in c][0][-3:] == ["add-robot", "Acme", "r1"]
+    assert added == {"username": "Acme.r2", "password": "Secr3tPassw0rd"}
+    assert [c for c in docker.calls if "add-robot" in c][0][-3:] == ["add-robot", "Acme", "r2"]
     assert any(c[-4:] == ["kill", "-s", "HUP", "mosquitto"] for c in docker.calls)  # applied without a restart
-    master = client.post("/workspaces/acme/logins", json={"kind": "master", "name": "fleet", "manufacturers": ["Acme"]})
-    assert master.json()["username"] == "master@fleet"
+    master = client.post(
+        "/workspaces/acme/logins", json={"kind": "master", "name": "fleet2", "manufacturers": ["Acme"]}
+    )
+    assert master.json()["username"] == "master@fleet2"
     assert client.get("/workspaces/acme/logins").json() == {"robots": ["Acme.r1"], "masters": ["master@fleet"]}
     assert client.delete("/workspaces/acme/logins/robot/Acme.r1").json() == {"removed": "Acme.r1"}
     assert [c for c in docker.calls if "remove-robot" in c][0][-3:] == ["remove-robot", "Acme", "r1"]
@@ -158,3 +161,12 @@ def test_login_names_are_checked_before_any_command(provisioner, body):
     assert client.post("/workspaces/acme/logins", json=body).status_code in (400, 422)
     assert len(docker.calls) == before
     assert client.delete("/workspaces/acme/logins/robot/a.b.c").status_code == 400
+
+
+def test_adding_an_existing_login_does_not_reveal_its_password(provisioner):
+    """Credential disclosure: mqtt-init prints an existing login's password; the provisioner must not pass it on."""
+    client, docker, _ = provisioner
+    client.put("/workspaces/acme", json={"ssoKey": KEY})
+    again = client.post("/workspaces/acme/logins", json={"kind": "robot", "manufacturer": "Acme", "serial": "r1"})
+    assert again.status_code == 409 and "Secr3t" not in again.text  # Acme.r1 exists (LISTING)
+    assert not any("add-robot" in c for c in docker.calls)

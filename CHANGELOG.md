@@ -20,6 +20,10 @@ What changed, per commit, newest first. Status and plans are in [docs/PROGRESS.m
   were opening (local paths only); **robot and fleet manager logins** on the workspace page (add: the password shown
   once, never in a URL; remove; viewers only see them); a "Connect a robot" box with copy buttons; removing a member
   is confirmed; field patterns valid in current browsers.
+- **Fixed (security review, round 6):** a crafted login name sent to "remove login" could reach the provisioner as a
+  path (`x/../../<other workspace>`); login names are now checked by kind in the control plane and every provisioner
+  path segment is percent-encoded. "Adding" a login that already exists handed out its current password (mqtt-init
+  keeps and prints it); the provisioner now refuses with 409 and the page says to remove it first. Tests for both.
 - **Infrastructure** (`cloud/infra`): Terraform for Hetzner (server with backups, data volume, firewall),
   cloud-init, production edge with a Let's Encrypt wildcard; deployment guide docs/HOSTED_DEPLOY.md.
 
