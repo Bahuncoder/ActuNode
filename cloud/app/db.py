@@ -275,9 +275,11 @@ class Store:
     def set_role(self, slug: str, user_id: int, role: str) -> None:
         self._run(("UPDATE members SET role = ? WHERE slug = ? AND user_id = ?", role, slug, user_id))
 
-    def remove_member(self, slug: str, user_id: int) -> bool:
+    def remove_member(self, slug: str, user_id: int) -> str:
         """Remove a member, unless they are the workspace's last owner: the check and the removal are one statement,
-        so two owners leaving at the same moment cannot leave the workspace without one. True if removed."""
+        so two owners leaving at the same moment cannot leave the workspace without one. "removed", "last_owner",
+        or "absent" (not a member, e.g. removed by an owner at the same moment: callers must not treat that as
+        "theirs alone")."""
         with self._lock:
             self._db.execute("BEGIN IMMEDIATE")
             try:
@@ -286,11 +288,13 @@ class Store:
                     " OR (SELECT COUNT(*) FROM members WHERE slug = ? AND role = 'owner') > 1)",
                     (slug, user_id, slug),
                 ).rowcount
+                still = self._db.execute("SELECT 1 FROM members WHERE slug = ? AND user_id = ?", (slug, user_id))
+                outcome = "removed" if changed == 1 else "last_owner" if still.fetchone() else "absent"
                 self._db.execute("COMMIT")
             except Exception:
                 self._db.execute("ROLLBACK")
                 raise
-        return changed == 1
+        return outcome
 
     def owners(self, slug: str) -> int:
         return self._one("SELECT COUNT(*) FROM members WHERE slug = ? AND role = 'owner'", slug)[0]

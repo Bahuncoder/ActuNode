@@ -9,7 +9,7 @@ from types import SimpleNamespace
 import pytest
 from fastapi import HTTPException
 from fastapi.testclient import TestClient
-from provisioner.app import LIST_LOGINS, Config, create_app, render
+from provisioner.app import LIST_LOGINS, Config, create_app, render, upgrade_all
 
 KEY = "ab" * 32
 ADDED = "mqtt-init: credentials ready\nrobot login: username=x password=Secr3tPassw0rd\n"
@@ -20,16 +20,21 @@ class Docker:
     """Records docker commands instead of running them."""
 
     def __init__(self, fail_on: str | None = None):
+        self.running: set[str] = set()
         self.calls: list[list[str]] = []
         self.fail_on = fail_on
         self.connected: set[str] = set()
+        self.listing = LISTING
 
     def __call__(self, args, timeout=600):
         self.calls.append(args)
         if "add-robot" in args or "add-master" in args:
             return SimpleNamespace(stdout=ADDED, returncode=0)
         if args[-1:] == [LIST_LOGINS]:
-            return SimpleNamespace(stdout=LISTING, returncode=0)
+            return SimpleNamespace(stdout=self.listing, returncode=0)
+        if "ps" in args and "--status" in args:
+            alive = any(f"ws-{slug}" in args for slug in self.running)
+            return SimpleNamespace(stdout="abc\n" if alive else "", returncode=0)
         if self.fail_on and self.fail_on in args:
             raise HTTPException(502, "failed")
         if args[:3] == ["docker", "network", "connect"]:
@@ -181,6 +186,7 @@ def test_the_front_containers_are_reattached_to_every_workspace(provisioner):
     assert {c[3] for c in docker.calls if c[:3] == connect} == {"ws-acme_front", "ws-globex_front"}
     docker.connected.clear()  # the edge was recreated
     docker.calls.clear()
+    docker.connected.clear()  # as if the edge had been recreated
     response = client.post("/front")
     assert response.status_code == 200 and response.json() == {"attached": ["acme", "globex"], "failed": []}
     assert {c[3] for c in docker.calls if c[:3] == connect} == {"ws-acme_front", "ws-globex_front"}
@@ -195,3 +201,69 @@ def test_attaching_the_front_needs_the_token_and_survives_a_broken_workspace(pro
     assert client.post("/front").json() == {"attached": ["globex"], "failed": ["acme"]}
     client.headers["authorization"] = "Bearer wrong"
     assert client.post("/front").status_code == 401
+
+
+def test_logins_per_workspace_are_capped(provisioner):
+    client, docker, _ = provisioner
+    client.put("/workspaces/acme", json={"ssoKey": KEY})
+    fifty = "".join(f"Acme.r{n}.password\n" for n in range(50))
+    docker.listing = f"/secrets/robots:\n{fifty}\n/secrets/masters:\n"
+    before = len(docker.calls)
+    full = client.post("/workspaces/acme/logins", json={"kind": "robot", "manufacturer": "Acme", "serial": "new"})
+    assert full.status_code == 409 and "Limit: 50" in full.text
+    assert not any("add-robot" in c for c in docker.calls[before:])
+
+
+def upgrade_setup(provisioner):
+    client, docker, config = provisioner
+    for slug in ("acme", "globex"):
+        client.put(f"/workspaces/{slug}", json={"ssoKey": KEY})
+    docker.running = {"acme"}
+    docker.calls.clear()
+    docker.connected.clear()  # as if the edge had been recreated
+    newer = Config({"PROVISIONER_TOKEN_FILE": str(config.workspaces.parent.parent / "token"),
+                    "ACTUNODE_DATA_DIR": str(config.data), "ACTUNODE_VERSION": "0.4.0"})  # fmt: skip
+    return client, docker, config, newer
+
+
+def test_upgrading_rerenders_every_lab_and_recreates_the_running_ones(provisioner):
+    _, docker, config, newer = upgrade_setup(provisioner)
+    client = TestClient(create_app(newer, docker))
+    client.headers["authorization"] = "Bearer prov-token"
+    assert client.post("/upgrade").json() == {
+        "version": "0.4.0", "upgraded": ["acme"], "rendered": ["globex"], "failed": [],
+    }  # fmt: skip
+    for slug in ("acme", "globex"):
+        assert ":0.4.0" in (config.workspaces / slug / "compose.yml").read_text()
+    ups = [i for i, c in enumerate(docker.calls) if c[-3:] == ["up", "-d", "--wait"]]
+    assert len(ups) == 1 and "ws-acme" in docker.calls[ups[0]]
+    connects = [i for i, c in enumerate(docker.calls) if c[:3] == ["docker", "network", "connect"]]
+    assert connects and all(i > ups[0] for i in connects) and docker.calls[connects[0]][3] == "ws-acme_front"
+
+
+def test_an_upgrade_failure_on_one_lab_does_not_stop_the_others(provisioner):
+    _, docker, _, newer = upgrade_setup(provisioner)
+    docker.running = {"acme", "globex"}
+    original = docker.__call__
+
+    def flaky(args, timeout=600):
+        if "ws-acme" in args and "--wait" in args:
+            raise HTTPException(502, "failed")
+        return original(args, timeout)
+
+    assert upgrade_all(newer, flaky) == {
+        "version": "0.4.0", "upgraded": ["globex"], "rendered": [], "failed": ["acme"],
+    }  # fmt: skip
+
+
+def test_upgrading_needs_the_token(provisioner):
+    client, docker, _ = provisioner
+    client.headers["authorization"] = "Bearer wrong"
+    assert client.post("/upgrade").status_code == 401
+    assert docker.calls == []
+
+
+def test_the_upgrade_command_form_returns_the_result(provisioner):
+    _, docker, _, newer = upgrade_setup(provisioner)
+    result = upgrade_all(newer, docker)
+    assert result["upgraded"] == ["acme"] and result["rendered"] == ["globex"] and result["failed"] == []

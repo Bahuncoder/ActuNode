@@ -26,6 +26,13 @@ What changed, per commit, newest first. Status and plans are in [docs/PROGRESS.m
   (`ACTUNODE_IDLE_STOP_S`, checked every `ACTUNODE_IDLE_SWEEP_S`); **Open lab** wakes a stopped lab and waits, a
   stopped lab's own address leads to the wake page (an edge fallback route), two people wake it once. The local
   check gains nine idle steps (`ACTUNODE_IDLE_STOP_S=30` on both scripts).
+- **Upgrades of all workspaces (phase 2)**: the provisioner re-renders every workspace's lab at the current release
+  and recreates the running ones (`POST /upgrade`, or `python -m provisioner.app upgrade` inside the provisioner);
+  stopped labs upgrade at their next wake. `prod-up.sh` and `local-up.sh` run it at the end.
+- **Fixed (security review):** a member removed by an owner at the very moment they deleted their account could
+  have had the workspace deleted as "theirs alone"; removal now reports removed, last owner or absent, and only
+  the last owner's workspace goes with the account. Opening a lab marked ready that does not answer (restored
+  from a backup, containers gone) now wakes it instead of bouncing between its address and the wake page.
 - **Account deletion (phase 2)**: an Account page (handle, sign-in identities, workspaces) where a person deletes
   their own account by typing their handle: workspaces only they own are deleted with all their data, they are
   removed from shared ones (lab sessions ended), identities and sessions deleted; a lab that cannot be deleted

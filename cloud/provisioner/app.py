@@ -7,11 +7,13 @@ and commands are argument lists, never a shell.
 """
 
 import hmac
+import json
 import logging
 import os
 import re
 import shutil
 import subprocess
+import sys
 from pathlib import Path
 from string import Template
 
@@ -23,6 +25,7 @@ SLUG = re.compile(r"^[a-z][a-z0-9-]{2,29}[a-z0-9]$")
 SSO_KEY = re.compile(r"^[0-9a-f]{64}$")
 NAME = re.compile(r"^[A-Za-z0-9_-]{1,64}$")  # manufacturer, serial, master name: as mqtt-init's valid_name
 PASSWORD = re.compile(r"password=([A-Za-z0-9]+)")
+MAX_LOGINS = 50  # robot and fleet manager logins per workspace (abuse limit; the lab itself caps robots at 10)
 LIST_LOGINS = "ls /secrets/robots /secrets/masters 2>/dev/null; true"  # a fixed command, no input in it
 TEMPLATE = Path(__file__).with_name("workspace-compose.yml")
 LAB_UID = 1000  # the backend's user inside its container
@@ -66,6 +69,40 @@ def render(config: Config, slug: str) -> str:
     )  # fmt: skip
 
 
+def compose_command(config: Config, slug: str, *args: str) -> list[str]:
+    return ["docker", "compose", "-p", f"ws-{slug}", "-f", str(config.workspaces / slug / "compose.yml"), *args]
+
+
+def connect_front(config: Config, slug: str, runner=run) -> None:
+    network = f"ws-{slug}_front"
+    inspect = runner(["docker", "network", "inspect", network, "--format", "{{json .Containers}}"])
+    for container in config.front:
+        if f'"{container}"' not in inspect.stdout:
+            runner(["docker", "network", "connect", network, container])
+
+
+def upgrade_all(config: Config, runner=run) -> dict:
+    """Re-render every workspace's compose.yml with the current version; recreate the labs that are running."""
+    upgraded, rendered, failed = [], [], []
+    folders = sorted(config.workspaces.iterdir()) if config.workspaces.is_dir() else []
+    for folder in folders:
+        slug = folder.name
+        if not SLUG.fullmatch(slug) or not (folder / "compose.yml").exists():
+            continue
+        try:
+            (folder / "compose.yml").write_text(render(config, slug))
+            if runner(compose_command(config, slug, "ps", "-q", "--status", "running")).stdout.strip():
+                runner(compose_command(config, slug, "up", "-d", "--wait"))
+                connect_front(config, slug, runner)
+                upgraded.append(slug)
+            else:
+                rendered.append(slug)  # gets the new version at its next start
+        except (HTTPException, subprocess.SubprocessError, OSError) as error:
+            log.warning("Upgrading %s failed: %s", slug, error)
+            failed.append(slug)
+    return {"version": config.version, "upgraded": upgraded, "rendered": rendered, "failed": failed}
+
+
 class LoginRequest(BaseModel):
     """A robot (`manufacturer` + `serial`) or a fleet manager / master control (`name`, commanding `manufacturers`)."""
 
@@ -95,14 +132,14 @@ def create_app(config: Config | None = None, runner=run) -> FastAPI:
         return slug
 
     def compose(slug: str, *args: str) -> list[str]:
-        return ["docker", "compose", "-p", f"ws-{slug}", "-f", str(config.workspaces / slug / "compose.yml"), *args]
+        return compose_command(config, slug, *args)
 
     def connect_edge(slug: str) -> None:
-        network = f"ws-{slug}_front"
-        inspect = runner(["docker", "network", "inspect", network, "--format", "{{json .Containers}}"])
-        for container in config.front:
-            if f'"{container}"' not in inspect.stdout:
-                runner(["docker", "network", "connect", network, container])
+        connect_front(config, slug, runner)
+
+    @app.post("/upgrade", dependencies=[Depends(authorized)])
+    def upgrade() -> dict:
+        return upgrade_all(config, runner)
 
     @app.put("/workspaces/{slug}", dependencies=[Depends(authorized)])
     def create(slug: str, body: CreateRequest) -> dict:
@@ -212,6 +249,8 @@ def create_app(config: Config | None = None, runner=run) -> FastAPI:
         present = logins(slug)
         if username in present["robots"] or username in present["masters"]:
             raise HTTPException(409, "That login exists. Remove it first to make a new password.")
+        if len(present["robots"]) + len(present["masters"]) >= MAX_LOGINS:
+            raise HTTPException(409, f"Limit: {MAX_LOGINS} robot and fleet manager logins per workspace.")
         output = runner(compose(slug, "run", "--rm", "--no-deps", "mqtt-init", *args), timeout=120).stdout
         found = PASSWORD.search(output)
         if not found:
@@ -238,3 +277,11 @@ def create_app(config: Config | None = None, runner=run) -> FastAPI:
         return {"status": "ok"}
 
     return app
+
+
+if __name__ == "__main__":
+    if sys.argv[1:] != ["upgrade"]:
+        print("usage: python -m provisioner.app upgrade", file=sys.stderr)
+        sys.exit(2)
+    logging.basicConfig(stream=sys.stderr, level=logging.INFO)
+    print(json.dumps(upgrade_all(Config())))

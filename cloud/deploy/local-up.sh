@@ -51,6 +51,8 @@ fi
 # The lab images with this checkout's code (published 0.3.0 has no single sign-on yet).
 docker compose -f "$repo/docker-compose.yml" build backend simulator frontend
 docker compose -f "$here/compose.yml" up -d --build --wait
+# Every running lab is recreated on the new images (a short interruption per lab); stopped labs upgrade at their next wake.
+docker compose -f "$here/compose.yml" exec -T provisioner /venv/bin/python -m provisioner.app upgrade
 
 cat <<MSG
 

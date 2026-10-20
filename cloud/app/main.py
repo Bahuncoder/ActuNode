@@ -466,7 +466,13 @@ def create_app(config: Settings = settings, store: Store | None = None, http: ht
         user = signed_in(request)
         w = member(user, slug)
         if w.state == "ready":
-            return RedirectResponse(f"{config.lab_url(slug)}/api/sso/start", status_code=303)
+            if lab_health(w) is not None:
+                return RedirectResponse(f"{config.lab_url(slug)}/api/sso/start", status_code=303)
+            # Marked ready but not answering (restored from a backup, or its containers are gone): wake it rather
+            # than send the browser to an address that only leads back here.
+            if store.transition(slug, "ready", "starting"):
+                background.add_task(wake, slug)
+            w = Workspace(w.slug, w.name, w.sso_key, "starting", w.role)
         if w.state in ("stopped", "starting"):
             if w.state == "stopped" and store.transition(slug, "stopped", "starting"):
                 background.add_task(wake, slug)
@@ -713,8 +719,11 @@ def create_app(config: Settings = settings, store: Store | None = None, http: ht
         roles = dict((m.id, r) for m, r in store.members(slug))
         if user_id not in roles:
             raise HTTPException(400, "Unknown member.")
-        if not store.remove_member(slug, user_id):  # refused only for the last owner (checked atomically)
+        outcome = store.remove_member(slug, user_id)  # refused only for the last owner (checked atomically)
+        if outcome == "last_owner":
             raise HTTPException(409, "A workspace needs an owner: make someone else owner first.")
+        if outcome == "absent":
+            raise HTTPException(400, "Unknown member.")
         revoke(w, user_id)
         return RedirectResponse("/workspaces" if user_id == user.id else f"/workspaces/{slug}", status_code=303)
 
@@ -775,9 +784,10 @@ def create_app(config: Settings = settings, store: Store | None = None, http: ht
         for w in store.workspaces_of(user):
             # Leave it when another owner remains (refused, in one atomic statement, only for the last owner: a
             # co-owner leaving at the same moment cannot leave it ownerless); theirs alone, it goes with the account.
-            if store.remove_member(w.slug, user.id):
+            outcome = store.remove_member(w.slug, user.id)
+            if outcome == "removed":
                 revoke(w, user.id)
-            else:
+            elif outcome == "last_owner":
                 if config.provisioner_url:
                     try:
                         provisioner.delete(w.slug)

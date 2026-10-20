@@ -739,7 +739,43 @@ def test_the_last_owner_cannot_leave_even_in_a_race(cloud):
     sign_in(client, "code-octocat")
     create(client)
     ((octocat, role),) = store.members("acme")
-    assert role == "owner" and store.remove_member("acme", octocat.id) is False
+    assert role == "owner" and store.remove_member("acme", octocat.id) == "last_owner"
+    assert store.remove_member("acme", 999) == "absent"
     assert [r for _, r in store.members("acme")] == ["owner"]
     assert client.post("/account/delete", data={"confirm": "github:octocat"}).status_code == 200
     assert store.slug_taken("acme") is False  # alone, so the workspace went with the account
+
+
+def test_a_member_removed_at_the_same_moment_does_not_take_the_workspace_with_them(cloud, monkeypatch):
+    """Fail-open race: mallory removes octocat from acme just as octocat deletes their account. Octocat's stale list
+    still names acme; "not removed" must not be read as "theirs alone"."""
+    world, store, browser = cloud
+    mallory = browser()
+    sign_in(mallory, "code-mallory")
+    create(mallory)
+    mallory.post("/workspaces/acme/invite", data={"invitee": "octocat", "role": "operator"})
+    octocat = browser()
+    sign_in(octocat, "code-octocat")
+    stale = store.workspaces_of(store.session_user(octocat.cookies["__Host-actunode_cloud"]))
+    assert [w.slug for w in stale] == ["acme"]
+    octocat_id = next(m.id for m, _ in store.members("acme") if m.handle == "github:octocat")
+    assert mallory.post(f"/workspaces/acme/members/{octocat_id}/remove", follow_redirects=False).status_code == 303
+    monkeypatch.setattr(store, "workspaces_of", lambda user: stale)  # the list read before the removal
+    assert octocat.post("/account/delete", data={"confirm": "github:octocat"}).status_code == 200
+    assert store.slug_taken("acme") and not [1 for method, *_ in world.provisioned if method == "DELETE"]
+    assert [m.handle for m, _ in store.members("acme")] == ["github:mallory"]
+
+
+def test_opening_a_lab_marked_ready_that_does_not_answer_wakes_it(cloud):
+    """After a restore from a backup (or a lost lab) the database says ready while nothing runs: Open lab must not
+    bounce between the lab's address and the wake page."""
+    world, store, browser = cloud
+    client = browser()
+    sign_in(client, "code-octocat")
+    create(client)
+    world.unreachable.add("acme")
+    waiting = client.get("/workspaces/acme/open")
+    assert waiting.status_code == 200 and "Waking up" in waiting.text
+    assert world.lifecycle == [("start", "acme")]
+    world.unreachable.discard("acme")
+    assert client.get("/workspaces/acme/open", follow_redirects=False).status_code == 303
