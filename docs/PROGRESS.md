@@ -639,6 +639,17 @@ Numbered so they can be referenced from commits. Remove an item only when it is 
 
 Newest first. One entry per work session: what was done, what was learned, what is next.
 
+### Wed 21 Oct 2026 (later): what is missing before outside users, checked
+Asked what we are missing before users or engineers use the hosted service. Verified, not guessed: **CI could not
+reach a hosted lab**: every lab has an API token the runner accepts, but no page showed it; built a "Run scenario
+tests from CI" section (owners and operators: show the token on demand, rotate it with confirmation; the rotation
+restarts the lab's backend), provisioner routes, tests, and a local check that runs `actunode test` through the
+edge with the token. Verified a publishing robot keeps a lab awake (65 s against a 30 s limit) and silence puts it
+to sleep. Capacity estimate written down (about 12 labs at their caps on a 16 GB server; measure before more than
+ten workspaces). Still needing the founder: real GitHub/Google sign-in, a first real deployment and restore on a
+server, terms and privacy text. Not blocking a closed beta: no invitation email, no screen reader pass on the
+control plane pages, an upgrade ends lab sessions.
+
 ### Wed 21 Oct 2026: the hosted pages and the lab's reporting, checked in a browser
 Asked to check the sign-in and the other pages and make the reporting better. Screenshots of every control plane
 page (headless Chromium; the Chrome extension cannot attach to the local self-signed site) and of the lab itself.

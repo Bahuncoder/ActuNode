@@ -25,6 +25,8 @@ SLUG = re.compile(r"^[a-z][a-z0-9-]{2,29}[a-z0-9]$")
 SSO_KEY = re.compile(r"^[0-9a-f]{64}$")
 NAME = re.compile(r"^[A-Za-z0-9_-]{1,64}$")  # manufacturer, serial, master name: as mqtt-init's valid_name
 PASSWORD = re.compile(r"password=([A-Za-z0-9]+)")
+API_TOKEN_FILE = "/secrets/backend/api-token"
+API_TOKEN = re.compile(r"[A-Za-z0-9_-]{16,128}")
 MAX_LOGINS = 50  # robot and fleet manager logins per workspace (abuse limit; the lab itself caps robots at 10)
 LIST_LOGINS = "ls /secrets/robots /secrets/masters 2>/dev/null; true"  # a fixed command, no input in it
 TEMPLATE = Path(__file__).with_name("workspace-compose.yml")
@@ -271,6 +273,26 @@ def create_app(config: Config | None = None, runner=run) -> FastAPI:
         runner(compose(slug, "run", "--rm", "--no-deps", "mqtt-init", *args), timeout=120)
         reload_broker(slug)
         return {"removed": login}
+
+    def read_ci_token(slug: str) -> dict:
+        """The lab's shared API token (stdout of `cat`, never logged), checked against the shape init-secrets makes."""
+        command = compose(slug, "run", "--rm", "--no-deps", "--entrypoint", "cat", "mqtt-init", API_TOKEN_FILE)
+        token = runner(command, timeout=120).stdout.strip()
+        if not API_TOKEN.fullmatch(token):
+            log.error("ci token of %s: unexpected output", slug)
+            raise HTTPException(502, "The token could not be read")
+        return {"token": token}
+
+    @app.get("/workspaces/{slug}/ci-token", dependencies=[Depends(authorized)])
+    def ci_token(slug: str) -> dict:
+        return read_ci_token(existing(slug))
+
+    @app.post("/workspaces/{slug}/ci-token/rotate", dependencies=[Depends(authorized)])
+    def rotate_ci_token(slug: str) -> dict:
+        slug = existing(slug)
+        runner(compose(slug, "run", "--rm", "--no-deps", "mqtt-init", "rotate", "api-token"), timeout=120)
+        runner(compose(slug, "restart", "backend"), timeout=120)  # the backend reads the token at start
+        return read_ci_token(slug)
 
     @app.get("/healthz")
     def healthz() -> dict:

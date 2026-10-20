@@ -25,11 +25,17 @@ class Docker:
         self.fail_on = fail_on
         self.connected: set[str] = set()
         self.listing = LISTING
+        self.api_token = "Tok3n_abcdefghij0123456789"
 
     def __call__(self, args, timeout=600):
         self.calls.append(args)
         if "add-robot" in args or "add-master" in args:
             return SimpleNamespace(stdout=ADDED, returncode=0)
+        if args[-3:] == ["cat", "mqtt-init", "/secrets/backend/api-token"]:
+            return SimpleNamespace(stdout=self.api_token + "\n", returncode=0)
+        if args[-2:] == ["rotate", "api-token"]:
+            self.api_token = "Rotated_abcdefghij012345"
+            return SimpleNamespace(stdout="new api token: x\n", returncode=0)
         if args[-1:] == [LIST_LOGINS]:
             return SimpleNamespace(stdout=self.listing, returncode=0)
         if "ps" in args and "--status" in args:
@@ -267,3 +273,28 @@ def test_the_upgrade_command_form_returns_the_result(provisioner):
     _, docker, _, newer = upgrade_setup(provisioner)
     result = upgrade_all(newer, docker)
     assert result["upgraded"] == ["acme"] and result["rendered"] == ["globex"] and result["failed"] == []
+
+
+def test_the_ci_token_is_shown_and_rotated_with_a_backend_restart(provisioner):
+    client, docker, _ = provisioner
+    client.put("/workspaces/acme", json={"ssoKey": KEY})
+    docker.calls.clear()
+    assert client.get("/workspaces/acme/ci-token").json() == {"token": "Tok3n_abcdefghij0123456789"}
+    assert docker.calls[0][-5:] == ["--no-deps", "--entrypoint", "cat", "mqtt-init", "/secrets/backend/api-token"]
+    docker.calls.clear()
+    assert client.post("/workspaces/acme/ci-token/rotate").json() == {"token": "Rotated_abcdefghij012345"}
+    assert docker.calls[0][-3:] == ["mqtt-init", "rotate", "api-token"]
+    assert docker.calls[1][-2:] == ["restart", "backend"]  # the backend reads the token at start
+    assert docker.calls[2][-1] == "/secrets/backend/api-token"
+
+
+def test_a_malformed_ci_token_is_refused_and_the_route_needs_the_token(provisioner):
+    client, docker, _ = provisioner
+    client.put("/workspaces/acme", json={"ssoKey": KEY})
+    docker.api_token = "short; rm -rf /"
+    bad = client.get("/workspaces/acme/ci-token")
+    assert bad.status_code == 502 and "rm" not in bad.text
+    assert client.get("/workspaces/nope/ci-token").status_code == 404
+    client.headers["authorization"] = "Bearer wrong"
+    assert client.get("/workspaces/acme/ci-token").status_code == 401
+    assert client.post("/workspaces/acme/ci-token/rotate").status_code == 401

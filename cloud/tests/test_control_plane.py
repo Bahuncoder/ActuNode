@@ -19,6 +19,9 @@ APP = "https://app.actunode.localhost"
 NONCE = "a" * 64
 
 
+CI_TOKEN = "Ci_token_abcdefghij0123"
+
+
 class World:
     """GitHub, the provisioner and the labs, as the control plane sees them over HTTP."""
 
@@ -35,6 +38,7 @@ class World:
         self.unreachable: set[str] = set()
         self.lifecycle: list[tuple[str, str]] = []
         self.fail_start = False
+        self.fail_ci = False
         self.fail_front = False
         self.fail_delete = False
         self.events: list[str] = []  # front and health calls, in order
@@ -85,6 +89,12 @@ class World:
                 )
                 self.logins.add(username)
                 return httpx.Response(200, json={"username": username, "password": "Pa55word"})
+            if url.endswith("/ci-token") or url.endswith("/ci-token/rotate"):
+                if self.fail_ci:
+                    return httpx.Response(502, json={"detail": "failed"})
+                return httpx.Response(
+                    200, json={"token": "Rotated_ci_token_0123" if url.endswith("rotate") else CI_TOKEN}
+                )
             if "/logins/" in url and request.method == "DELETE":
                 self.logins.discard(url.rsplit("/", 1)[-1])
                 return httpx.Response(200, json={"removed": True})
@@ -811,3 +821,40 @@ def test_the_workspace_page_says_how_long_until_a_lab_sleeps(cloud):
     text = client.get("/workspaces/acme").text
     assert "Labs stop after 30 minutes without use" in text and "after 0 minutes" not in text
     assert "<span class='badge '>Asleep</span>" in text
+
+
+def test_the_ci_token_is_shown_in_an_answer_only_to_owners_and_operators(cloud):
+    world, _, browser = cloud
+    owner, bob, alice = browser(), browser(), browser()  # bob: operator (Alice), alice: viewer (mallory)
+    sign_in(owner, "code-octocat")
+    create(owner)
+    owner.post("/workspaces/acme/invite", data={"invitee": "github:alice", "role": "operator"})
+    owner.post("/workspaces/acme/invite", data={"invitee": "github:mallory", "role": "viewer"})
+    sign_in(bob, "code-alice")
+    sign_in(alice, "code-mallory")
+    for who in (owner, bob):
+        workspace = who.get("/workspaces/acme").text
+        assert "Run scenario tests from CI" in workspace and "Show CI token" in workspace
+        assert "--url https://acme.actunode.localhost" in workspace and "--ca-file" in workspace
+        assert CI_TOKEN not in workspace
+        shown = who.post("/workspaces/acme/ci-token")
+        assert shown.status_code == 200 and CI_TOKEN in shown.text and "Copy" in shown.text
+    viewer = alice.get("/workspaces/acme").text
+    assert "Ask an owner or operator for the CI token." in viewer and "Show CI token" not in viewer
+    assert alice.post("/workspaces/acme/ci-token").status_code == 403
+    assert alice.post("/workspaces/acme/ci-token/rotate", data={"confirm": "acme"}).status_code == 403
+
+
+def test_rotating_the_ci_token_needs_the_name_and_failures_show_no_token(cloud):
+    world, _, browser = cloud
+    owner = browser()
+    sign_in(owner, "code-octocat")
+    create(owner)
+    assert owner.post("/workspaces/acme/ci-token/rotate", data={"confirm": "nope"}).status_code == 400
+    assert not any(url.endswith("/rotate") for _, url, _ in world.provisioned)
+    done = owner.post("/workspaces/acme/ci-token/rotate", data={"confirm": "acme"})
+    assert done.status_code == 200 and "Rotated_ci_token_0123" in done.text and "old token stopped" in done.text
+    world.fail_ci = True
+    for path, data in (("/workspaces/acme/ci-token", {}), ("/workspaces/acme/ci-token/rotate", {"confirm": "acme"})):
+        failed = owner.post(path, data=data)
+        assert failed.status_code == 502 and CI_TOKEN not in failed.text

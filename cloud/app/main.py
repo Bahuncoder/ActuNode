@@ -576,6 +576,29 @@ def create_app(config: Settings = settings, store: Store | None = None, http: ht
                 f"</tr>{rows or '<tr><td colspan=3 class=muted>None yet.</td></tr>'}</table>{add}"
                 "</section>")  # fmt: skip
 
+    def ci_section(w: Workspace) -> str:
+        if not config.provisioner_url:
+            return ""
+        if w.role not in ("owner", "operator"):
+            return (
+                "<section><h2>Run scenario tests from CI</h2><p class=muted>Ask an owner or operator for the CI "
+                "token.</p></section>"
+            )
+        slug = esc(w.slug)
+        ca = " --ca-file ~/.actunode-cloud/certs/ca.crt" if local else ""
+        command = (
+            f"actunode test scenarios/p1042_blocked_path.yaml --url {config.lab_url(w.slug)} "
+            f"--token-file ci-token.txt{ca}"
+        )
+        return ("<section><h2>Run scenario tests from CI</h2><p>The CI token logs the test runner in to this lab as "
+                f"the operator <code>admin</code>. Save it in a file and run:</p>{copyable('Command', command)}"
+                "<p class=muted>Guide: <a href='https://github.com/Bahuncoder/ActuNode/blob/main/docs/"
+                "GETTING_STARTED.md'>Getting started</a>.</p>"
+                f"<form method=post action='/workspaces/{slug}/ci-token'><button>Show CI token</button></form>"
+                f"<form method=post action='/workspaces/{slug}/ci-token/rotate'>"
+                f"<label>Type <code>{slug}</code> to confirm <input name=confirm required></label> "
+                "<button class=danger>Rotate CI token</button></form></section>")  # fmt: skip
+
     @app.get("/workspaces/{slug}", response_class=HTMLResponse)
     def workspace_page(slug: str, request: Request):
         user = signed_in(request)
@@ -632,7 +655,8 @@ def create_app(config: Settings = settings, store: Store | None = None, http: ht
                             f"{badge(w.state)}</h1>"
                             f"{copyable('Lab', lab)}<p class=muted>Your role: <span class=role>{esc(w.role)}</span></p>"
                             f"{status}</section>"
-                            + (connect_box(slug) + logins_section(w) if w.state in ("ready", "stopped") else "")
+                            + (connect_box(slug) + logins_section(w) + ci_section(w)
+                               if w.state in ("ready", "stopped") else "")
                             + f"<section><h2>Members</h2><table>{members}{invites}</table></section>{manage}",
                     user=user)  # fmt: skip
 
@@ -678,6 +702,33 @@ def create_app(config: Settings = settings, store: Store | None = None, http: ht
                                  "only once.</p>" + copyable("Username", created["username"])
                     + copyable("Password", created["password"]) + "</section>" + connect_box(slug)
                     + f"<p><a href='/workspaces/{esc(slug)}'>← Back to {esc(w.name)}</a></p>", user=user)  # fmt: skip
+
+    def ci_token_page(slug: str, request: Request, rotate: bool, confirm: str = ""):
+        user = signed_in(request)
+        w = member(user, slug)
+        if w.role not in ("owner", "operator"):
+            raise HTTPException(403, "Only owners and operators use the CI token.")
+        if rotate and confirm != slug:
+            raise HTTPException(400, "Type the workspace name to rotate the CI token.")
+        try:
+            token = (provisioner.rotate_ci_token(slug) if rotate else provisioner.ci_token(slug))["token"]
+        except (httpx.HTTPError, RuntimeError, KeyError):
+            raise HTTPException(502, "The CI token could not be read. Try again.") from None
+        log.info("%s %s the CI token of %s", user.handle, "rotated" if rotate else "showed", slug)
+        note = ("The old token stopped working; everyone signed in to the lab must sign in again."
+                if rotate else "")  # fmt: skip
+        return page("CI token", "<section class=notice><h1>CI token</h1><p>Shown here, never in a URL; anyone with it "
+                                "can operate the lab as <code>admin</code> until you rotate it.</p>"
+                    + copyable("Token", token) + (f"<p>{note}</p>" if note else "") + "</section>"
+                    + f"<p><a href='/workspaces/{esc(slug)}'>← Back to {esc(w.name)}</a></p>", user=user)  # fmt: skip
+
+    @app.post("/workspaces/{slug}/ci-token", response_class=HTMLResponse)
+    def show_ci_token(slug: str, request: Request):
+        return ci_token_page(slug, request, False)
+
+    @app.post("/workspaces/{slug}/ci-token/rotate", response_class=HTMLResponse)
+    def rotate_ci_token(slug: str, request: Request, confirm: str = Form("", max_length=100)):
+        return ci_token_page(slug, request, True, confirm)
 
     @app.post("/workspaces/{slug}/logins/remove")
     def remove_login(slug: str, request: Request, kind: str = Form(...), login: str = Form(..., max_length=140)):

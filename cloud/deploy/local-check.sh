@@ -53,6 +53,20 @@ check "alpha's robot login is refused by beta's broker" "$(mqtt beta AcmeRobotic
 check "alpha's internal backend login is refused from outside" "$(mqtt alpha actunode-backend "$backend_pw" uagv/v2/ActuNode/robot_01/order)" refused
 check "alpha's containers cannot reach beta's" "$(docker exec ws-alpha-frontend-1 sh -c 'wget -q -T 3 -O /dev/null http://ws-beta-frontend-1/ >/dev/null 2>&1 && echo reachable || echo unreachable')" unreachable
 
+# The CI token: shown on the workspace page's section, and it logs the CLI runner in through the edge.
+check "the workspace page offers the CI token" "$(browser a "$APP/workspaces/alpha" | grep -o 'Show CI token' | head -1)" "Show CI token"
+cli="$(dirname "$0")/../../cli/.venv/bin/actunode"
+if [ -x "$cli" ]; then
+  open_lab a alpha >/dev/null  # a short idle limit may have stopped it
+  $compose run --rm --entrypoint cat mqtt-init /secrets/backend/api-token 2>/dev/null > "$work/ci-token"
+  code=0; "$cli" test "$(dirname "$0")/../../scenarios/invalid_traffic.yaml" --url "$(lab alpha)" --ca-file "$CA" \
+    --token-file "$work/ci-token" >"$work/cli.out" 2>&1 || code=$?
+  [ "$code" = 0 ] || sed 's/^/      /' "$work/cli.out"
+  check "a scenario runs against alpha from the CLI through the edge" "$code" 0
+else
+  echo "skip  CLI check: no cli/.venv (python3 -m venv cli/.venv && cli/.venv/bin/pip install ./cli)"
+fi
+
 check "alice's account page shows what deletion would do" "$(browser a "$APP/account" | grep -o 'Would be deleted: <code>alpha</code>' | head -1)" "Would be deleted: <code>alpha</code>"
 check "a wrong confirmation deletes nothing" "$(post a -d confirm=nope "$APP/account/delete")" 400
 

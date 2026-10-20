@@ -97,5 +97,11 @@ class Provisioner:
     def add_login(self, slug: str, body: dict) -> dict:
         return self._call("POST", self._path("workspaces", slug, "logins"), body)
 
+    def ci_token(self, slug: str) -> dict:
+        return self._call("GET", self._path("workspaces", slug, "ci-token"))
+
+    def rotate_ci_token(self, slug: str) -> dict:
+        return self._call("POST", self._path("workspaces", slug, "ci-token", "rotate"))
+
     def remove_login(self, slug: str, kind: str, login: str) -> dict:
         return self._call("DELETE", self._path("workspaces", slug, "logins", kind, login))

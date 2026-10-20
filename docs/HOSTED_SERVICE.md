@@ -53,6 +53,9 @@ flowchart LR
   once; their next sign-in gets the current role.
 - **Robots and fleet managers** keep broker logins per robot and per master control (D-23, D-47), created from the
   workspace's settings page instead of `mqtt-init` commands.
+- **CI token:** each lab has one shared API token that logs `actunode test` in as the operator `admin`. Owners and
+  operators see it on the workspace page (an answer to a button, never in a URL or a log) and can rotate it
+  (the lab's backend restarts and web sessions end); viewers cannot.
 
 ## Limits and costs (beta)
 
@@ -71,6 +74,10 @@ flowchart LR
 - Abuse limits at the edge, per client address: the control plane 20 requests/s (burst 60) and forms up to 64 KB;
   a lab 100 requests/s (burst 300); 100 open MQTT connections. In the provisioner: 50 robot and fleet manager logins
   per workspace. Labs keep their own login throttles and input limits (TRD).
+- Capacity of one server (not yet measured with several busy labs): a lab's containers are capped at about 1.2 GB
+  together (broker 256 MB, backend 512 MB, simulator 256 MB, frontend 128 MB), so a 16 GB server holds about
+  12 labs at their caps; at rest a lab uses roughly 200 MB, so many more in practice. Stopped labs cost disk
+  only. Measure before raising the invite count past ten workspaces.
 - Start: one Hetzner Cloud server in Germany or Finland (CPX41-class: 8 vCPU, 16 GB, about €30/month) plus a volume
   and backups; a second server and PostgreSQL when the beta outgrows it. US and Singapore regions exist for later.
 
