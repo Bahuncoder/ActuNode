@@ -38,7 +38,7 @@ if [ -z "$pct" ]; then check disk "cannot read the use of $root"
 elif [ "$pct" -ge "$lim" ]; then check disk "$pct% used (limit $lim%)"; else check disk ""; fi
 
 if [ -d "$root/backups" ]; then
-  newest="$(ls -1 "$root/backups"/actunode-*.tar.gz 2>/dev/null | sort | tail -n1)"; maxh="${ACTUNODE_BACKUP_MAX_AGE_H:-36}"
+  newest="$(ls -1 "$root/backups"/actunode-*.tar.gz* 2>/dev/null | sort | tail -n1)"; maxh="${ACTUNODE_BACKUP_MAX_AGE_H:-36}"
   if [ -z "$newest" ]; then check backup "no archive in $root/backups"
   elif [ $(( $(date +%s) - $(stat -c %Y "$newest") )) -gt $((maxh * 3600)) ]; then
     check backup "newest archive $(basename "$newest") is older than $maxh h"

@@ -113,9 +113,21 @@ images. Run it by hand any time: `sudo /srv/actunode/actunode/cloud/deploy/backu
 
 Hetzner's server backups (`backups = true` in Terraform) cover only the server's root disk, not the attached data
 volume at `/srv/actunode` and not reliably the Docker volumes. A backup on the same server is not enough: copy the
-archives away. Install `rclone`, configure a remote for Hetzner Object Storage or a Storage Box (your account), and
-put `ACTUNODE_BACKUP_REMOTE=<remote>:actunode-backups` in `config.env`; each backup is then copied there (a failed
-copy makes the backup job fail, visible in `systemctl status actunode-backup`).
+archives away, encrypted, since they hold sign-on keys, broker passwords, OAuth secrets and customer recordings:
+
+1. On your own computer (not the server): `age-keygen -o actunode-backup.key`. Keep that file safe and off the
+   server (a password manager); it is the only way to read the archives. Its public key is the line
+   `age1…` the command prints.
+2. On the server, put `ACTUNODE_BACKUP_AGE_RECIPIENT=age1…` in `config.env`. From then on each archive is
+   `actunode-<time>.tar.gz.age`, encrypted to that key: the server can make backups but cannot read them.
+3. Install `rclone`, configure a remote for Hetzner Object Storage or a Storage Box (your account), and put
+   `ACTUNODE_BACKUP_REMOTE=<remote>:actunode-backups` in `config.env`; each backup is then copied there (a failed
+   copy makes the backup job fail, visible in `systemctl status actunode-backup`). `backup.sh` refuses to copy an
+   unencrypted archive off the server (unless the remote is an rclone `crypt` remote and you set
+   `ACTUNODE_BACKUP_REMOTE_PLAINTEXT=yes`).
+
+To restore from an encrypted archive, put the key file on the restoring machine and set
+`ACTUNODE_BACKUP_AGE_IDENTITY=<path to actunode-backup.key>` for `restore.sh`.
 
 Restore on a new server: Terraform (section 3), put `secrets/` and `config.env` in place (or let the archive supply
 them), fetch an archive to the server, then

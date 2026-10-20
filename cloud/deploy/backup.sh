@@ -2,7 +2,10 @@
 # Back up everything ActuNode Cloud needs to run again (D-61): the control database, every lab's secrets volume,
 # the workspace folders (recordings), the server's secrets and settings. Needs only docker. See docs/HOSTED_DEPLOY.md.
 # Usage: backup.sh [root]   (default /srv/actunode if it exists, else ~/.actunode-cloud)
-# ACTUNODE_BACKUP_KEEP=14 archives kept; ACTUNODE_BACKUP_REMOTE=<rclone remote:path> also copies the archive off-site.
+# ACTUNODE_BACKUP_KEEP=14 archives kept. ACTUNODE_BACKUP_AGE_RECIPIENT=<age public key> encrypts each archive to that
+# key (the private key stays off the server: the server can encrypt, never decrypt). ACTUNODE_BACKUP_REMOTE=<rclone
+# remote:path> copies the archive off-site: only an encrypted one, since it holds sign-on keys, broker passwords,
+# OAuth secrets and customer recordings (ACTUNODE_BACKUP_REMOTE_PLAINTEXT=yes overrides, for a crypt remote).
 set -euo pipefail
 umask 077
 if [ -n "${1:-}" ]; then root="$1"
@@ -38,14 +41,25 @@ for item in secrets certs config.env; do [ -e "$root/$item" ] && cp -a "$root/$i
   echo "docker: $(docker --version)"; echo "volumes:${vols:- none}"
   echo "contents:"; (cd "$tmp" && find . -maxdepth 2 -not -name MANIFEST | sort | sed 's/^\.\//  /'); } > "$tmp/MANIFEST"
 
-tar -C "$tmp" -czf "$archive.part" . && mv "$archive.part" "$archive"
+if [ -n "${ACTUNODE_BACKUP_AGE_RECIPIENT:-}" ]; then
+  command -v age >/dev/null || { echo "ACTUNODE_BACKUP_AGE_RECIPIENT is set but age is not installed" >&2; exit 1; }
+  archive="$archive.age"
+  if ! tar -C "$tmp" -czf - . | age -r "$ACTUNODE_BACKUP_AGE_RECIPIENT" -o "$archive.part"; then
+    rm -f "$archive.part"; echo "encrypting the archive failed; nothing written" >&2; exit 1
+  fi
+  mv "$archive.part" "$archive"
+else
+  tar -C "$tmp" -czf "$archive.part" . && mv "$archive.part" "$archive"
+fi
 chmod 600 "$archive"
 
 # Keep only the newest archives.
-ls -1 "$root/backups"/actunode-*.tar.gz | sort -r | tail -n +"$((keep + 1))" | while read -r old; do rm -f -- "$old"; done
+ls -1 "$root/backups"/actunode-*.tar.gz* | sort -r | tail -n +"$((keep + 1))" | while read -r old; do rm -f -- "$old"; done
 
 echo "backup: $archive ($(du -h "$archive" | cut -f1))"
 if [ -n "${ACTUNODE_BACKUP_REMOTE:-}" ]; then
+  case "$archive" in *.age) ;; *) [ "${ACTUNODE_BACKUP_REMOTE_PLAINTEXT:-}" = yes ] || {
+    echo "not copying an unencrypted archive off-site: set ACTUNODE_BACKUP_AGE_RECIPIENT (docs/HOSTED_DEPLOY.md)" >&2; exit 1; } ;; esac
   if command -v rclone >/dev/null; then
     rclone copy "$archive" "$ACTUNODE_BACKUP_REMOTE" || { echo "off-site copy to $ACTUNODE_BACKUP_REMOTE FAILED" >&2; exit 1; }
     echo "copied to $ACTUNODE_BACKUP_REMOTE"

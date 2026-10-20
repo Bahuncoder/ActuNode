@@ -30,6 +30,10 @@ What changed, per commit, newest first. Status and plans are in [docs/PROGRESS.m
   installs; 14 kept; optional off-site copy with `ACTUNODE_BACKUP_REMOTE` and rclone), `restore.sh` (stops the
   stack, restores the control database, lab secrets volumes, workspace folders, secrets and settings; keeps the old
   folders aside), `restore-drill.sh` (local: back up, destroy, restore, start, prove a robot's old login works).
+- **Fixed (security review):** the off-site backup copy would have carried sign-on keys, broker passwords, OAuth
+  secrets and recordings in the clear; archives are now encrypted with age to the founder's public key
+  (`ACTUNODE_BACKUP_AGE_RECIPIENT`; the private key stays off the server), `backup.sh` refuses to copy a plaintext
+  archive off the server, and `restore.sh` decrypts with `ACTUNODE_BACKUP_AGE_IDENTITY`.
 - **Monitoring and alerts (phase 2)**: `healthcheck.sh` every 5 minutes (app, certificate, control plane,
   provisioner, edge, disk, backup age, lab containers) with alerts to `ACTUNODE_ALERT_WEBHOOK` when the set of
   failures changes and daily while it persists.

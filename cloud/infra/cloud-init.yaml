@@ -18,6 +18,7 @@ packages:
   - fail2ban
   - git
   - gettext-base  # envsubst, for prod-up.sh
+  - age  # backups encrypted to the founder's public key before they leave the server (backup.sh)
 write_files:
   - path: /etc/ssh/sshd_config.d/10-actunode.conf
     content: |

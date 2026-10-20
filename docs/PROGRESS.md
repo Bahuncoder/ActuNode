@@ -651,7 +651,9 @@ restored database volume was root-owned (the control plane could not write its j
 wakes an unreachable ready lab); a fourth review finding (a member removed at the same instant as deleting their
 account could take the workspace with them) fixed with a test. Scripts hardened: tolerant polling through the
 few seconds between a recreated lab and the edge seeing it; the check wakes the labs before the robot steps.
-**Phase 2 of D-61 is built**; what remains needs the founder: an off-site backup target, the alert webhook, an
+A fifth review finding: the off-site copy was plaintext; archives are now age-encrypted to a public key kept off the
+server (tested: encrypt, decrypt and list, wrong key refused, plaintext off-site copy refused). The standard local
+check passed 29 of 29 after the drill. **Phase 2 of D-61 is built**; what remains needs the founder: an off-site backup target, the alert webhook, an
 outside uptime monitor, terms and privacy text, then the first invited users. Cloud 89 and backend 669 tests; the
 deep review for the phase 2 gate was done inline (no open finding). CI green on every push of this session.
 

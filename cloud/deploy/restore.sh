@@ -3,20 +3,29 @@
 # database, the labs' secrets volumes, the workspace folders and the server's secrets; what was there is kept aside
 # (folders) or overwritten (volumes). Starts nothing: run prod-up.sh (or local-up.sh) afterwards.
 # Usage: ACTUNODE_RESTORE_CONFIRM=yes restore.sh <archive> [root]
+# An encrypted archive (.tar.gz.age) needs the private key: ACTUNODE_BACKUP_AGE_IDENTITY=<identity file> (age -i).
 set -euo pipefail
 archive="${1:?usage: restore.sh <archive> [root]}"
 if [ -n "${2:-}" ]; then root="$2"
 elif [ -d /srv/actunode ]; then root=/srv/actunode
 else root="${ACTUNODE_CLOUD_HOME:-$HOME/.actunode-cloud}"; fi
 [ -f "$archive" ] || { echo "no such archive: $archive" >&2; exit 1; }
+tmp="$(mktemp -d)"; trap 'rm -rf "$tmp"' EXIT
+umask 077
+plain="$archive"
+case "$archive" in *.age)
+  identity="${ACTUNODE_BACKUP_AGE_IDENTITY:?the archive is encrypted: set ACTUNODE_BACKUP_AGE_IDENTITY=<age identity file>}"
+  command -v age >/dev/null || { echo "age is not installed" >&2; exit 1; }
+  plain="$tmp/archive.tar.gz"
+  age -d -i "$identity" -o "$plain" "$archive" || { echo "could not decrypt $archive (wrong key, or damaged)" >&2; exit 1; } ;;
+esac
 if [ "${ACTUNODE_RESTORE_CONFIRM:-}" != yes ]; then
   echo "Would restore $archive into $root: stop all ws-* labs and actunode-cloud, replace the control database,"
   echo "the ws-*_secrets volumes, $root/data/workspaces, secrets, certs and config.env (old folders kept aside)."
-  echo "Contents:"; tar -tzf "$archive" | head -40
+  echo "Contents:"; tar -tzf "$plain" | head -40
   echo "Set ACTUNODE_RESTORE_CONFIRM=yes to do it."; exit 1
 fi
-tmp="$(mktemp -d)"; trap 'rm -rf "$tmp"' EXIT
-tar -C "$tmp" -xzpf "$archive"
+tar -C "$tmp" -xzpf "$plain"
 [ -f "$tmp/cloud.sqlite3" ] || { echo "not an ActuNode backup (no cloud.sqlite3)" >&2; exit 1; }
 stamp="$(date -u +%Y%m%dT%H%M%SZ)"
 
