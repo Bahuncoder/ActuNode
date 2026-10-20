@@ -187,7 +187,7 @@ def test_creating_a_workspace_provisions_its_lab(cloud):
     assert (method, url) == ("PUT", "http://provisioner/workspaces/acme") and len(body["ssoKey"]) == 64
     page = client.get("/workspaces/acme").text
     assert "/workspaces/acme/open" in page  # the Open lab button: the lab is up
-    assert "ready" in client.get("/workspaces").text
+    assert "Running</span>" in client.get("/workspaces").text
 
 
 @pytest.mark.parametrize("slug", ["app", "ab", "acme_1", "-acme", "acme-", "a" * 40])
@@ -547,7 +547,7 @@ def test_an_idle_lab_is_stopped_by_the_sweep(cloud):
     assert store.workspaces_in("stopped") and world.lifecycle == [("stop", "acme")]
     page = client.get("/workspaces/acme").text
     assert "asleep" in page and "Open lab" in page and "Connect a robot" in page
-    assert "<td>stopped</td>" in client.get("/workspaces").text
+    assert "Asleep</span>" in client.get("/workspaces").text  # a state badge, not the database word
 
 
 def test_the_sweep_first_reattaches_the_front_networks(cloud):
@@ -620,7 +620,7 @@ def test_a_stopped_labs_address_falls_back_to_the_wake_page(cloud):
     _, _, browser, client = ready_lab(cloud)
     lab = browser()
     response = lab.get("/", headers={"host": "acme.actunode.localhost:9443"}, follow_redirects=False)
-    assert response.status_code == 303 and response.headers["location"] == f"{APP}/workspaces/acme/open"
+    assert response.status_code == 303 and response.headers["location"] == f"{APP}/workspaces/acme/open?edge=1"
     assert lab.get("/", headers={"host": "x.acme.actunode.localhost"}, follow_redirects=False).status_code == 404
     assert lab.get("/", headers={"host": "ab.actunode.localhost"}, follow_redirects=False).status_code == 404
     assert lab.post("/logout", headers={"host": "acme.actunode.localhost"}).status_code == 404
@@ -648,7 +648,7 @@ def test_the_account_page_shows_identities_and_what_deletion_does(cloud):
     create(client)
     text = client.get("/account").text
     assert "github" in text and "<code>octocat</code>" in text
-    assert "<code>acme</code></td><td>owner" in text
+    assert "<code>acme.actunode.localhost</code></td><td class=role>owner" in text
     assert "Would be deleted: <code>acme</code>" in text
 
 
@@ -779,3 +779,35 @@ def test_opening_a_lab_marked_ready_that_does_not_answer_wakes_it(cloud):
     assert world.lifecycle == [("start", "acme")]
     world.unreachable.discard("acme")
     assert client.get("/workspaces/acme/open", follow_redirects=False).status_code == 303
+
+
+def test_arriving_from_the_labs_address_while_it_is_up_gets_a_page_not_a_redirect_loop(cloud):
+    """Right after a lab starts, the control plane reaches it before the edge routes to it: the lab's address falls
+    back to us, and a redirect straight back would loop until the browser gives up ("too many redirects")."""
+    _, _, browser = cloud
+    client = browser()
+    sign_in(client, "code-octocat")
+    create(client)
+    assert client.get("/workspaces/acme/open", follow_redirects=False).status_code == 303
+    again = client.get("/workspaces/acme/open?edge=1", follow_redirects=False)
+    assert again.status_code == 200 and "Connecting you" in again.text
+    assert "content='2;url=https://acme.actunode.localhost/api/sso/start'" in again.text
+
+
+def test_states_and_durations_read_as_people_read_them():
+    from app.main import badge, duration
+
+    assert duration(30) == "30 seconds" and duration(60) == "1 minute" and duration(1800) == "30 minutes"
+    assert duration(7200) == "2 hours" and duration(90) == "90 seconds"
+    assert badge("ready") == "<span class='badge ok'>Running</span>" and "Could not start" in badge("failed")
+
+
+def test_the_workspace_page_says_how_long_until_a_lab_sleeps(cloud):
+    _, store, browser = cloud
+    client = browser()
+    sign_in(client, "code-octocat")
+    create(client)
+    store.set_state("acme", "stopped")
+    text = client.get("/workspaces/acme").text
+    assert "Labs stop after 30 minutes without use" in text and "after 0 minutes" not in text
+    assert "<span class='badge '>Asleep</span>" in text

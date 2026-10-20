@@ -44,28 +44,40 @@ STYLE = """
   --line:#1d3a52;--danger:#ff6b6b}
 *{box-sizing:border-box} body{margin:0;background:var(--bg);color:var(--text);font:15px/1.55 system-ui,sans-serif}
 header{display:flex;align-items:center;gap:12px;max-width:820px;margin:0 auto;padding:20px 16px}
-header img{width:36px;height:36px} header .brand{font-weight:700;font-size:18px;color:var(--text);text-decoration:none}
-header .who{margin-left:auto;display:flex;align-items:center;gap:10px;color:var(--muted)}
+header{flex-wrap:wrap} header img{width:36px;height:36px}
+header .brand{font-weight:700;font-size:18px;color:var(--text);text-decoration:none;white-space:nowrap}
+header .who{margin-left:auto;display:flex;align-items:center;gap:10px;color:var(--muted);flex-wrap:wrap;
+  justify-content:flex-end} header .who button{white-space:nowrap}
 main{max-width:820px;margin:0 auto;padding:0 16px 40px}
-footer{max-width:820px;margin:0 auto;padding:16px;color:var(--muted);font-size:13px;border-top:1px solid var(--line)}
-footer a{color:var(--muted)}
+footer{max-width:788px;margin:0 auto;padding:16px 0;color:var(--muted);font-size:13px;border-top:1px solid var(--line)}
+footer a{color:var(--muted);white-space:nowrap}
 section{background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:20px;margin:16px 0}
 h1{font-size:28px;margin:8px 0} h2{font-size:18px;margin:0 0 12px}
 a{color:var(--blue)} .muted{color:var(--muted)} .error{color:var(--danger)} .ok{color:var(--mint)}
-button,.button{background:var(--blue);color:#0b1b2b;border:0;border-radius:6px;padding:8px 14px;font:inherit;
-  font-weight:600;cursor:pointer;text-decoration:none;display:inline-block}
+button,.button{background:var(--blue);color:#0b1b2b;border:0;border-radius:6px;padding:10px 16px;font:inherit;
+  line-height:1.3;font-weight:600;cursor:pointer;text-decoration:none;display:inline-block;vertical-align:middle}
 button.secondary,.button.secondary{background:transparent;color:var(--text);border:1px solid var(--border);
   font-weight:400}
-button.danger{background:var(--danger)} button.small{padding:3px 9px;font-size:13px}
-input,select{background:var(--bg);color:var(--text);border:1px solid var(--border);border-radius:6px;padding:7px}
+button.danger{background:var(--danger)} button.small,.button.small{padding:5px 10px;font-size:13px}
+input,select{background:var(--bg);color:var(--text);border:1px solid var(--border);border-radius:6px;padding:9px 10px;
+  font:inherit;line-height:1.3}
+.role{text-transform:capitalize}
 label{display:inline-block;margin:4px 8px 4px 0}
 table{width:100%;border-collapse:collapse} td,th{padding:8px 6px;text-align:left;border-bottom:1px solid var(--line)}
 th{color:var(--muted);font-weight:500}
 form.inline{display:inline} code{font-family:ui-monospace,monospace}
-.copy{display:flex;align-items:center;gap:8px;margin:6px 0} .copy code{background:var(--bg);padding:4px 8px;
-  border-radius:6px;border:1px solid var(--line)}
+.copy{display:flex;align-items:center;gap:8px;margin:6px 0;flex-wrap:wrap} .copy>span{min-width:3.2em}
+.copy code{background:var(--bg);padding:4px 8px;border-radius:6px;border:1px solid var(--line);overflow-wrap:anywhere}
 .hero p{font-size:17px} .hero ul{padding-left:20px} .hero li{margin:6px 0}
 .notice{border-color:var(--mint)}
+.flash{border:1px solid var(--danger);border-radius:10px;padding:10px 14px;margin:16px 0}
+.spinner{display:inline-block;width:14px;height:14px;border:2px solid var(--border);border-top-color:var(--mint);
+  border-radius:50%;animation:spin 1s linear infinite;vertical-align:-2px;margin-right:6px}
+@keyframes spin{to{transform:rotate(360deg)}} @media (prefers-reduced-motion:reduce){.spinner{animation:none}}
+.badge{display:inline-block;padding:2px 10px;border-radius:999px;font-size:12px;font-weight:600;vertical-align:middle;
+  border:1px solid var(--border);color:var(--muted)} .badge.ok{color:var(--mint);border-color:var(--mint)}
+.badge.busy{color:var(--blue);border-color:var(--blue)} .badge.danger{color:var(--danger);border-color:var(--danger)}
+h1 .badge{margin-left:10px;font-size:13px}
 :focus-visible{outline:2px solid var(--blue);outline-offset:2px}
 """
 
@@ -77,6 +89,27 @@ def esc(value) -> str:
 def copyable(label: str, value: str) -> str:
     return (f"<div class=copy><span class=muted>{esc(label)}</span> <code>{esc(value)}</code> "
             f"<button type=button class='secondary small' data-copy='{esc(value)}'>Copy</button></div>")  # fmt: skip
+
+
+# Workspace states as people read them (the database keeps the short words).
+STATES = {
+    "creating": ("Starting", "busy"), "starting": ("Waking up", "busy"), "ready": ("Running", "ok"),
+    "stopped": ("Asleep", ""), "failed": ("Could not start", "danger"),
+}  # fmt: skip
+
+
+def badge(state: str) -> str:
+    label, kind = STATES.get(state, (state, ""))
+    return f"<span class='badge {kind}'>{esc(label)}</span>"
+
+
+def duration(seconds: int) -> str:
+    """'30 seconds', '1 minute', '30 minutes', '2 hours': what people read, not what the setting holds."""
+    for unit, size in (("hour", 3600), ("minute", 60), ("second", 1)):
+        if seconds >= size and seconds % size == 0:
+            n = seconds // size
+            return f"{n} {unit}{'s' if n != 1 else ''}"
+    return f"{seconds} seconds"
 
 
 def safe_next(path: str) -> str:
@@ -113,7 +146,9 @@ class LabFallback:
             if host != self.app_host and host.endswith("." + self.domain):
                 label = host.removesuffix("." + self.domain)
                 if SLUG.fullmatch(label) and scope["method"] in ("GET", "HEAD"):
-                    response = RedirectResponse(f"{self.app_url}/workspaces/{label}/open", status_code=303)
+                    # ?edge=1: the lab's address brought them here, so open_lab must not send them straight back
+                    # (for a few seconds after a lab starts, we reach it before the edge routes to it).
+                    response = RedirectResponse(f"{self.app_url}/workspaces/{label}/open?edge=1", status_code=303)
                 else:
                     response = Response("Not found", status_code=404)
                 await response(scope, receive, send)
@@ -352,6 +387,13 @@ def create_app(config: Settings = settings, store: Store | None = None, http: ht
             log.error("Provisioning %s failed: %s", slug, error)
             store.set_state(slug, "failed")
 
+    def waiting(w: Workspace, text: str, user: User, refresh_to: str = "") -> HTMLResponse:
+        """Creating, waking or connecting: a notice with a spinner that refreshes by itself, and a way back."""
+        return page(w.name, f"<section class=notice><h1>{esc(w.name)}{badge(w.state)}</h1>"
+                            f"<p><span class=spinner aria-hidden=true></span>{text}</p></section>"
+                            "<p><a href='/workspaces'>← Your workspaces</a></p>",
+                    user=user, refresh=2 if refresh_to.startswith("http") else 3, refresh_to=refresh_to)  # fmt: skip
+
     def lab_health(w: Workspace) -> dict | None:
         """The lab's health answer (with its idle time, for our signed status token), or None if it does not answer
         (stopped, starting, or broken)."""
@@ -418,7 +460,8 @@ def create_app(config: Settings = settings, store: Store | None = None, http: ht
         error = ERRORS.get(error, "")
         rows = "".join(
             f"<tr><td><a href='/workspaces/{esc(w.slug)}'>{esc(w.name)}</a></td>"
-            f"<td><code>{esc(w.slug)}.{esc(config.domain)}</code></td><td>{esc(w.role)}</td><td>{esc(w.state)}</td></tr>"
+            f"<td><code>{esc(w.slug)}.{esc(config.domain)}</code></td><td class=role>{esc(w.role)}</td>"
+            f"<td>{badge(w.state)}</td></tr>"
             for w in store.workspaces_of(user)
         )
         create = (
@@ -427,9 +470,9 @@ def create_app(config: Settings = settings, store: Store | None = None, http: ht
             f"pattern='{SLUG_PATTERN}' placeholder='acme'>.{esc(config.domain)}</label> "
             "<button>Create workspace</button></form><p class=muted>Your lab starts in about a minute.</p>"
             if store.owned_count(user) < config.workspaces_per_user
-            else "<p class=muted>Beta: one workspace per person.</p>"
+            else "<p class=muted>Beta: one workspace per person, and you have yours.</p>"
         )
-        return page("Workspaces", (f"<p class=error role=alert>{esc(error)}</p>" if error else "")
+        return page("Workspaces", (f"<p class='error flash' role=alert>{esc(error)}</p>" if error else "")
                     + "<section><h2>Your workspaces</h2><table><tr><th>Name</th><th>Address</th><th>Role</th>"
                     f"<th>State</th></tr>{rows or '<tr><td colspan=4 class=muted>None yet.</td></tr>'}"
                     "</table></section>"
@@ -461,13 +504,16 @@ def create_app(config: Settings = settings, store: Store | None = None, http: ht
         return RedirectResponse(f"/workspaces/{slug}", status_code=303)
 
     @app.get("/workspaces/{slug}/open")
-    def open_lab(slug: str, request: Request, background: BackgroundTasks):
+    def open_lab(slug: str, request: Request, background: BackgroundTasks, edge: str = ""):
         """The way into a lab: straight in when it is up; a stopped one is woken first."""
         user = signed_in(request)
         w = member(user, slug)
         if w.state == "ready":
             if lab_health(w) is not None:
-                return RedirectResponse(f"{config.lab_url(slug)}/api/sso/start", status_code=303)
+                target = f"{config.lab_url(slug)}/api/sso/start"
+                if edge:  # came back from the lab's address: a page that tries again, never a redirect loop
+                    return waiting(w, "Connecting you to your lab…", user, refresh_to=target)
+                return RedirectResponse(target, status_code=303)
             # Marked ready but not answering (restored from a backup, or its containers are gone): wake it rather
             # than send the browser to an address that only leads back here.
             if store.transition(slug, "ready", "starting"):
@@ -476,9 +522,9 @@ def create_app(config: Settings = settings, store: Store | None = None, http: ht
         if w.state in ("stopped", "starting"):
             if w.state == "stopped" and store.transition(slug, "stopped", "starting"):
                 background.add_task(wake, slug)
-            return page(w.name, f"<section class=notice><h1>{esc(w.name)}</h1><p>Waking up your lab… about 10 "
-                                "seconds. This page goes on by itself.</p></section>",
-                        user=user, refresh=3, refresh_to=f"/workspaces/{slug}/open")  # fmt: skip
+            w = Workspace(w.slug, w.name, w.sso_key, "starting", w.role)
+            return waiting(w, "Waking up your lab… about 10 seconds. This page goes on by itself.", user,
+                           refresh_to=f"/workspaces/{slug}/open")  # fmt: skip
         return RedirectResponse(f"/workspaces/{slug}", status_code=303)
 
     def connect_box(slug: str) -> str:
@@ -537,23 +583,19 @@ def create_app(config: Settings = settings, store: Store | None = None, http: ht
         owner = w.role == "owner"
         lab = config.lab_url(slug)
         if w.state == "creating":
-            return page(w.name, f"<section class=notice><h1>{esc(w.name)}</h1><p>Starting your lab… this takes about "
-                                "a minute. This page refreshes by itself.</p></section>",
-                        user=user, refresh=3)  # fmt: skip
+            return waiting(w, "Starting your lab… this takes about a minute. This page refreshes by itself.", user)
         if w.state == "starting":
-            return page(w.name, f"<section class=notice><h1>{esc(w.name)}</h1><p>Waking up your lab… about 10 "
-                                "seconds. This page refreshes by itself.</p></section>",
-                        user=user, refresh=3)  # fmt: skip
+            return waiting(w, "Waking up your lab… about 10 seconds. This page refreshes by itself.", user)
         if w.state == "failed":
             retry_form = (f"<form method=post action='/workspaces/{esc(slug)}/retry'><button>Try again</button></form>"
                           if owner else "<p>Ask the workspace owner to try again.</p>")  # fmt: skip
             status = f"<p class=error>The lab could not be started.</p>{retry_form}"
         else:
-            minutes = config.idle_stop_s // 60
             asleep = ""
             if w.state == "stopped":
-                asleep = (f"<p class=muted>Your lab is asleep: labs stop after {minutes} minutes without use (people "
-                          "or robots) and wake up when you open them.</p>")  # fmt: skip
+                why = (f" Labs stop after {duration(config.idle_stop_s)} without use (people or robots)."
+                       if config.idle_stop_s > 0 else "")  # fmt: skip
+                asleep = f"<p class=muted>Your lab is asleep.{why} It wakes up when you open it.</p>"
             status = f"{asleep}<p><a class=button href='/workspaces/{esc(slug)}/open'>Open lab</a></p>"
 
         def role_cell(target: User, role: str) -> str:
@@ -586,8 +628,10 @@ def create_app(config: Settings = settings, store: Store | None = None, http: ht
             "<button class=danger>Delete the workspace and all its data</button></form></section>"
             if owner else ""
         )  # fmt: skip
-        return page(w.name, f"<p><a href='/workspaces'>← Your workspaces</a></p><section><h1>{esc(w.name)}</h1>"
-                            f"{copyable('Lab', lab)}<p class=muted>Your role: {esc(w.role)}</p>{status}</section>"
+        return page(w.name, f"<p><a href='/workspaces'>← Your workspaces</a></p><section><h1>{esc(w.name)}"
+                            f"{badge(w.state)}</h1>"
+                            f"{copyable('Lab', lab)}<p class=muted>Your role: <span class=role>{esc(w.role)}</span></p>"
+                            f"{status}</section>"
                             + (connect_box(slug) + logins_section(w) if w.state in ("ready", "stopped") else "")
                             + f"<section><h2>Members</h2><table>{members}{invites}</table></section>{manage}",
                     user=user)  # fmt: skip
@@ -755,8 +799,8 @@ def create_app(config: Settings = settings, store: Store | None = None, http: ht
         gone, left = split_workspaces(user)
         identities = "".join(f"<tr><td>{esc(p)}</td><td><code>{esc(name)}</code></td></tr>"
                              for p, name in store.identities_of(user))  # fmt: skip
-        rows = "".join(f"<tr><td><code>{esc(w.slug)}</code></td><td>{esc(w.role)}</td></tr>"
-                       for w in store.workspaces_of(user))  # fmt: skip
+        rows = "".join(f"<tr><td><code>{esc(w.slug)}.{esc(config.domain)}</code></td>"
+                       f"<td class=role>{esc(w.role)}</td></tr>" for w in store.workspaces_of(user))  # fmt: skip
 
         def names(found: list[Workspace]) -> str:
             return ", ".join(f"<code>{esc(w.slug)}</code>" for w in found) or "none"
