@@ -35,6 +35,8 @@ CREATE TABLE IF NOT EXISTS retired_handles (handle TEXT PRIMARY KEY, retired REA
 CREATE TABLE IF NOT EXISTS ci_token_views (
   slug TEXT NOT NULL REFERENCES workspaces(slug) ON DELETE CASCADE,
   user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE, seen REAL NOT NULL, PRIMARY KEY (slug, user_id));
+CREATE TABLE IF NOT EXISTS ci_rotations_pending (
+  slug TEXT PRIMARY KEY REFERENCES workspaces(slug) ON DELETE CASCADE, since REAL NOT NULL, reason TEXT NOT NULL);
 """
 
 SLUG = re.compile(r"^[a-z][a-z0-9-]{2,29}[a-z0-9]$")
@@ -289,6 +291,20 @@ class Store:
             statements.append(("INSERT INTO ci_token_views (slug, user_id, seen) VALUES (?, ?, ?)",
                                slug, by_user_id, time.time()))  # fmt: skip
         self._run(*statements)
+
+    def mark_ci_rotation_pending(self, slug: str, reason: str) -> None:
+        self._run(("INSERT OR REPLACE INTO ci_rotations_pending (slug, since, reason) VALUES (?, ?, ?)",
+                   slug, time.time(), reason))  # fmt: skip
+
+    def ci_rotation_pending(self, slug: str) -> str | None:
+        row = self._one("SELECT reason FROM ci_rotations_pending WHERE slug = ?", slug)
+        return row[0] if row else None
+
+    def clear_ci_rotation_pending(self, slug: str) -> None:
+        self._run(("DELETE FROM ci_rotations_pending WHERE slug = ?", slug))
+
+    def ci_rotations_pending(self) -> list[tuple[str, str]]:
+        return [(r[0], r[1]) for r in self._all("SELECT slug, reason FROM ci_rotations_pending")]
 
     def set_role(self, slug: str, user_id: int, role: str) -> None:
         self._run(("UPDATE members SET role = ? WHERE slug = ? AND user_id = ?", role, slug, user_id))

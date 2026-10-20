@@ -915,3 +915,42 @@ def test_a_failed_rotation_does_not_block_the_removal(cloud, caplog):
     response = owner.post(f"/workspaces/acme/members/{bob_id}/remove", follow_redirects=False)
     assert response.status_code == 303 and bob_id not in [m.id for m, _ in store.members("acme")]
     assert "rotate it by hand" in caplog.text
+
+
+def test_a_view_is_recorded_even_when_the_provisioner_fails(cloud):
+    world, store, owner, _, _ = ci_setup(cloud, view=False)
+    owner_id = next(m.id for m, _ in store.members("acme") if m.handle == "github:octocat")
+    world.fail_ci = True
+    assert owner.post("/workspaces/acme/ci-token").status_code == 502
+    assert store.has_seen_ci_token("acme", owner_id)
+
+
+def test_a_failed_automatic_rotation_is_pending_shown_and_retried(cloud):
+    world, store, owner, _, bob_id = ci_setup(cloud)
+    viewer = cloud[2]()
+    owner.post("/workspaces/acme/invite", data={"invitee": "github:mallory", "role": "viewer"})
+    sign_in(viewer, "code-mallory")
+    world.fail_ci = True
+    owner.post(f"/workspaces/acme/members/{bob_id}/remove")
+    assert "lost access after seeing the CI token" in store.ci_rotation_pending("acme")
+    assert "The CI token must be rotated" in owner.get("/workspaces/acme").text
+    assert "The CI token must be rotated" not in viewer.get("/workspaces/acme").text
+    app = owner.app
+    app.state.retry_ci_rotations()
+    assert store.ci_rotation_pending("acme")
+    world.fail_ci = False
+    app.state.retry_ci_rotations()
+    assert store.ci_rotation_pending("acme") is None and store.ci_rotations_pending() == []
+
+
+def test_a_manual_rotation_clears_a_pending_mark(cloud):
+    world, store, owner, _, _ = ci_setup(cloud, view=False)
+    store.mark_ci_rotation_pending("acme", "x")
+    assert owner.post("/workspaces/acme/ci-token/rotate", data={"confirm": "acme"}).status_code == 200
+    assert store.ci_rotation_pending("acme") is None
+
+
+def test_the_ci_lock_is_per_workspace(cloud):
+    _, _, owner, _, _ = ci_setup(cloud, view=False)
+    lock = owner.app.state.ci_lock
+    assert lock("acme") is lock("acme") and lock("acme") is not lock("other")

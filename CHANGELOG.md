@@ -9,6 +9,9 @@ What changed, per commit, newest first. Status and plans are in [docs/PROGRESS.m
 - **Fixed (security review):** a member who had seen the CI token kept operator access to the lab after being
   removed, demoted to viewer or deleting their account; the control plane now remembers who has seen the token and
   rotates it by itself when such a member loses access (the removal page says so).
+- **CI token bookkeeping hardened (security review):** a view is recorded before the token is fetched and show,
+  rotate and access-drop are serialised per workspace; a failed automatic rotation is remembered, shown to owners
+  and operators on the workspace page, and retried by the sweep until it succeeds.
 - **Fixed: no live feed behind the TLS edge.** The frontend's nginx told the backend the scheme it saw itself
   (`http`), while the browser's Origin is `https`, so the backend's cross-site check refused every WebSocket and
   every state-changing request from a hosted lab's UI ("Live: offline", no robots). nginx now forwards the edge's

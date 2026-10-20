@@ -180,6 +180,13 @@ def create_app(config: Settings = settings, store: Store | None = None, http: ht
     if config.dev_login and not config.domain.endswith(".localhost"):
         raise RuntimeError("ACTUNODE_CLOUD_DEV_LOGIN is for local development only (a .localhost domain)")
     stop_sweeper = threading.Event()
+    ci_locks: dict[str, threading.Lock] = {}
+    ci_locks_guard = threading.Lock()
+
+    def ci_lock(slug: str) -> threading.Lock:
+        """One lock per workspace: showing, rotating and dropping access to the CI token never interleave."""
+        with ci_locks_guard:
+            return ci_locks.setdefault(slug, threading.Lock())
 
     @asynccontextmanager
     async def lifespan(_app: FastAPI):
@@ -437,10 +444,29 @@ def create_app(config: Settings = settings, store: Store | None = None, http: ht
 
     app.state.sweep_idle = sweep_idle
 
+    def retry_ci_rotations() -> None:
+        """Rotate again every CI token whose automatic rotation failed; the mark goes once a rotation worked."""
+        if not config.provisioner_url:
+            return
+        for slug, reason in store.ci_rotations_pending():
+            with ci_lock(slug):
+                try:
+                    provisioner.rotate_ci_token(slug)
+                except (httpx.HTTPError, RuntimeError) as error:
+                    log.warning("Retrying the CI token rotation of %s (%s) failed: %s", slug, reason, error)
+                    continue
+                store.ci_token_rotated(slug, None)
+                store.clear_ci_rotation_pending(slug)
+                log.info("CI token of %s rotated on retry (%s)", slug, reason)
+
+    app.state.retry_ci_rotations = retry_ci_rotations
+    app.state.ci_lock = ci_lock
+
     def sweeper() -> None:
         while True:
             try:
                 sweep_idle()
+                retry_ci_rotations()
             except Exception:
                 log.exception("Idle sweep failed")
             if stop_sweeper.wait(config.idle_sweep_s):
@@ -585,13 +611,18 @@ def create_app(config: Settings = settings, store: Store | None = None, http: ht
                 "token.</p></section>"
             )
         slug = esc(w.slug)
+        pending = store.ci_rotation_pending(w.slug)
+        alert = (f"<p class='error flash' role=alert>The CI token must be rotated: {esc(pending)}, and the automatic "
+                 "rotation failed. It is retried every minute; you can also rotate it now below.</p>"
+                 if pending else "")  # fmt: skip
         ca = " --ca-file ~/.actunode-cloud/certs/ca.crt" if local else ""
         command = (
             f"actunode test scenarios/p1042_blocked_path.yaml --url {config.lab_url(w.slug)} "
             f"--token-file ci-token.txt{ca}"
         )
-        return ("<section><h2>Run scenario tests from CI</h2><p>The CI token logs the test runner in to this lab as "
-                f"the operator <code>admin</code>. Save it in a file and run:</p>{copyable('Command', command)}"
+        return (f"<section><h2>Run scenario tests from CI</h2>{alert}<p>The CI token logs the test runner in to "
+                f"this lab as the operator <code>admin</code>. Save it in a file and run:</p>"
+                f"{copyable('Command', command)}"
                 "<p class=muted>The token is rotated by itself when a member who has seen it loses access.</p>"
                 "<p class=muted>Guide: <a href='https://github.com/Bahuncoder/ActuNode/blob/main/docs/"
                 "GETTING_STARTED.md'>Getting started</a>.</p>"
@@ -711,14 +742,16 @@ def create_app(config: Settings = settings, store: Store | None = None, http: ht
             raise HTTPException(403, "Only owners and operators use the CI token.")
         if rotate and confirm != slug:
             raise HTTPException(400, "Type the workspace name to rotate the CI token.")
-        try:
-            token = (provisioner.rotate_ci_token(slug) if rotate else provisioner.ci_token(slug))["token"]
-        except (httpx.HTTPError, RuntimeError, KeyError):
-            raise HTTPException(502, "The CI token could not be read. Try again.") from None
-        if rotate:
-            store.ci_token_rotated(slug, user.id)
-        else:
-            store.saw_ci_token(slug, user.id)
+        with ci_lock(slug):
+            if not rotate:
+                store.saw_ci_token(slug, user.id)  # before the fetch: a failed fetch may still have leaked it
+            try:
+                token = (provisioner.rotate_ci_token(slug) if rotate else provisioner.ci_token(slug))["token"]
+            except (httpx.HTTPError, RuntimeError, KeyError):
+                raise HTTPException(502, "The CI token could not be read. Try again.") from None
+            if rotate:
+                store.ci_token_rotated(slug, user.id)
+                store.clear_ci_rotation_pending(slug)
         log.info("%s %s the CI token of %s", user.handle, "rotated" if rotate else "showed", slug)
         note = ("The old token stopped working; everyone signed in to the lab must sign in again."
                 if rotate else "")  # fmt: skip
@@ -766,16 +799,21 @@ def create_app(config: Settings = settings, store: Store | None = None, http: ht
     def drop_ci_access(w: Workspace, user_id: int) -> bool:
         """The CI token is the lab's operator login: whoever saw it keeps access until it changes, so rotate it when
         a person who saw it loses their role. The removal stands even if the rotation fails."""
-        if not (config.provisioner_url and store.has_seen_ci_token(w.slug, user_id)):
+        if not config.provisioner_url:
             return False
-        target = store.user(user_id)
-        who = target.handle if target else user_id
-        try:
-            provisioner.rotate_ci_token(w.slug)
-        except (httpx.HTTPError, RuntimeError) as error:
-            log.error("CI token of %s NOT rotated after %s lost access (%s): rotate it by hand", w.slug, who, error)
-            return False
-        store.ci_token_rotated(w.slug, None)
+        with ci_lock(w.slug):
+            if not store.has_seen_ci_token(w.slug, user_id):
+                return False
+            target = store.user(user_id)
+            who = target.handle if target else user_id
+            try:
+                provisioner.rotate_ci_token(w.slug)
+            except (httpx.HTTPError, RuntimeError) as error:
+                log.error("CI token of %s NOT rotated after %s lost access (%s): rotate it by hand", w.slug, who, error)
+                store.mark_ci_rotation_pending(w.slug, f"{who} lost access after seeing the CI token")
+                return False
+            store.ci_token_rotated(w.slug, None)
+            store.clear_ci_rotation_pending(w.slug)
         log.info("CI token of %s rotated: %s lost access after seeing it", w.slug, who)
         return True
 

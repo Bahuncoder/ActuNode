@@ -55,7 +55,8 @@ flowchart LR
   workspace's settings page instead of `mqtt-init` commands.
 - **CI token:** each lab has one shared API token that logs `actunode test` in as the operator `admin`. Owners and
   operators see it on the workspace page (an answer to a button, never in a URL or a log) and can rotate it
-  (the lab's backend restarts and web sessions end); viewers cannot.
+  (the lab's backend restarts and web sessions end); viewers cannot. If the automatic rotation after a member
+  who saw it loses access fails, it is marked pending, retried every sweep and shown as an alert until it works.
 
 ## Limits and costs (beta)
 
