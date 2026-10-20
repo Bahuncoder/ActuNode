@@ -170,3 +170,28 @@ def test_adding_an_existing_login_does_not_reveal_its_password(provisioner):
     again = client.post("/workspaces/acme/logins", json={"kind": "robot", "manufacturer": "Acme", "serial": "r1"})
     assert again.status_code == 409 and "Secr3t" not in again.text  # Acme.r1 exists (LISTING)
     assert not any("add-robot" in c for c in docker.calls)
+
+
+def test_the_front_containers_are_reattached_to_every_workspace(provisioner):
+    client, docker, config = provisioner
+    for slug in ("acme", "globex"):
+        assert client.put(f"/workspaces/{slug}", json={"ssoKey": KEY}).status_code == 200
+    (config.workspaces / "nocompose").mkdir()
+    connect = ["docker", "network", "connect"]
+    assert {c[3] for c in docker.calls if c[:3] == connect} == {"ws-acme_front", "ws-globex_front"}
+    docker.connected.clear()  # the edge was recreated
+    docker.calls.clear()
+    response = client.post("/front")
+    assert response.status_code == 200 and response.json() == {"attached": ["acme", "globex"], "failed": []}
+    assert {c[3] for c in docker.calls if c[:3] == connect} == {"ws-acme_front", "ws-globex_front"}
+
+
+def test_attaching_the_front_needs_the_token_and_survives_a_broken_workspace(provisioner):
+    client, docker, _ = provisioner
+    for slug in ("acme", "globex"):
+        client.put(f"/workspaces/{slug}", json={"ssoKey": KEY})
+    docker.connected.clear()
+    docker.fail_on = "ws-acme_front"
+    assert client.post("/front").json() == {"attached": ["globex"], "failed": ["acme"]}
+    client.headers["authorization"] = "Bearer wrong"
+    assert client.post("/front").status_code == 401

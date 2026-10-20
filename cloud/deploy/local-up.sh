@@ -3,6 +3,8 @@
 # https://<workspace>.actunode.localhost, robots on <workspace>.actunode.localhost:18883 (TLS). Nothing is reachable
 # from the network (127.0.0.1). Sign-in is the local development sign-in (no GitHub/Google apps needed).
 # Stop: docker compose -f cloud/deploy/compose.yml down (workspace labs: docker compose -p ws-<name> down).
+# To see idle labs stop and wake (phase 2), start with a short limit, and pass the same value to local-check.sh:
+#   ACTUNODE_IDLE_STOP_S=30 ACTUNODE_IDLE_SWEEP_S=5 cloud/deploy/local-up.sh
 set -euo pipefail
 here="$(cd "$(dirname "$0")" && pwd)"
 repo="$(cd "$here/../.." && pwd)"

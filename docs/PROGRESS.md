@@ -639,6 +639,19 @@ Numbered so they can be referenced from commits. Remove an item only when it is 
 
 Newest first. One entry per work session: what was done, what was learned, what is next.
 
+### Tue 20 Oct 2026 (later): hosted service phase 2, idle labs stop and wake
+Phase 2 of D-61 started with the items that need no founder accounts. Built: a hosted lab reports `idleSeconds`
+(backend: signed-in requests, the live feed, external robot or fleet manager messages and commands count; the lab's
+own simulator does not); the control plane stops labs idle for 30 min (settings `ACTUNODE_IDLE_STOP_S`,
+`ACTUNODE_IDLE_SWEEP_S`), **Open lab** wakes a stopped lab (an atomic state change, so two people wake it once), a
+stopped lab's own address falls back to the wake page at the edge, a wake lost in a restart is settled by the sweep.
+Found by the local run: **the edge and the control plane lost every workspace's front network when recreated**
+(an upgrade): labs unreachable, revocation failing. Fixed: the provisioner re-attaches them on request, at control
+plane start and before every sweep. Local check 26 of 26 with `ACTUNODE_IDLE_STOP_S=30` (asleep, fallback, no robot
+connections while asleep, wake, robot back). Cloud 74 and backend 659 tests, lint clean. CI on b7f86c3: one e2e cell
+failed in a fleet manager scenario (green for the previous eleven runs; the cloud change cannot reach it); rerun
+requested. Next: account deletion, abuse limits, upgrades of all workspaces, backups and a restore drill.
+
 ### Tue 20 Oct 2026: hosted service, security review round 6
 Two findings in the new login pages, fixed with tests: **cross-workspace path traversal** (a login name such as
 `x/../../globex` in the remove form became `DELETE /workspaces/globex` at the provisioner; now checked by kind before

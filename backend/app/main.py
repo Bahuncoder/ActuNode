@@ -6,6 +6,7 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI, Request, WebSocket, WebSocketDisconnect
 
 from app import audit, auth, docs, failures, metrics, missions, sessions, sso, vda5050
+from app.activity import activity
 from app.config import settings
 from app.live import LAGGED, TooManyClients, hub
 from app.mqtt_state import mqtt_bridge
@@ -60,16 +61,20 @@ app.include_router(sessions.router)
 def health(request: Request) -> dict:
     if not auth.sessions.valid(request.cookies.get(auth.COOKIE)):
         # Liveness only: the broker's address and our version are for people who are logged in (W11).
-        return {"status": "ok", "mqtt": {"connected": mqtt_bridge.connected}}
-    return {
-        "status": "ok",
-        "version": VERSION,
-        "mqtt": {
-            "host": mqtt_bridge.host,
-            "port": mqtt_bridge.port,
-            "connected": mqtt_bridge.connected,
-        },
-    }
+        answer = {"status": "ok", "mqtt": {"connected": mqtt_bridge.connected}}
+    else:
+        answer = {
+            "status": "ok",
+            "version": VERSION,
+            "mqtt": {
+                "host": mqtt_bridge.host,
+                "port": mqtt_bridge.port,
+                "connected": mqtt_bridge.connected,
+            },
+        }
+    if auth.HOSTED:  # the control plane stops labs that nobody uses
+        answer["idleSeconds"] = round(activity.idle_seconds(hub.metrics()["clients"]), 1)
+    return answer
 
 
 @app.get("/api/robots")

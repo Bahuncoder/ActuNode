@@ -48,6 +48,10 @@ class Settings:
     # Local development only (refused unless the domain ends in .localhost): sign in as anyone, without OAuth.
     dev_login: bool = os.getenv("ACTUNODE_CLOUD_DEV_LOGIN", "") == "1"
     workspaces_per_user: int = int(os.getenv("ACTUNODE_WORKSPACES_PER_USER", "1"))
+    # A lab nobody has used (people or robots) for this many seconds is stopped and wakes at the next open; 0: never.
+    idle_stop_s: int = int(os.getenv("ACTUNODE_IDLE_STOP_S", "1800"))
+    # How often the control plane checks the labs for idleness; 0: no background check (tests call it by hand).
+    idle_sweep_s: int = int(os.getenv("ACTUNODE_IDLE_SWEEP_S", "60"))
 
     @property
     def app_url(self) -> str:

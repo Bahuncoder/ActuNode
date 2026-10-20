@@ -79,6 +79,9 @@ services:
       ACTUNODE_CLOUD_DEV_LOGIN: ${ACTUNODE_CLOUD_DEV_LOGIN:-0}
       ACTUNODE_GITHUB_CLIENT_ID: ${ACTUNODE_GITHUB_CLIENT_ID:-}
       ACTUNODE_GOOGLE_CLIENT_ID: ${ACTUNODE_GOOGLE_CLIENT_ID:-}
+      # Idle labs stop after this many seconds without use and wake at the next open (0: never); checked this often.
+      ACTUNODE_IDLE_STOP_S: ${ACTUNODE_IDLE_STOP_S:-1800}
+      ACTUNODE_IDLE_SWEEP_S: ${ACTUNODE_IDLE_SWEEP_S:-60}
     volumes:
       - cloud-data:/data
       # Only the secrets this service uses, one file each (not the whole secrets folder).
@@ -94,6 +97,13 @@ services:
       traefik.http.routers.app.tls: "true"
       traefik.http.routers.app.middlewares: "secure-headers@file"
       traefik.http.services.app.loadbalancer.server.port: "8000"
+      # A stopped lab has no router of its own: its address lands here (lowest priority) and gets the wake page.
+      traefik.http.routers.lab-fallback.rule: "HostRegexp(`^[a-z0-9-]+\\.${ACTUNODE_CLOUD_DOMAIN:-actunode.localhost}$$`)"
+      traefik.http.routers.lab-fallback.priority: "1"
+      traefik.http.routers.lab-fallback.entrypoints: websecure
+      traefik.http.routers.lab-fallback.tls: "true"
+      traefik.http.routers.lab-fallback.middlewares: "secure-headers@file"
+      traefik.http.routers.lab-fallback.service: app
 
   provisioner:
     <<: *hardened

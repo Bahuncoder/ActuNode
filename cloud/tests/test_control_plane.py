@@ -30,6 +30,12 @@ class World:
         self.token_requests: list[dict] = []
         self.fail_provisioning = False
         self.logins: set[str] = set()
+        self.idle: dict[str, float] = {}
+        self.unreachable: set[str] = set()
+        self.lifecycle: list[tuple[str, str]] = []
+        self.fail_start = False
+        self.fail_front = False
+        self.events: list[str] = []  # front and health calls, in order
 
     def handle(self, request: httpx.Request) -> httpx.Response:
         url = str(request.url)
@@ -50,6 +56,16 @@ class World:
             body = json.loads(request.content) if request.content else None
             self.provisioned.append((request.method, url, body))
             assert request.headers["authorization"] == "Bearer prov-token"
+            if url == "http://provisioner/front" and request.method == "POST":
+                self.events.append("front")
+                if self.fail_front:
+                    return httpx.Response(502, json={"detail": "failed"})
+                return httpx.Response(200, json={"attached": [], "failed": []})
+            for action in ("start", "stop"):
+                if url.endswith(f"/{action}") and request.method == "POST":
+                    self.lifecycle.append((action, url.split("/")[-2]))
+                    if action == "start" and self.fail_start:
+                        return httpx.Response(502, json={"detail": "failed"})
             if self.fail_provisioning and request.method == "PUT":
                 return httpx.Response(502, json={"detail": "failed"})
             if url.endswith("/logins") and request.method == "GET":
@@ -69,6 +85,13 @@ class World:
                 self.logins.discard(url.rsplit("/", 1)[-1])
                 return httpx.Response(200, json={"removed": True})
             return httpx.Response(200, json={"ok": True})
+        if url.endswith("/api/health"):
+            slug = request.url.host.split(".")[0]
+            self.events.append(f"health:{slug}")
+            if slug in self.unreachable:
+                return httpx.Response(502)
+            return httpx.Response(200, json={"status": "ok", "mqtt": {"connected": True},
+                                             "idleSeconds": self.idle.get(slug, 0)})  # fmt: skip
         if url.endswith("/api/sso/revoke"):
             self.revoked.append((url, json.loads(request.content)))
             return httpx.Response(200, json={"revoked": 1, "sessionsEnded": 1})
@@ -82,7 +105,7 @@ def cloud(tmp_path):
         domain="actunode.localhost", scheme="https", database=tmp_path / "cloud.sqlite3", secret="s" * 40,
         github_client_id="client-id", github_client_secret="client-secret",
         allowlist=frozenset({"github:octocat", "mallory@example.com"}), provisioner_url="http://provisioner",
-        provisioner_token="prov-token",
+        provisioner_token="prov-token", idle_sweep_s=0, idle_stop_s=1800,
     )  # fmt: skip
     store = Store(config.database)
     app = create_app(config, store, httpx.Client(transport=httpx.MockTransport(world.handle)))
@@ -152,7 +175,7 @@ def test_creating_a_workspace_provisions_its_lab(cloud):
     method, url, body = world.provisioned[0]
     assert (method, url) == ("PUT", "http://provisioner/workspaces/acme") and len(body["ssoKey"]) == 64
     page = client.get("/workspaces/acme").text
-    assert "https://acme.actunode.localhost/api/sso/start" in page  # the Open lab button: the lab is up
+    assert "/workspaces/acme/open" in page  # the Open lab button: the lab is up
     assert "ready" in client.get("/workspaces").text
 
 
@@ -491,3 +514,110 @@ def test_an_existing_login_is_refused_not_revealed(cloud):
     client.post("/workspaces/acme/logins", data={"kind": "robot", "manufacturer": "Acme", "serial": "r1"})
     again = client.post("/workspaces/acme/logins", data={"kind": "robot", "manufacturer": "Acme", "serial": "r1"})
     assert again.status_code == 409 and "Pa55word" not in again.text and "Remove it first" in again.text
+
+
+def ready_lab(cloud, slug="acme"):
+    world, store, browser = cloud
+    client = browser()
+    sign_in(client, "code-octocat")
+    create(client, slug)
+    assert store.workspaces_in("ready")[0].slug == slug
+    return world, store, browser, client
+
+
+def test_an_idle_lab_is_stopped_by_the_sweep(cloud):
+    world, store, browser, client = ready_lab(cloud)
+    sweep = client.app.state.sweep_idle
+    world.idle["acme"] = 1799
+    sweep()
+    assert store.workspaces_in("ready") and world.lifecycle == []
+    world.idle["acme"] = 1800
+    sweep()
+    assert store.workspaces_in("stopped") and world.lifecycle == [("stop", "acme")]
+    page = client.get("/workspaces/acme").text
+    assert "asleep" in page and "Open lab" in page and "Connect a robot" in page
+    assert "<td>stopped</td>" in client.get("/workspaces").text
+
+
+def test_the_sweep_first_reattaches_the_front_networks(cloud):
+    world, store, browser, client = ready_lab(cloud)
+    world.events.clear()
+    world.idle["acme"] = 1800
+    client.app.state.sweep_idle()
+    assert world.events[0] == "front" and "health:acme" in world.events
+    assert world.lifecycle == [("stop", "acme")]
+
+
+def test_a_failing_front_attach_does_not_stop_the_sweep(cloud):
+    world, store, browser, client = ready_lab(cloud)
+    world.fail_front = True
+    world.idle["acme"] = 1800
+    client.app.state.sweep_idle()
+    assert world.events.count("front") >= 1 and store.workspaces_in("stopped")
+
+
+def test_a_lab_that_does_not_answer_is_left_alone(cloud):
+    world, store, browser, client = ready_lab(cloud)
+    world.unreachable.add("acme")
+    world.idle["acme"] = 99999
+    client.app.state.sweep_idle()
+    assert store.workspaces_in("ready") and world.lifecycle == []
+
+
+def test_opening_a_stopped_lab_wakes_it(cloud):
+    world, store, browser, client = ready_lab(cloud)
+    store.set_state("acme", "stopped")
+    response = client.get("/workspaces/acme/open", follow_redirects=False)
+    assert response.status_code == 200 and "Waking" in response.text
+    assert "url=/workspaces/acme/open" in response.text
+    assert world.lifecycle == [("start", "acme")] and store.workspaces_in("ready")
+    again = client.get("/workspaces/acme/open", follow_redirects=False)
+    assert again.status_code == 303 and again.headers["location"] == "https://acme.actunode.localhost/api/sso/start"
+
+
+def test_two_people_opening_at_once_wake_it_once(cloud):
+    world, store, browser, client = ready_lab(cloud)
+    store.set_state("acme", "stopped")
+    assert store.transition("acme", "stopped", "starting") is True
+    assert store.transition("acme", "stopped", "starting") is False
+    store.set_state("acme", "stopped")
+    first = client.get("/workspaces/acme/open", follow_redirects=False)
+    second = client.get("/workspaces/acme/open", follow_redirects=False)
+    assert first.status_code == 200 and second.status_code == 303
+    assert world.lifecycle == [("start", "acme")]
+
+
+def test_a_failed_wake_can_be_retried(cloud):
+    world, store, browser, client = ready_lab(cloud)
+    store.set_state("acme", "stopped")
+    world.fail_start = True
+    client.get("/workspaces/acme/open")
+    assert store.workspaces_in("failed") and "Try again" in client.get("/workspaces/acme").text
+    created = len([p for p in world.provisioned if p[0] == "PUT"])
+    client.post("/workspaces/acme/retry", follow_redirects=False)
+    assert len([p for p in world.provisioned if p[0] == "PUT"]) == created + 1 and store.workspaces_in("ready")
+
+
+def test_a_lost_wake_is_recovered_by_the_sweep(cloud):
+    world, store, browser, client = ready_lab(cloud)
+    store.set_state("acme", "starting")
+    client.app.state.sweep_idle()
+    assert store.workspaces_in("ready")
+
+
+def test_a_stopped_labs_address_falls_back_to_the_wake_page(cloud):
+    _, _, browser, client = ready_lab(cloud)
+    lab = browser()
+    response = lab.get("/", headers={"host": "acme.actunode.localhost:9443"}, follow_redirects=False)
+    assert response.status_code == 303 and response.headers["location"] == f"{APP}/workspaces/acme/open"
+    assert lab.get("/", headers={"host": "x.acme.actunode.localhost"}, follow_redirects=False).status_code == 404
+    assert lab.get("/", headers={"host": "ab.actunode.localhost"}, follow_redirects=False).status_code == 404
+    assert lab.post("/logout", headers={"host": "acme.actunode.localhost"}).status_code == 404
+    assert lab.get("/healthz").status_code == 200
+
+
+def test_only_members_can_open(cloud):
+    _, store, browser, client = ready_lab(cloud)
+    mallory = browser()
+    sign_in(mallory, "code-mallory")
+    assert mallory.get("/workspaces/acme/open", follow_redirects=False).status_code == 404

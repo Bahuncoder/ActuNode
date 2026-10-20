@@ -22,10 +22,17 @@ check "bob creates workspace beta" "$(post b --max-time 600 -d name=Beta -d slug
 check "alpha is ready (Open lab shown)" "$(browser a "$APP/workspaces/alpha" | grep -o '>Open lab<' | head -1)" ">Open lab<"
 
 lab() { echo "https://$1.actunode.localhost:9443"; }
-check "alice opens alpha (SSO round trip)" "$(browser a -L -o /dev/null -w '%{http_code} %{url_effective}' --max-redirs 5 "$(lab alpha)/api/sso/start")" "200 $(lab alpha)/"
+open_lab() {  # open_lab <cookie jar> <workspace>: the Open lab button; a sleeping lab is woken first (waits for it)
+  for _ in $(seq 1 30); do
+    result="$(browser "$1" -L -o /dev/null -w '%{http_code} %{url_effective}' --max-redirs 6 "$APP/workspaces/$2/open")"
+    [ "$result" = "200 $(lab "$2")/" ] && break; sleep 3
+  done; echo "$result"
+}
+check "alice opens alpha (wake if asleep, SSO round trip)" "$(open_lab a alpha)" "200 $(lab alpha)/"
+check "bob opens beta" "$(open_lab b beta)" "200 $(lab beta)/"
 check "alpha knows alice" "$(browser a "$(lab alpha)/api/session" | grep -o '"user":"[^"]*","role":"[a-z]*"')" '"user":"dev:alice","role":"operator"'
 check "alpha's robots are online" "$(browser a "$(lab alpha)/api/robots" | grep -o '"connection":"ONLINE"' | wc -l | tr -d ' ')" 3
-check "bob cannot open alpha" "$(browser b -L -o /dev/null -w '%{http_code}' --max-redirs 5 "$(lab alpha)/api/sso/start")" 404
+check "bob cannot open alpha" "$(browser b -L -o /dev/null -w '%{http_code}' --max-redirs 5 "$APP/workspaces/alpha/open")" 404
 check "alice's alpha session does not open beta" "$(status a "$(lab beta)/api/robots")" 401
 check "a link without the browser's nonce is refused" "$(status c "$(lab alpha)/api/sso?token=x.y")" 401
 
@@ -42,4 +49,20 @@ check "alpha's robot connects through the edge (TLS, SNI)" "$(mqtt alpha AcmeRob
 check "alpha's robot login is refused by beta's broker" "$(mqtt beta AcmeRobotics.amr-7 "$robot_pw" uagv/v2/AcmeRobotics/amr-7/connection)" refused
 check "alpha's internal backend login is refused from outside" "$(mqtt alpha actunode-backend "$backend_pw" uagv/v2/ActuNode/robot_01/order)" refused
 check "alpha's containers cannot reach beta's" "$(docker exec ws-alpha-frontend-1 sh -c 'wget -q -T 3 -O /dev/null http://ws-beta-frontend-1/ >/dev/null 2>&1 && echo reachable || echo unreachable')" unreachable
+
+# Idle labs (phase 2): only when the stack was started with a short limit (see local-up.sh), e.g.
+# ACTUNODE_IDLE_STOP_S=30 cloud/deploy/local-check.sh
+if [ "${ACTUNODE_IDLE_STOP_S:-1800}" -le 120 ]; then
+  asleep() { browser "$1" "$APP/workspaces/$2" | grep -o 'Your lab is asleep' | head -1; }
+  for _ in $(seq 1 40); do [ "$(asleep a alpha)" = "Your lab is asleep" ] && break; sleep 3; done
+  check "alpha falls asleep when nobody uses it" "$(asleep a alpha)" "Your lab is asleep"
+  check "a sleeping lab's address leads to the wake page" "$(browser a -o /dev/null -w '%{http_code} %{redirect_url}' "$(lab alpha)/")" "303 $APP/workspaces/alpha/open"
+  check "a sleeping lab's address is not a way in for strangers" "$(status c "$(lab alpha)/api/robots")" 303
+  check "a sleeping lab takes no robot connections" "$(mqtt alpha AcmeRobotics.amr-7 "$robot_pw" uagv/v2/AcmeRobotics/amr-7/connection)" refused
+  check "alice wakes alpha" "$(browser a "$APP/workspaces/alpha/open" | grep -o 'Waking up your lab' | head -1)" "Waking up your lab"
+  check "alpha is back, with alice signed in" "$(open_lab a alpha)" "200 $(lab alpha)/"
+  check "alpha's robot connects again" "$(mqtt alpha AcmeRobotics.amr-7 "$robot_pw" uagv/v2/AcmeRobotics/amr-7/connection)" accepted
+  for _ in $(seq 1 40); do [ "$(asleep b beta)" = "Your lab is asleep" ] && break; sleep 3; done
+  check "beta sleeps until someone opens it" "$(asleep b beta)" "Your lab is asleep"
+fi
 exit $fail

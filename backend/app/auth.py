@@ -34,6 +34,7 @@ from starlette.responses import PlainTextResponse
 from starlette.types import ASGIApp, Receive, Scope, Send
 
 from app import audit
+from app.activity import activity
 from app.config import settings
 from app.security import LogThrottle
 
@@ -337,6 +338,8 @@ class SessionGuard:
         if scope["type"] in ("http", "websocket") and path.startswith("/api"):
             headers = {k.decode("latin-1").lower(): v.decode("latin-1") for k, v in scope["headers"]}
             user = sessions.user(session_from_cookie_header(headers.get("cookie")))
+            if user is not None:
+                activity.touch()
             bearer = headers.get("authorization", "")
             if user is None and path == METRICS_PATH and scope["type"] == "http" and bearer[:7].lower() == "bearer ":
                 try:

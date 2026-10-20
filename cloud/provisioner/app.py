@@ -122,6 +122,22 @@ def create_app(config: Config | None = None, runner=run) -> FastAPI:
         connect_edge(slug)
         return {"workspace": slug, "state": "running"}
 
+    @app.post("/front", dependencies=[Depends(authorized)])
+    def attach_front() -> dict:
+        """Re-attach the front containers to every workspace's front network (they lose it when recreated)."""
+        attached, failed = [], []
+        folders = sorted(config.workspaces.iterdir()) if config.workspaces.is_dir() else []
+        for folder in folders:
+            if not SLUG.fullmatch(folder.name) or not (folder / "compose.yml").exists():
+                continue
+            try:
+                connect_edge(folder.name)
+                attached.append(folder.name)
+            except (HTTPException, subprocess.SubprocessError, OSError) as error:
+                log.warning("Attaching the front containers to %s failed: %s", folder.name, error)
+                failed.append(folder.name)
+        return {"attached": attached, "failed": failed}
+
     @app.post("/workspaces/{slug}/start", dependencies=[Depends(authorized)])
     def start(slug: str) -> dict:
         slug = checked(slug)

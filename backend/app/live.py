@@ -14,6 +14,7 @@ from collections.abc import Callable
 from datetime import UTC, datetime
 
 from app import vda5050
+from app.activity import activity
 from app.config import settings
 from app.jsonsafe import count_values, parse_payload, preview
 from app.metrics import counters
@@ -142,6 +143,11 @@ class LiveHub:
         body, rejected = parse_payload(payload)
         valid_json = rejected is None
         counters.inc("actunode_mqtt_messages_received_total")
+        parts = vda5050.topic_parts(topic)
+        if parts is not None and (
+            parts.manufacturer != vda5050.MANUFACTURER or parts.name in ("order", "instantActions")
+        ):
+            activity.touch()  # an external robot or a command, not the lab's own simulator
         if rejected is not None:
             counters.inc("actunode_messages_rejected_total", rule=rejected)
         try:
@@ -155,7 +161,6 @@ class LiveHub:
 
         with self._lock:
             pairs_event = None
-            parts = vda5050.topic_parts(topic)
             if valid_json and not retained and parts is not None and parts.name in ("state", "connection"):
                 issues += self._observe_proximity(parts, body)  # only these can change the near pairs
                 pairs_event = self._pairs_to_broadcast()

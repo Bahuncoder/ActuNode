@@ -3,6 +3,8 @@
 import html
 import logging
 import re
+import threading
+from contextlib import asynccontextmanager
 from pathlib import Path
 from urllib.parse import quote
 
@@ -98,6 +100,27 @@ class SameOriginPosts:
         await self.app(scope, receive, send)
 
 
+class LabFallback:
+    """A stopped lab has no route of its own at the edge: its address reaches us and a browser goes to the wake page."""
+
+    def __init__(self, app: ASGIApp, domain: str, app_host: str, app_url: str):
+        self.app, self.domain, self.app_host, self.app_url = app, domain, app_host, app_url
+
+    async def __call__(self, scope: Scope, receive: Receive, send: Send) -> None:
+        if scope["type"] == "http":
+            headers = {k.decode("latin-1").lower(): v.decode("latin-1") for k, v in scope["headers"]}
+            host = headers.get("host", "").rsplit(":", 1)[0].lower()
+            if host != self.app_host and host.endswith("." + self.domain):
+                label = host.removesuffix("." + self.domain)
+                if SLUG.fullmatch(label) and scope["method"] in ("GET", "HEAD"):
+                    response = RedirectResponse(f"{self.app_url}/workspaces/{label}/open", status_code=303)
+                else:
+                    response = Response("Not found", status_code=404)
+                await response(scope, receive, send)
+                return
+        await self.app(scope, receive, send)
+
+
 class SecurityHeaders:
     def __init__(self, app: ASGIApp):
         self.app = app
@@ -121,18 +144,31 @@ class SecurityHeaders:
 def create_app(config: Settings = settings, store: Store | None = None, http: httpx.Client | None = None) -> FastAPI:
     if config.dev_login and not config.domain.endswith(".localhost"):
         raise RuntimeError("ACTUNODE_CLOUD_DEV_LOGIN is for local development only (a .localhost domain)")
-    app = FastAPI(title="ActuNode Cloud", docs_url=None, redoc_url=None, openapi_url=None)
+    stop_sweeper = threading.Event()
+
+    @asynccontextmanager
+    async def lifespan(_app: FastAPI):
+        if config.idle_sweep_s > 0 and config.provisioner_url:
+            threading.Thread(target=sweeper, daemon=True, name="idle-sweeper").start()
+        yield
+        stop_sweeper.set()
+
+    app = FastAPI(title="ActuNode Cloud", docs_url=None, redoc_url=None, openapi_url=None, lifespan=lifespan)
     store = store or Store(config.database)
     http = http or httpx.Client(timeout=15)
     provisioner = labs.Provisioner(config.provisioner_url, config.provisioner_token, http)
     app.add_middleware(SecurityHeaders)
     app.add_middleware(SameOriginPosts, origin=config.app_url)
+    app.add_middleware(LabFallback, domain=config.domain, app_host=f"app.{config.domain}", app_url=config.app_url)
     local = config.domain.endswith(".localhost")
 
-    def page(title: str, body: str, status: int = 200, user: User | None = None, refresh: int = 0) -> HTMLResponse:
+    def page(
+        title: str, body: str, status: int = 200, user: User | None = None, refresh: int = 0, refresh_to: str = ""
+    ) -> HTMLResponse:
         who = (f"<div class=who><code>{esc(user.handle)}</code><form class=inline method=post action='/logout'>"
                "<button class='secondary small'>Sign out</button></form></div>") if user else ""  # fmt: skip
-        meta = f"<meta http-equiv=refresh content='{refresh}'>" if refresh else ""
+        target = f";url={esc(refresh_to)}" if refresh_to else ""
+        meta = f"<meta http-equiv=refresh content='{refresh}{target}'>" if refresh else ""
         return HTMLResponse(
             f"<!doctype html><html lang=en><head><meta charset=utf-8><meta name=viewport content='width=device-width'>"
             f"{meta}<title>{esc(title)} · ActuNode Cloud</title><link rel=icon href='/static/logo.png'>"
@@ -313,6 +349,64 @@ def create_app(config: Settings = settings, store: Store | None = None, http: ht
             log.error("Provisioning %s failed: %s", slug, error)
             store.set_state(slug, "failed")
 
+    def lab_health(slug: str) -> dict | None:
+        """The lab's health answer, or None if it does not answer (stopped, starting, or broken)."""
+        try:
+            response = http.get(f"{config.lab_api(slug)}/api/health", headers={"Host": f"{slug}.{config.domain}"},
+                                timeout=5)  # fmt: skip
+            return response.json() if response.status_code == 200 else None
+        except (httpx.HTTPError, ValueError):
+            return None
+
+    def sweep_idle() -> None:
+        """Stop labs nobody has used for idle_stop_s; settle a wake whose background task was lost in a restart.
+
+        It also keeps the edge and the control plane attached to every workspace's front network (a recreated
+        container loses them).
+        """
+        if not config.provisioner_url:
+            return
+        try:
+            provisioner.attach_front()
+        except (httpx.HTTPError, RuntimeError) as error:
+            log.warning("Re-attaching the front networks failed: %s", error)
+        for w in store.workspaces_in("ready"):
+            health = lab_health(w.slug)
+            if health is None:
+                log.debug("%s did not answer the idle check", w.slug)
+                continue
+            idle = health.get("idleSeconds", 0)
+            if config.idle_stop_s > 0 and isinstance(idle, (int, float)) and idle >= config.idle_stop_s:
+                try:
+                    provisioner.stop(w.slug)
+                except (httpx.HTTPError, RuntimeError) as error:
+                    log.warning("Stopping %s failed: %s", w.slug, error)
+                    continue
+                store.transition(w.slug, "ready", "stopped")
+                log.info("%s stopped after %d s idle", w.slug, idle)
+        for w in store.workspaces_in("starting"):
+            if lab_health(w.slug) is not None:
+                store.transition(w.slug, "starting", "ready")
+
+    app.state.sweep_idle = sweep_idle
+
+    def sweeper() -> None:
+        while True:
+            try:
+                sweep_idle()
+            except Exception:
+                log.exception("Idle sweep failed")
+            if stop_sweeper.wait(config.idle_sweep_s):
+                return
+
+    def wake(slug: str) -> None:
+        try:
+            provisioner.start(slug)
+            store.transition(slug, "starting", "ready")
+        except (httpx.HTTPError, RuntimeError) as error:
+            log.error("Waking %s failed: %s", slug, error)
+            store.transition(slug, "starting", "failed")
+
     @app.get("/workspaces", response_class=HTMLResponse)
     def workspaces(request: Request, error: str = ""):
         user = signed_in(request)
@@ -359,6 +453,21 @@ def create_app(config: Settings = settings, store: Store | None = None, http: ht
             raise HTTPException(409, "The lab is not in a failed state.")
         store.set_state(slug, "creating")
         background.add_task(provision, slug, w.sso_key)
+        return RedirectResponse(f"/workspaces/{slug}", status_code=303)
+
+    @app.get("/workspaces/{slug}/open")
+    def open_lab(slug: str, request: Request, background: BackgroundTasks):
+        """The way into a lab: straight in when it is up; a stopped one is woken first."""
+        user = signed_in(request)
+        w = member(user, slug)
+        if w.state == "ready":
+            return RedirectResponse(f"{config.lab_url(slug)}/api/sso/start", status_code=303)
+        if w.state in ("stopped", "starting"):
+            if w.state == "stopped" and store.transition(slug, "stopped", "starting"):
+                background.add_task(wake, slug)
+            return page(w.name, f"<section class=notice><h1>{esc(w.name)}</h1><p>Waking up your lab… about 10 "
+                                "seconds. This page goes on by itself.</p></section>",
+                        user=user, refresh=3, refresh_to=f"/workspaces/{slug}/open")  # fmt: skip
         return RedirectResponse(f"/workspaces/{slug}", status_code=303)
 
     def connect_box(slug: str) -> str:
@@ -420,12 +529,21 @@ def create_app(config: Settings = settings, store: Store | None = None, http: ht
             return page(w.name, f"<section class=notice><h1>{esc(w.name)}</h1><p>Starting your lab… this takes about "
                                 "a minute. This page refreshes by itself.</p></section>",
                         user=user, refresh=3)  # fmt: skip
+        if w.state == "starting":
+            return page(w.name, f"<section class=notice><h1>{esc(w.name)}</h1><p>Waking up your lab… about 10 "
+                                "seconds. This page refreshes by itself.</p></section>",
+                        user=user, refresh=3)  # fmt: skip
         if w.state == "failed":
             retry_form = (f"<form method=post action='/workspaces/{esc(slug)}/retry'><button>Try again</button></form>"
                           if owner else "<p>Ask the workspace owner to try again.</p>")  # fmt: skip
             status = f"<p class=error>The lab could not be started.</p>{retry_form}"
         else:
-            status = f"<p><a class=button href='{esc(lab)}/api/sso/start'>Open lab</a></p>"
+            minutes = config.idle_stop_s // 60
+            asleep = ""
+            if w.state == "stopped":
+                asleep = (f"<p class=muted>Your lab is asleep: labs stop after {minutes} minutes without use (people "
+                          "or robots) and wake up when you open them.</p>")  # fmt: skip
+            status = f"{asleep}<p><a class=button href='/workspaces/{esc(slug)}/open'>Open lab</a></p>"
 
         def role_cell(target: User, role: str) -> str:
             if not owner:
@@ -459,7 +577,7 @@ def create_app(config: Settings = settings, store: Store | None = None, http: ht
         )  # fmt: skip
         return page(w.name, f"<p><a href='/workspaces'>← Your workspaces</a></p><section><h1>{esc(w.name)}</h1>"
                             f"{copyable('Lab', lab)}<p class=muted>Your role: {esc(w.role)}</p>{status}</section>"
-                            + (connect_box(slug) + logins_section(w) if w.state == "ready" else "")
+                            + (connect_box(slug) + logins_section(w) if w.state in ("ready", "stopped") else "")
                             + f"<section><h2>Members</h2><table>{members}{invites}</table></section>{manage}",
                     user=user)  # fmt: skip
 

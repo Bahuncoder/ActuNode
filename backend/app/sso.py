@@ -31,6 +31,7 @@ from fastapi.responses import RedirectResponse
 from pydantic import BaseModel, Field
 
 from app import audit
+from app.activity import activity
 from app.auth import COOKIE, OPERATOR, VIEWER, _client, sessions
 from app.config import settings
 
@@ -172,6 +173,7 @@ def single_sign_on(request: Request, token: str = "") -> RedirectResponse:
     if opened is None:
         raise _refused(request, "login.sso_failed", "user removed from the workspace")
     session_id, user = opened
+    activity.touch()
     request.state.user = user
     audit.record_request(request, "login.sso", 303)
     response = RedirectResponse("/", status_code=303)

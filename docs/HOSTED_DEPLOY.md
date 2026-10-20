@@ -73,6 +73,10 @@ ACTUNODE_GOOGLE_CLIENT_ID=<Google client ID, or empty>
 CFG
 ```
 
+Optional settings in `config.env`: `ACTUNODE_IDLE_STOP_S` (a lab nobody uses for this many seconds is stopped and
+wakes at the next open; default 1800, 0 never) and `ACTUNODE_IDLE_SWEEP_S` (how often the control plane checks;
+default 60).
+
 ## 6. Start
 
 ```bash
@@ -93,4 +97,6 @@ certificate, no CA to install).
 
 Pull the new release on the server (`git -C /srv/actunode/actunode fetch --tags && git -C /srv/actunode/actunode
 checkout vX.Y.Z`), set `ACTUNODE_RELEASE` in `config.env`, run `prod-up.sh`. Existing workspace labs keep their
-version until restarted by the provisioner (phase 2 adds rolling upgrades).
+version until restarted by the provisioner (phase 2 adds rolling upgrades). Right after an upgrade the recreated
+edge and control plane are re-attached to every workspace's network by the control plane's first idle sweep, so
+labs may answer 502 for up to a minute.

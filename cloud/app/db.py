@@ -187,6 +187,24 @@ class Store:
     def set_state(self, slug: str, state: str) -> None:
         self._run(("UPDATE workspaces SET state = ? WHERE slug = ?", state, slug))
 
+    def workspaces_in(self, state: str) -> list[Workspace]:
+        rows = self._all("SELECT slug, name, sso_key, state FROM workspaces WHERE state = ? ORDER BY slug", state)
+        return [Workspace(*row) for row in rows]
+
+    def transition(self, slug: str, from_state: str, to_state: str) -> bool:
+        """Move a workspace from one state to another only if it is still in the first: True for the one caller that
+        wins (two people waking a lab at the same moment start it once)."""
+        with self._lock:
+            self._db.execute("BEGIN IMMEDIATE")
+            try:
+                changed = self._db.execute("UPDATE workspaces SET state = ? WHERE slug = ? AND state = ?",
+                                           (to_state, slug, from_state)).rowcount  # fmt: skip
+                self._db.execute("COMMIT")
+            except Exception:
+                self._db.execute("ROLLBACK")
+                raise
+        return changed == 1
+
     def delete_workspace(self, slug: str) -> None:
         self._run(("DELETE FROM workspaces WHERE slug = ?", slug))
 

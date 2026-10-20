@@ -75,6 +75,12 @@ class Provisioner:
     def start(self, slug: str) -> dict:
         return self._call("POST", self._path("workspaces", slug, "start"))
 
+    def stop(self, slug: str) -> dict:
+        return self._call("POST", self._path("workspaces", slug, "stop"))
+
+    def attach_front(self) -> dict:
+        return self._call("POST", "/front")
+
     def delete(self, slug: str) -> dict:
         return self._call("DELETE", self._path("workspaces", slug))
 

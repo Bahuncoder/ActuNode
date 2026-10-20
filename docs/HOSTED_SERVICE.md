@@ -59,8 +59,14 @@ flowchart LR
 - Invite-only: an allow list of GitHub logins and email addresses; one workspace per person.
 - Per workspace: up to 10 simulated robots, memory caps (about 1 GB in all), session storage quota (e.g. 2 GB), the
   lab's own input limits (TRD).
-- Idle labs stop after a period without users or robot traffic and start again at the next sign-in (a few
-  seconds), so a single server holds many workspaces.
+- Idle labs stop after a period without use and wake at the next open (about 10 seconds), so a single server
+  holds many workspaces. The lab reports how long it has been idle (`idleSeconds` in its health answer: 0 while
+  anyone has the live feed open; otherwise seconds since the last signed-in request, external robot or fleet
+  manager message, or command). The control plane checks every minute (`ACTUNODE_IDLE_SWEEP_S`) and stops a lab
+  idle for 30 minutes (`ACTUNODE_IDLE_STOP_S`; 0 never). **Open lab** goes through the control plane, which
+  wakes a stopped lab and waits; a stopped lab's own address falls back to the control plane at the edge, which
+  sends a member to the wake page. A stopped lab takes no robot connections: open it first. Two people opening
+  at once wake it once (an atomic state change). Workspace states: creating, ready, failed, stopped, starting.
 - Start: one Hetzner Cloud server in Germany or Finland (CPX41-class: 8 vCPU, 16 GB, about €30/month) plus a volume
   and backups; a second server and PostgreSQL when the beta outgrows it. US and Singapore regions exist for later.
 

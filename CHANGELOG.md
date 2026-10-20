@@ -20,6 +20,16 @@ What changed, per commit, newest first. Status and plans are in [docs/PROGRESS.m
   were opening (local paths only); **robot and fleet manager logins** on the workspace page (add: the password shown
   once, never in a URL; remove; viewers only see them); a "Connect a robot" box with copy buttons; removing a member
   is confirmed; field patterns valid in current browsers.
+- **Idle labs stop and wake (phase 2)**: a hosted lab reports `idleSeconds` on `/api/health` (0 while the live feed
+  is open; otherwise since the last signed-in request, external robot or fleet manager message, or command) and an
+  `actunode_idle_seconds` gauge; self-hosted labs are unchanged. The control plane stops a lab idle for 30 minutes
+  (`ACTUNODE_IDLE_STOP_S`, checked every `ACTUNODE_IDLE_SWEEP_S`); **Open lab** wakes a stopped lab and waits, a
+  stopped lab's own address leads to the wake page (an edge fallback route), two people wake it once. The local
+  check gains nine idle steps (`ACTUNODE_IDLE_STOP_S=30` on both scripts).
+- **Fixed:** the edge and the control plane lost every workspace's front network when their containers were
+  recreated (an upgrade), so labs were unreachable and revocation failed until each lab was started again. The
+  provisioner now re-attaches them on request (`POST /front`), which the control plane does at start and before
+  every idle sweep.
 - **Fixed (security review, round 6):** a crafted login name sent to "remove login" could reach the provisioner as a
   path (`x/../../<other workspace>`); login names are now checked by kind in the control plane and every provisioner
   path segment is percent-encoded. "Adding" a login that already exists handed out its current password (mqtt-init

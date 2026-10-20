@@ -155,6 +155,7 @@ router = APIRouter()
 @router.get(PATH, response_class=PlainTextResponse)
 async def metrics() -> PlainTextResponse:
     # On the event loop (async): the live hub's client set belongs to it.
+    from app.activity import activity
     from app.live import hub
     from app.mqtt_state import mqtt_bridge
     from app.sessions import recorder, replayer
@@ -166,6 +167,11 @@ async def metrics() -> PlainTextResponse:
         ("actunode_up_seconds", "Seconds since the backend started", round(time.monotonic() - STARTED, 1)),
         ("actunode_mqtt_connected", "1 when the backend is connected to the broker", int(mqtt_bridge.connected)),
         ("actunode_live_clients", "Live feeds (browsers, the runner) connected", live["clients"]),
+        (
+            "actunode_idle_seconds",
+            "Seconds since the last person or external robot used this lab; 0 while the live feed is open",
+            round(activity.idle_seconds(live["clients"]), 1),
+        ),
         ("actunode_live_queue_max_bytes", "Largest backlog of a live feed, bytes of text", live["maxQueuedBytes"]),
         ("actunode_robots", "Robots the lab knows, by connection state", live["robots"]),
         ("actunode_recording", "1 while a recording runs", int(recording is not None)),
