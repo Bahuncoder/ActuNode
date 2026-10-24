@@ -257,13 +257,13 @@ and restore them with `docker compose run --rm -T mqtt-init restore < actunode-s
 
 ## Published images
 
-From the next release on, each release's images are published for amd64 and arm64 (Apple silicon, Raspberry
+Each release's images (from 0.3.0 on) are published for amd64 and arm64 (Apple silicon, Raspberry
 Pi 4/5) with build provenance and an SBOM ([D-58](docs/DECISIONS.md)). Skip the local build:
 
 ```bash
-export ACTUNODE_IMAGES=ghcr.io/bahuncoder/actunode ACTUNODE_VERSION=0.3.0 ACTUNODE_PULL_POLICY=missing
+export ACTUNODE_IMAGES=ghcr.io/bahuncoder/actunode ACTUNODE_VERSION=0.4.0 ACTUNODE_PULL_POLICY=missing
 docker compose up -d --wait            # pulls backend, simulator, frontend; runner when first used
-gh attestation verify oci://ghcr.io/bahuncoder/actunode-backend:0.3.0 --owner Bahuncoder   # optional
+gh attestation verify oci://ghcr.io/bahuncoder/actunode-backend:0.4.0 --owner Bahuncoder   # optional
 ```
 
 Put the three variables in a `.env` file next to `docker-compose.yml` to keep them. Without them the lab builds
@@ -530,6 +530,12 @@ Offline playground with no MQTT at all (one mission through the robot state mach
 | `docs/` | Architecture, decisions, protocol notes, progress |
 
 ## Project status
+
+**v0.4.0 (24 October 2026)** makes ActuNode runnable as a shared online service: single sign-on for labs, a
+control plane with GitHub and Google sign-in, one isolated lab per workspace behind a TLS edge (MQTT routed by
+SNI), idle labs that sleep and wake, backups with a tested restore, alerts and abuse limits
+([docs/HOSTED_SERVICE.md](docs/HOSTED_SERVICE.md)); the lab's screens follow the design brief and the
+accessibility review.
 
 **v0.3.0 (17 October 2026)** closes the full audit: one web login per person with viewer and operator roles and
 an audit trail of who changed what; Prometheus metrics, including the broker's own load; published multi-architecture

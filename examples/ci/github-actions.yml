@@ -24,7 +24,7 @@ jobs:
         with:
           persist-credentials: false
           repository: Bahuncoder/ActuNode
-          ref: v0.3.0
+          ref: v0.4.0
           path: actunode
       - name: Start the lab (simulated robots, broker, inspector)
         working-directory: actunode

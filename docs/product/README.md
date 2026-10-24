@@ -1,6 +1,6 @@
 # ActuNode product specification
 
-Working specification · updated 17 October 2026 · baseline: **v0.3.0** (roadmap weeks 1–16 complete; the full
+Working specification · updated 17 October 2026 · baseline: **v0.4.0** (roadmap weeks 1–16 complete; the full
 audit closed, D-50). First written 15 October 2026 against v0.1.0 plus milestones 9–12.
 
 These documents describe the existing product and the requirements for its next release. **Current** means supported by repository implementation or recorded verification. **Proposed** means work or validation still required; it is not a shipped capability. Targets are acceptance criteria, not measurements or customer commitments.

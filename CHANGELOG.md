@@ -2,9 +2,19 @@
 
 What changed, per commit, newest first. Status and plans are in [docs/PROGRESS.md](docs/PROGRESS.md).
 
-## Unreleased
+## 0.4.0 — 2026-10-24
 
-### Hosted service, phase 1 (D-61, docs/HOSTED_SERVICE.md)
+ActuNode as a hosted service (D-61, D-62): labs gain a single sign-on mode, and a control plane, provisioner and
+edge run one isolated lab per workspace; the lab's screens follow the design brief and the accessibility review
+(package I, D-60). Still a preview: onboarding and pilot evidence (PR-12, PR-13) need participants.
+
+**Upgrading from 0.3.0:**
+- Pull or rebuild the images: with published images set `ACTUNODE_VERSION=0.4.0` and run `docker compose up -d`;
+  from a checkout, `git pull && docker compose up -d --build`.
+- Nothing else: single sign-on stays off unless a hosted control plane turns it on; local logins, broker
+  permissions, scenario files, recordings and the `actunode test` command are unchanged (docs/COMPATIBILITY.md).
+
+### Hosted service (D-61, D-62, docs/HOSTED_SERVICE.md)
 
 - **Fixed (security review):** a member who had seen the CI token kept operator access to the lab after being
   removed, demoted to viewer or deleting their account; the control plane now remembers who has seen the token and

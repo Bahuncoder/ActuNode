@@ -45,7 +45,7 @@ class Config:
         self.domain = env.get("ACTUNODE_CLOUD_DOMAIN", "actunode.localhost")
         self.port = env.get("ACTUNODE_CLOUD_PUBLIC_PORT", "")  # ":9443" locally next to another web server
         self.images = env.get("ACTUNODE_IMAGES", "ghcr.io/bahuncoder/actunode")
-        self.version = env.get("ACTUNODE_VERSION", "0.3.0")
+        self.version = env.get("ACTUNODE_VERSION", "0.4.0")
         self.robots = int(env.get("ACTUNODE_SIM_ROBOTS", "3"))
         # Attached to each workspace's front network: the edge (routes to the lab) and the control plane (revokes).
         self.front = [c for c in env.get("ACTUNODE_FRONT_CONTAINERS", "actunode-edge").split(",") if c]

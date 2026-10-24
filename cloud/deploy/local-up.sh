@@ -48,7 +48,7 @@ if [ ! -s "$ACTUNODE_CERTS_DIR/wildcard.crt" ]; then
   chmod 0755 "$ACTUNODE_CERTS_DIR"
 fi
 
-# The lab images with this checkout's code (published 0.3.0 has no single sign-on yet).
+# The lab images with this checkout's code (a local run tests what the next release will ship).
 docker compose -f "$repo/docker-compose.yml" build backend simulator frontend
 docker compose -f "$here/compose.yml" up -d --build --wait
 # Every running lab is recreated on the new images (a short interruption per lab); stopped labs upgrade at their next wake.

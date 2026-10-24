@@ -125,7 +125,7 @@ services:
       ACTUNODE_CLOUD_DOMAIN: ${ACTUNODE_CLOUD_DOMAIN:-actunode.localhost}
       ACTUNODE_CLOUD_PUBLIC_PORT: ${ACTUNODE_CLOUD_PUBLIC_PORT:-}
       ACTUNODE_IMAGES: ${ACTUNODE_IMAGES:-ghcr.io/bahuncoder/actunode}
-      ACTUNODE_VERSION: ${ACTUNODE_VERSION:-0.3.0}
+      ACTUNODE_VERSION: ${ACTUNODE_VERSION:-0.4.0}
       ACTUNODE_FRONT_CONTAINERS: actunode-edge,actunode-control-plane
     volumes:
       - ${ACTUNODE_DATA_DIR}:${ACTUNODE_DATA_DIR}  # same path as on the host: labs' bind mounts are host paths

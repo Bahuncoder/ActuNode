@@ -57,7 +57,7 @@ class Docker:
 def provisioner(tmp_path):
     (tmp_path / "token").write_text("prov-token\n")
     config = Config({"PROVISIONER_TOKEN_FILE": str(tmp_path / "token"), "ACTUNODE_DATA_DIR": str(tmp_path / "srv"),
-                     "ACTUNODE_CLOUD_DOMAIN": "actunode.localhost", "ACTUNODE_VERSION": "0.3.0"})  # fmt: skip
+                     "ACTUNODE_CLOUD_DOMAIN": "actunode.localhost", "ACTUNODE_VERSION": "0.4.0"})  # fmt: skip
     docker = Docker()
     client = TestClient(create_app(config, docker))
     client.headers["authorization"] = "Bearer prov-token"
@@ -94,7 +94,7 @@ def test_creating_a_workspace_renders_its_lab_and_starts_it_in_isolation(provisi
     rendered = (folder / "compose.yml").read_text()
     assert "%" not in rendered.replace("%%", "")  # every placeholder filled
     assert "Host(`acme.actunode.localhost`)" in rendered and "HostSNI(`acme.actunode.localhost`)" in rendered
-    assert "ghcr.io/bahuncoder/actunode-backend:0.3.0" in rendered and "ws-acme_front" in rendered
+    assert "ghcr.io/bahuncoder/actunode-backend:0.4.0" in rendered and "ws-acme_front" in rendered
     assert docker.calls[0] == [
         "docker",
         "compose",
