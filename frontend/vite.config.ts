@@ -8,6 +8,7 @@ export default defineConfig({
   plugins: [react()],
   test: {
     environment: 'jsdom',
+    setupFiles: ['./src/test-setup.ts'],
   },
   server: {
     // Only the shared contract fixtures outside this folder may be read (used by tests, D-38).

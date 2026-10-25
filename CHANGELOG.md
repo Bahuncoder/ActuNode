@@ -2,6 +2,12 @@
 
 What changed, per commit, newest first. Status and plans are in [docs/PROGRESS.md](docs/PROGRESS.md).
 
+## Unreleased
+
+- **Frontend tests no longer flake on a busy machine:** Testing Library waits up to 5 s for an element (was 1 s;
+  a load average of 21 on 8 cores made 1–7 of 176 tests time out). undici, which only the tests use (through
+  jsdom), updated for three advisories published 24 Oct; it is not in the served image.
+
 ## 0.4.0 — 2026-10-24
 
 ActuNode as a hosted service (D-61, D-62): labs gain a single sign-on mode, and a control plane, provisioner and
