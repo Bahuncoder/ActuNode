@@ -24,8 +24,8 @@ be done. Until then, keep the allow list to yourself and people you trust with t
 
 ## 2. A release with the hosted service
 
-The servers run published images; the hosted service needs a release that includes it (v0.4.0 or later). When the
-v0.4.0 release is tagged (as before: tag, push, `gh release create`, packages public), its images are on ghcr.io.
+The servers run published images; the hosted service needs a release that includes it (v0.4.0 or later). v0.4.0
+(released 24 October 2026) is the first; its images are public on ghcr.io.
 
 ## 3. The server (Terraform, no installation needed)
 
