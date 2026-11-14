@@ -4,6 +4,8 @@ What changed, per commit, newest first. Status and plans are in [docs/PROGRESS.m
 
 ## Unreleased
 
+- **Upstream:** four of the five ROS 2 fixes are merged at InOrbit (ros_amr_interop #83, #85, #82 as #93;
+  vda5050_adapter_examples #14); #84 answered its review. Status in ros2/patches/README.md.
 - **Frontend tests no longer flake on a busy machine:** Testing Library waits up to 5 s for an element (was 1 s;
   a load average of 21 on 8 cores made 1–7 of 176 tests time out). undici, which only the tests use (through
   jsdom), updated for three advisories published 24 Oct; it is not in the served image.
