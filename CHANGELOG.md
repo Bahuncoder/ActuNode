@@ -4,21 +4,36 @@ What changed, per commit, newest first. Status and plans are in [docs/PROGRESS.m
 
 ## Unreleased
 
-- **Accessibility:** the session actions became one Tab stop only after the browser had shown new rows, so a Tab
-  pressed in that moment could land on any of the buttons (D-60). Now set before anything sees the rows; a test
-  checks the moment they appear (it failed with 8 Tab stops before; this was also an intermittent CI failure).
+## 0.4.1 — 2026-11-14
+
+A security and fix release. The images install Debian's security updates when built, which fixes two HIGH zlib CVEs
+that the 0.4.0 images carry (D-64); the ROS 2 robot is built from InOrbit's code, now that all five of ActuNode's
+conformance fixes are merged upstream (D-63).
+
+**Upgrading from 0.4.0:**
+- Pull or rebuild the images: with published images set `ACTUNODE_VERSION=0.4.1` and run `docker compose up -d`;
+  from a checkout, `git pull && docker compose up -d --build` (add `--profile ros2` if you run the ROS 2 robot).
+- **Breaking (optional ROS 2 profile only):** the `ACTUNODE_ROS2_PATCHES` build argument is removed. `1` built what
+  is now the default; `0` built the connector as pinned on 15 Oct, which is no longer available (its measurements
+  stay in docs/CONFORMANCE_ROS2_CONNECTOR.md).
+- Nothing else: logins, broker permissions, scenario files, recordings and the `actunode test` command are unchanged
+  (docs/COMPATIBILITY.md).
+
 - **Security:** the backend, simulator, runner and control-plane images install Debian's security updates when built.
   This fixes two HIGH zlib CVEs (CVE-2026-76844, CVE-2026-85091) that Docker Hub's `python:3.12-slim` still carries;
   the images released as 0.4.0 have them (D-64). **Upgrading:** rebuild (`docker compose up -d --build`) or use the
-  next release's images.
-- **Tests:** two replay tests named their sessions with a fixed date (9 Oct) and failed once it was older than
-  the 30-day retention, which deleted the files at startup; their fixture now turns retention off (the whole
-  suite also passes with `ACTUNODE_SESSIONS_KEEP_DAYS=1`, so no other test depends on the date).
+  0.4.1 images.
 - **ROS 2 robot: built from InOrbit's code, no patches (D-63).** All five fixes are merged upstream (ros_amr_interop
   #83, #85, #82 as #93, #84; vda5050_adapter_examples #14), so the robot builds the connector at `7f25082` and the
   adapter at `4c3d2ea` and passes all 9 conformance scenarios and 4 raw checks by default. `ros2/patches/` and the
   `ACTUNODE_ROS2_PATCHES` build argument are removed; setting it has no effect. **Upgrading:** rebuild the robot
   (`docker compose --profile ros2 up -d --build ros2-robot`).
+- **Accessibility:** the session actions became one Tab stop only after the browser had shown new rows, so a Tab
+  pressed in that moment could land on any of the buttons (D-60). Now set before anything sees the rows; a test
+  checks the moment they appear (it failed with 8 Tab stops before; this was also an intermittent CI failure).
+- **Tests:** two replay tests named their sessions with a fixed date (9 Oct) and failed once it was older than
+  the 30-day retention, which deleted the files at startup; their fixture now turns retention off (the whole
+  suite also passes with `ACTUNODE_SESSIONS_KEEP_DAYS=1`, so no other test depends on the date).
 - **Frontend tests no longer flake on a busy machine:** Testing Library waits up to 5 s for an element (was 1 s;
   a load average of 21 on 8 cores made 1–7 of 176 tests time out). undici, which only the tests use (through
   jsdom), updated for three advisories published 24 Oct; it is not in the served image.

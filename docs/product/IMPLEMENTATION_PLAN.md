@@ -21,7 +21,7 @@ Product prioritization belongs to the founder; engineering supplies runnable del
 | D. Conformance and regression | Done | Nine scenarios plus raw checks, report with spec citations (D-52); with the fixes 9/9 and 4/4 (D-55); all five fixes merged upstream by 14 Nov and built from InOrbit's code, weekly in CI (D-63) |
 | E. Onboarding and UX | Partly done | GETTING_STARTED, CONNECT_YOUR_ROBOT, failure catalogue, scenario gallery, message flows (D-53/D-54); UI for real robots (D-52); viewer mode and Activity panel (D-56). Open: observed new-user sessions; keyboard/zoom/screen-reader review |
 | F. External pilot | Not started | Needs a participant |
-| G. Release candidate | Done | v0.2.0, v0.3.0 and v0.4.0, each gated on its tagged commit; PR-12/13 open, so released as a preview |
+| G. Release candidate | Done | v0.2.0, v0.3.0, v0.4.0 and v0.4.1 (security patch), each gated on its tagged commit; PR-12/13 open, so released as a preview |
 
 Also delivered beyond A–G, from the full audit (D-50): per-person logins and audit trail (D-56), metrics (D-57),
 published images (D-58), scenario format version and compatibility promise (D-54), robot-scoped scenario checks

@@ -261,9 +261,9 @@ Each release's images (from 0.3.0 on) are published for amd64 and arm64 (Apple s
 Pi 4/5) with build provenance and an SBOM ([D-58](docs/DECISIONS.md)). Skip the local build:
 
 ```bash
-export ACTUNODE_IMAGES=ghcr.io/bahuncoder/actunode ACTUNODE_VERSION=0.4.0 ACTUNODE_PULL_POLICY=missing
+export ACTUNODE_IMAGES=ghcr.io/bahuncoder/actunode ACTUNODE_VERSION=0.4.1 ACTUNODE_PULL_POLICY=missing
 docker compose up -d --wait            # pulls backend, simulator, frontend; runner when first used
-gh attestation verify oci://ghcr.io/bahuncoder/actunode-backend:0.4.0 --owner Bahuncoder   # optional
+gh attestation verify oci://ghcr.io/bahuncoder/actunode-backend:0.4.1 --owner Bahuncoder   # optional
 ```
 
 Put the three variables in a `.env` file next to `docker-compose.yml` to keep them. Without them the lab builds
@@ -530,6 +530,10 @@ Offline playground with no MQTT at all (one mission through the robot state mach
 | `docs/` | Architecture, decisions, protocol notes, progress |
 
 ## Project status
+
+**v0.4.1 (14 November 2026)** is a security and fix release: images built with Debian's latest security updates
+(two zlib CVEs), the ROS 2 robot built from InOrbit's code now that all five of ActuNode's conformance fixes are
+merged upstream, and a keyboard-focus fix in the session list.
 
 **v0.4.0 (24 October 2026)** makes ActuNode runnable as a shared online service: single sign-on for labs, a
 control plane with GitHub and Google sign-in, one isolated lab per workspace behind a TLS edge (MQTT routed by

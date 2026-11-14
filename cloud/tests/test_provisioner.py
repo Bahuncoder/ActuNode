@@ -57,7 +57,7 @@ class Docker:
 def provisioner(tmp_path):
     (tmp_path / "token").write_text("prov-token\n")
     config = Config({"PROVISIONER_TOKEN_FILE": str(tmp_path / "token"), "ACTUNODE_DATA_DIR": str(tmp_path / "srv"),
-                     "ACTUNODE_CLOUD_DOMAIN": "actunode.localhost", "ACTUNODE_VERSION": "0.4.0"})  # fmt: skip
+                     "ACTUNODE_CLOUD_DOMAIN": "actunode.localhost", "ACTUNODE_VERSION": "0.4.1"})  # fmt: skip
     docker = Docker()
     client = TestClient(create_app(config, docker))
     client.headers["authorization"] = "Bearer prov-token"
@@ -94,7 +94,7 @@ def test_creating_a_workspace_renders_its_lab_and_starts_it_in_isolation(provisi
     rendered = (folder / "compose.yml").read_text()
     assert "%" not in rendered.replace("%%", "")  # every placeholder filled
     assert "Host(`acme.actunode.localhost`)" in rendered and "HostSNI(`acme.actunode.localhost`)" in rendered
-    assert "ghcr.io/bahuncoder/actunode-backend:0.4.0" in rendered and "ws-acme_front" in rendered
+    assert "ghcr.io/bahuncoder/actunode-backend:0.4.1" in rendered and "ws-acme_front" in rendered
     assert docker.calls[0] == [
         "docker",
         "compose",
@@ -228,7 +228,7 @@ def upgrade_setup(provisioner):
     docker.calls.clear()
     docker.connected.clear()  # as if the edge had been recreated
     newer = Config({"PROVISIONER_TOKEN_FILE": str(config.workspaces.parent.parent / "token"),
-                    "ACTUNODE_DATA_DIR": str(config.data), "ACTUNODE_VERSION": "0.4.0"})  # fmt: skip
+                    "ACTUNODE_DATA_DIR": str(config.data), "ACTUNODE_VERSION": "0.4.1"})  # fmt: skip
     return client, docker, config, newer
 
 
@@ -237,10 +237,10 @@ def test_upgrading_rerenders_every_lab_and_recreates_the_running_ones(provisione
     client = TestClient(create_app(newer, docker))
     client.headers["authorization"] = "Bearer prov-token"
     assert client.post("/upgrade").json() == {
-        "version": "0.4.0", "upgraded": ["acme"], "rendered": ["globex"], "failed": [],
+        "version": "0.4.1", "upgraded": ["acme"], "rendered": ["globex"], "failed": [],
     }  # fmt: skip
     for slug in ("acme", "globex"):
-        assert ":0.4.0" in (config.workspaces / slug / "compose.yml").read_text()
+        assert ":0.4.1" in (config.workspaces / slug / "compose.yml").read_text()
     ups = [i for i, c in enumerate(docker.calls) if c[-3:] == ["up", "-d", "--wait"]]
     assert len(ups) == 1 and "ws-acme" in docker.calls[ups[0]]
     connects = [i for i, c in enumerate(docker.calls) if c[:3] == ["docker", "network", "connect"]]
@@ -258,7 +258,7 @@ def test_an_upgrade_failure_on_one_lab_does_not_stop_the_others(provisioner):
         return original(args, timeout)
 
     assert upgrade_all(newer, flaky) == {
-        "version": "0.4.0", "upgraded": ["globex"], "rendered": [], "failed": ["acme"],
+        "version": "0.4.1", "upgraded": ["globex"], "rendered": [], "failed": ["acme"],
     }  # fmt: skip
 
 

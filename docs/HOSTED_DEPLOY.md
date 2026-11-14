@@ -36,7 +36,7 @@ hcloud_token   = "<the Hetzner Cloud token>"
 ssh_public_key = "ssh-ed25519 AAAA... you@laptop"
 admin_cidrs    = ["<your public IP>/32"]   # who may SSH in
 location       = "nbg1"                    # or fsn1, hel1
-release        = "v0.4.0"
+release        = "v0.4.1"
 ```
 
 Then (Terraform runs in a container):

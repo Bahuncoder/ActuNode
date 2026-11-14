@@ -50,7 +50,7 @@ variable "domain" {
 variable "release" {
   description = "The ActuNode release (git tag) to deploy; it must include the hosted service (v0.4.0 or later)"
   type        = string
-  default     = "v0.4.0"
+  default     = "v0.4.1"
 }
 
 variable "volume_gb" {
