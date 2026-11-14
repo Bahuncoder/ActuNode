@@ -4,6 +4,10 @@ What changed, per commit, newest first. Status and plans are in [docs/PROGRESS.m
 
 ## Unreleased
 
+- **Security:** the backend, simulator, runner and control-plane images install Debian's security updates when built.
+  This fixes two HIGH zlib CVEs (CVE-2026-76844, CVE-2026-85091) that Docker Hub's `python:3.12-slim` still carries;
+  the images released as 0.4.0 have them (D-64). **Upgrading:** rebuild (`docker compose up -d --build`) or use the
+  next release's images.
 - **Tests:** two replay tests named their sessions with a fixed date (9 Oct) and failed once it was older than
   the 30-day retention, which deleted the files at startup; their fixture now turns retention off (the whole
   suite also passes with `ACTUNODE_SESSIONS_KEEP_DAYS=1`, so no other test depends on the date).

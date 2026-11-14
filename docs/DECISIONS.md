@@ -1154,3 +1154,17 @@ remove `ros2/patches/`, the build argument and the patched/unpatched CI matrix. 
 report stays as a dated measurement of the old pins; the patches remain in the git history. `ACTUNODE_ROS2_PATCHES`
 is ignored if still set. A new deviation goes upstream as a pull request first, and becomes a patch here only if the
 lab needs it before the merge.
+
+## D-64 · Images install Debian's security updates at build time; scan exceptions expire
+14 Nov 2026 · Accepted
+
+**Context.** On 14 Nov the image scan failed on two HIGH CVEs in Debian 13's zlib1g (CVE-2026-76844, CVE-2026-85091).
+Debian had shipped the fix (`+deb13u1`), but Docker Hub's `python:3.12-slim` (built 5 Nov) had not been rebuilt, and
+every ActuNode Python image inherits its packages. The images released as 0.4.0 carry the old zlib.
+**Decision.** The backend, simulator, runner and control-plane images run `apt-get upgrade` right after `FROM`, so a
+build takes Debian's security fixes without waiting for the base image. The bare `python:3.12-slim`, used as-is only
+for short helper jobs (TLS certificates, backups, a workspace helper) that write no untrusted gzip data, gets the two
+CVEs in `.trivyignore` with an expiry date (28 Nov). Every entry there needs a reason and an expiry.
+**Consequences.** Builds taken on different days can differ in Debian packages: the price of not shipping a known,
+already-fixed vulnerability. If the base image is still unfixed on 28 Nov, the scan fails again and the exception is
+reviewed. Not covered yet: CI scans neither the control plane's images nor the `cloud/` Dockerfiles.

@@ -1,5 +1,7 @@
 # actunode test in a container (D-49): docker compose run --rm runner test scenarios/
 FROM python:3.12-slim
+# Debian's security fixes reach the python base image days later (D-64): install them at build time.
+RUN apt-get update && apt-get upgrade -y && rm -rf /var/lib/apt/lists/*
 WORKDIR /src
 COPY pyproject.toml README.md requirements.txt ./
 # Dependencies from the bounded requirements file, then the package itself (build tool pinned to a range).

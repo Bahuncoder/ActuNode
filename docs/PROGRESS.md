@@ -648,7 +648,11 @@ Compose project next to the founder's running stack). Also: main CI had failed o
 carry a fixed date (9 Oct): the 30-day retention deleted them at startup once that date was old enough. Their fixture
 now turns retention off (de1b99b; the whole suite also passes with 1-day retention). Reviewed the company vision
 against the project: the build is ahead of its six-month roadmap, customer discovery has not started (0 of 30
-conversations); the first outreach email went out on 14 Nov (record in the private docs/company/).
+conversations); the first outreach email went out on 14 Nov (record in the private docs/company/). Security scan: two new HIGH
+zlib CVEs in Docker Hub's `python:3.12-slim` (Debian's fix not in it yet); ActuNode's Python images now install
+Debian's security updates at build time, and the bare image, used only for helper jobs, has an exception that
+expires 28 Nov (D-64). Verified locally with Trivy: all four images clean without exceptions. Gap found: CI scans
+neither the control plane's images nor `cloud/` Dockerfiles (the provisioner image runs as root); not changed yet.
 
 ### Fri 13 Nov 2026: InOrbit's reviews of the upstream pull requests
 InOrbit reviewed all five (D-55). Merged: ros_amr_interop #83 (unknown maps) and #85 (on_connect log) on 2 Nov,
