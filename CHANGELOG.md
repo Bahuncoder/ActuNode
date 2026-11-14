@@ -7,8 +7,11 @@ What changed, per commit, newest first. Status and plans are in [docs/PROGRESS.m
 - **Tests:** two replay tests named their sessions with a fixed date (9 Oct) and failed once it was older than
   the 30-day retention, which deleted the files at startup; their fixture now turns retention off (the whole
   suite also passes with `ACTUNODE_SESSIONS_KEEP_DAYS=1`, so no other test depends on the date).
-- **Upstream:** four of the five ROS 2 fixes are merged at InOrbit (ros_amr_interop #83, #85, #82 as #93;
-  vda5050_adapter_examples #14); #84 answered its review. Status in ros2/patches/README.md.
+- **ROS 2 robot: built from InOrbit's code, no patches (D-63).** All five fixes are merged upstream (ros_amr_interop
+  #83, #85, #82 as #93, #84; vda5050_adapter_examples #14), so the robot builds the connector at `7f25082` and the
+  adapter at `4c3d2ea` and passes all 9 conformance scenarios and 4 raw checks by default. `ros2/patches/` and the
+  `ACTUNODE_ROS2_PATCHES` build argument are removed; setting it has no effect. **Upgrading:** rebuild the robot
+  (`docker compose --profile ros2 up -d --build ros2-robot`).
 - **Frontend tests no longer flake on a busy machine:** Testing Library waits up to 5 s for an element (was 1 s;
   a load average of 21 on 8 cores made 1–7 of 176 tests time out). undici, which only the tests use (through
   jsdom), updated for three advisories published 24 Oct; it is not in the served image.

@@ -4,10 +4,14 @@ What a VDA 5050 master control meets when it drives a ROS 2 robot through InOrbi
 measured in the ActuNode lab. Written for robot and connector developers, integrators choosing a connector, and
 the connector's maintainers (upstream reports: [research/upstream/](research/upstream/)).
 
+**Status 14 Nov 2026 (D-63):** all five fixes below are merged upstream, and the lab now builds InOrbit's code as
+merged, with no patches: **every check passes (9/9 scenarios, 4/4 raw checks)**. The measurements in this report
+describe the commits pinned on 15 Oct.
+
 **Most failures are in the example adapter, not the connector** (16 Oct, D-55): the connector passes the robot's
 state through and handles navigation failure correctly; InOrbit's example TurtleBot3 adapter never fills four state
 fields and reports every Nav2 goal as succeeded. A real robot's vendor writes its own adapter. See
-[Where each failure is](#where-each-failure-is) and [Fixes](#fixes-ros2patches): with them, every check passes.
+[Where each failure is](#where-each-failure-is) and [Fixes](#fixes-merged-upstream): with them, every check passes.
 
 ## Robot under test
 
@@ -78,11 +82,13 @@ Located in the code at the pinned commits (16 Oct, D-55). C = connector (`vda505
 | Validation rejections typed `validationOrder` | C | `OrderRejectErrors.VALIDATION_ERROR = "validationOrder"`; VDA 5050's type is `validationError`. Found while testing the map check |
 | Stuck after a goal Nav2 refuses (e.g. unknown frame) | A | When Nav2 rejects a goal, the adapter waits forever; the robot then refuses every new order (`orderUpdateError`) until restarted. Seen running the raw checks twice in a row |
 
-## Fixes (ros2/patches/)
+## Fixes (merged upstream)
 
-Five patches ([ros2/patches/](../ros2/patches/README.md)), proposed upstream on 17 Oct (by 12 Nov four merged, #82 as #93; #84 in review) as pull requests [ros_amr_interop #82](https://github.com/inorbit-ai/ros_amr_interop/pull/82), [#83](https://github.com/inorbit-ai/ros_amr_interop/pull/83), [#84](https://github.com/inorbit-ai/ros_amr_interop/pull/84), [#85](https://github.com/inorbit-ai/ros_amr_interop/pull/85) and [vda5050_adapter_examples #14](https://github.com/inorbit-ai/vda5050_adapter_examples/pull/14), applied only with
-`ACTUNODE_ROS2_PATCHES=1 docker compose --profile ros2 up -d --build ros2-robot`; the default build stays as pinned,
-so the results above remain reproducible.
+Five fixes, proposed upstream on 17 Oct as pull requests and all merged by 14 Nov: [ros_amr_interop #83](https://github.com/inorbit-ai/ros_amr_interop/pull/83) and
+[#85](https://github.com/inorbit-ai/ros_amr_interop/pull/85) on 2 Nov, [#82](https://github.com/inorbit-ai/ros_amr_interop/pull/82) on 12 Nov as [#93](https://github.com/inorbit-ai/ros_amr_interop/pull/93) (taken over by another contributor with our commit),
+[vda5050_adapter_examples #14](https://github.com/inorbit-ai/vda5050_adapter_examples/pull/14) on 12 Nov and [#84](https://github.com/inorbit-ai/ros_amr_interop/pull/84) on 14 Nov. Until then the lab applied them as
+optional patches (`ros2/patches/`, D-55; removed on 14 Nov, in the git history). Since 14 Nov it builds the connector
+at `7f25082` and the adapter at `4c3d2ea`, with no patches (D-63).
 
 - **Adapter:** reports Nav2's real result (succeeded, cancelled, aborted; a refused goal counts as aborted) and fills
   `operatingMode` AUTOMATIC, `positionInitialized`, `driving` and the battery (a `battery_charge` parameter, 100 by
@@ -95,9 +101,17 @@ so the results above remain reproducible.
 - **Connector:** an order the bridge cannot decode is reported as a WARNING `validationError` (with `orderId`) instead
   of being dropped; a refused broker login is logged and retried instead of killing the MQTT thread.
 
+The merged versions add to these: #93 also turns a missing `theta` into yaw 0 in `get_pose_from_node` and rejects
+`"theta": null`; #84 also rejects fields of the wrong type, out of range or unknown; in #14 the maintainer made a
+goal that is not SUCCEEDED count as aborted.
+
 Results with the patches (16 Oct, final build): **9/9 scenarios, 4/4 raw checks**, on repeated runs back to back; the
 validator finds no issue in the robot's state messages. Unpatched, re-measured the same day: 4/9 and 0/4, as above. A connector whose login the broker refuses: unpatched,
 the `TypeError` and no further attempt; patched, the refusal logged and retried with back-off. Nothing found in this report is left unfixed by the patches.
+
+**With InOrbit's merged code (14 Nov, no patches): 9/9 scenarios, 4/4 raw checks**, and no schema issue in the
+robot's state messages (`operatingMode` included). The e2e test and the weekly ROS 2 workflow now expect exactly
+this.
 
 The raw checks script was corrected while testing the patches: it now cancels any open order before and after, and
 counts only errors raised during the run. Before, a robot that had refused the unknown-map order because the

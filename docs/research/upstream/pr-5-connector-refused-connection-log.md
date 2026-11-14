@@ -1,6 +1,6 @@
 # PR draft for `inorbit-ai/ros_amr_interop`: the MQTT thread dies when the broker refuses the connection
 
-Patch: [ros2/patches/ros_amr_interop/0004-bridge-log-refused-connection.patch](../../../ros2/patches/ros_amr_interop/0004-bridge-log-refused-connection.patch)
+Patch: `ros2/patches/ros_amr_interop/0004-bridge-log-refused-connection.patch` (removed 14 Nov after the merge, D-63; in the git history)
 (against `de36489`, applies on its own; one line in `mqtt_bridge.py`).
 
 ## Title

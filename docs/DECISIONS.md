@@ -1139,3 +1139,18 @@ takes sole-owned workspaces with it and retires the handle.
 upgrade interrupts each running lab for a few seconds and ends its lab sessions. Backups live on the same server until
 the off-site copy is configured (a phase 2 gate for outside users, with the security review). The idle timer resets
 when a lab restarts.
+
+## D-63 · Build the ROS 2 robot from InOrbit's merged code; remove the patches
+14 Nov 2026 · Accepted (closes D-55's upstream path)
+
+**Context.** D-55 kept five conformance fixes as optional patches, applied only with `ACTUNODE_ROS2_PATCHES=1`, so the
+measurement of the pinned connector (4/9 scenarios, 0/4 raw checks) stayed reproducible while the fixes were proposed
+upstream. By 14 Nov InOrbit had merged all five (ros_amr_interop #83, #85, #82 as #93, #84; vda5050_adapter_examples
+#14), some with small additions of their own.
+**Decision.** Pin ros_amr_interop to `7f2508255ae5` (humble-devel) and vda5050_adapter_examples to `4c3d2ea9c678`;
+remove `ros2/patches/`, the build argument and the patched/unpatched CI matrix. The controller always gets
+`known_map_ids` (`map`, `warehouse`), now an upstream parameter. The e2e test expects no known failures.
+**Consequences.** The default robot passes every check (9/9, 4/4; measured 14 Nov, and weekly in CI). The 15 Oct
+report stays as a dated measurement of the old pins; the patches remain in the git history. `ACTUNODE_ROS2_PATCHES`
+is ignored if still set. A new deviation goes upstream as a pull request first, and becomes a patch here only if the
+lab needs it before the merge.

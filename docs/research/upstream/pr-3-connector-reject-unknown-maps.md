@@ -1,6 +1,6 @@
 # PR draft for `inorbit-ai/ros_amr_interop`: reject orders on unknown maps; fix the validationError type
 
-Patch: [ros2/patches/ros_amr_interop/0002-reject-orders-on-unknown-maps.patch](../../../ros2/patches/ros_amr_interop/0002-reject-orders-on-unknown-maps.patch)
+Patch: `ros2/patches/ros_amr_interop/0002-reject-orders-on-unknown-maps.patch` (removed 14 Nov after the merge, D-63; in the git history)
 (applies after PR 2's patch, against `de36489`; one file, `vda5050_connector_py/vda5050_controller.py`).
 
 ## Title

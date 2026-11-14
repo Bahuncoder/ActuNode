@@ -1,6 +1,6 @@
 # PR draft for `inorbit-ai/ros_amr_interop`: nodePosition.theta is optional
 
-Patch: [ros2/patches/ros_amr_interop/0001-theta-optional.patch](../../../ros2/patches/ros_amr_interop/0001-theta-optional.patch)
+Patch: `ros2/patches/ros_amr_interop/0001-theta-optional.patch` (removed 14 Nov after the merge, D-63; in the git history)
 (against `de36489`, `humble-devel`; three files in `vda5050_connector/vda5050_connector_py/`).
 
 ## Title

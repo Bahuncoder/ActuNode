@@ -250,8 +250,6 @@ services:
     logging: *logging
     build:
       context: ./ros2
-      args:
-        ACTUNODE_ROS2_PATCHES: ${ACTUNODE_ROS2_PATCHES:-0}
     environment:
       ACTUNODE_ROS2_MANUFACTURER: ROS2
       ACTUNODE_ROS2_SERIAL: nav2_01

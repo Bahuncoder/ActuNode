@@ -1,6 +1,6 @@
 # PR draft for `inorbit-ai/ros_amr_interop`: reject orders that cannot be decoded instead of dropping them
 
-Patch: [ros2/patches/ros_amr_interop/0003-report-undecodable-orders.patch](../../../ros2/patches/ros_amr_interop/0003-report-undecodable-orders.patch)
+Patch: `ros2/patches/ros_amr_interop/0003-report-undecodable-orders.patch` (removed 14 Nov after the merge, D-63; in the git history)
 (against `de36489`, applies on its own; `mqtt_bridge.py`, `vda5050_controller.py`).
 
 ## Title

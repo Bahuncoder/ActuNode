@@ -1,6 +1,6 @@
 # PR draft for `inorbit-ai/vda5050_adapter_examples`: tb3 adapter reports Nav2's result and fills the VDA 5050 state
 
-Patch: [ros2/patches/vda5050_adapter_examples/0001-tb3-adapter-report-state-and-nav-result.patch](../../../ros2/patches/vda5050_adapter_examples/0001-tb3-adapter-report-state-and-nav-result.patch)
+Patch: `ros2/patches/vda5050_adapter_examples/0001-tb3-adapter-report-state-and-nav-result.patch` (removed 14 Nov after the merge, D-63; in the git history)
 (against `a7ad9a7`, one file, `vda5050_tb3_adapter/vda5050_tb3_adapter/tb3_adapter.py`).
 
 ## Title

@@ -255,7 +255,6 @@ can go first).
 | `ACTUNODE_USERS_FILE` | backend (per-person logins, D-56) | `users` next to the API token file |
 | `ACTUNODE_AUDIT_FILE` | backend (audit trail, D-56) | `<sessions dir>/.audit.jsonl` |
 | `ACTUNODE_IMAGES`, `ACTUNODE_VERSION`, `ACTUNODE_PULL_POLICY` | Docker Compose: run published images instead of building (D-58) | `actunode`, `local`, `build` |
-| `ACTUNODE_ROS2_PATCHES` | Docker Compose: build the ROS 2 robot with `ros2/patches/` (D-55) | `0` |
 | `ACTUNODE_SIM_ROBOTS` | simulator | `3` (1–50) |
 | `ACTUNODE_VDA_INTERFACE` | backend, simulator | `uagv` |
 | `ACTUNODE_VDA_MAJOR_VERSION` | backend (topic version of orders it sends) | `v2` |
@@ -298,5 +297,5 @@ message conditions read the live feed, `client.Feed`, a WebSocket reader thread 
 | End to end | `pytest tests/e2e` (needs Docker; starts its own isolated stack, D-16); includes real-browser tests in Chromium via Playwright (`playwright install chromium` once, D-29) | ✅ |
 | Load | `tests/e2e/.venv/bin/python tests/load/run_load.py` (needs Docker; isolated stack; 10/25/50 robots with missions; ~4 min; thresholds and how to read results in [tests/load/README.md](../tests/load/README.md); latest summary in `tests/load/results/latest.md`) | Weekly (Mondays) and on demand in CI (`.github/workflows/load.yml`), also by hand |
 | Security scans | `.github/workflows/security.yml` | Weekly security scans in CI |
-| ROS 2 robot | `ACTUNODE_E2E_ROS2=1 pytest tests/e2e/test_13_ros2_robot.py` (add `ACTUNODE_ROS2_PATCHES=1` for the patched build) | Weekly and on `ros2/` changes, both builds (`.github/workflows/ros2.yml`, D-55) |
+| ROS 2 robot | `ACTUNODE_E2E_ROS2=1 pytest tests/e2e/test_13_ros2_robot.py` | Weekly and on `ros2/` changes (`.github/workflows/ros2.yml`, D-55, D-63) |
 | Images | `.github/workflows/images.yml` | On release tags (publishes); by hand (builds both architectures only) (D-58) |

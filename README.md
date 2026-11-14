@@ -539,7 +539,8 @@ accessibility review.
 
 **v0.3.0 (17 October 2026)** closes the full audit: one web login per person with viewer and operator roles and
 an audit trail of who changed what; Prometheus metrics, including the broker's own load; published multi-architecture
-images with provenance; fixes for every conformance failure of the ROS 2 robot, proposed upstream as pull requests;
+images with provenance; fixes for every conformance failure of the ROS 2 robot, proposed upstream as pull requests (all five merged by
+InOrbit by 14 November);
 scenario checks scoped to one robot for shared labs.
 
 **v0.2.0 (16 October 2026)** completed Phase 2 of the plan ([docs/PLAN.md](docs/PLAN.md)): scenario tests with timing

@@ -18,7 +18,7 @@ Product prioritization belongs to the founder; engineering supplies runnable del
 | A. Baseline and discovery | Engineering part done; discovery open | Gates re-run per release (CI on each tagged commit); fresh-clone check of the quick start (D-54); pilot recruits and interviews not yet done |
 | B. Connector feasibility | Done | InOrbit `ros_amr_interop` + `vda5050_adapter_examples`, pinned commits, licence and maintenance checked (D-51) |
 | C. Independent stack integration | Done | Compose profile `ros2`, scoped TLS login, map alias, mission and cancel (D-51) |
-| D. Conformance and regression | Done | Nine scenarios plus raw checks, report with spec citations (D-52); patches 9/9 and 4/4, unpatched 4/9 and 0/4, both weekly in CI (D-55); five upstream PRs open |
+| D. Conformance and regression | Done | Nine scenarios plus raw checks, report with spec citations (D-52); with the fixes 9/9 and 4/4 (D-55); all five fixes merged upstream by 14 Nov and built from InOrbit's code, weekly in CI (D-63) |
 | E. Onboarding and UX | Partly done | GETTING_STARTED, CONNECT_YOUR_ROBOT, failure catalogue, scenario gallery, message flows (D-53/D-54); UI for real robots (D-52); viewer mode and Activity panel (D-56). Open: observed new-user sessions; keyboard/zoom/screen-reader review |
 | F. External pilot | Not started | Needs a participant |
 | G. Release candidate | Done | v0.2.0, v0.3.0 and v0.4.0, each gated on its tagged commit; PR-12/13 open, so released as a preview |
@@ -35,7 +35,7 @@ published images (D-58), scenario format version and compatibility promise (D-54
 | I. Accessibility and interaction review — **done 19 Oct** (screen reader pass open) | 2–3 days / engineering | The design brief's checks on the current UI: keyboard-only operation of every control, visible focus, labels, 200% zoom, 390 px width, contrast of the token pairs, one screen reader pass, reduced motion; the interaction requirements (units, unknown-not-zero, deletion confirmation, busy states, copy patterns) checked one by one; fixes with tests | A written review with each item passed, fixed, or recorded as a known gap. **Met:** [ACCESSIBILITY_REVIEW_2026-10-19.md](../ACCESSIBILITY_REVIEW_2026-10-19.md) |
 | J. Observed onboarding (PR-12) | Founder: 3 participants; engineering: fixes, 1–3 days | Sessions with GETTING_STARTED only; time, errors, interventions; prioritized fixes. Kit: [ONBOARDING_STUDY.md](../research/ONBOARDING_STUDY.md) | ≥2 of 3 finish within 20 minutes without help, or the gaps are fixed and re-tested |
 | K. External pilot (PR-13) | Founder plus 1–2 engineering days | One outside integrator's incident or reaction scenario, consented and redacted. Guide: [PILOT_GUIDE.md](../research/PILOT_GUIDE.md) | Outcome recorded, or the release keeps the preview designation |
-| L. Upstream follow-through | Engineering, as reviews arrive | Answer InOrbit's reviews on PRs #82–#85 and #14; when one merges, move the pin in `ros2/Dockerfile` and delete its patch. **13 Nov:** #83, #85, #14 merged, #82 merged as #93, #84 review answered; moving the pins is next | No patch kept for a merged fix |
+| L. Upstream follow-through | Done (14 Nov) | Answer InOrbit's reviews on PRs #82–#85 and #14; when one merges, move the pin in `ros2/Dockerfile` and delete its patch. **13 Nov:** #83, #85, #14 merged, #82 merged as #93, #84 review answered. **14 Nov:** #84 merged; pins moved to the merged commits, every patch removed, 9/9 and 4/4 (D-63) | No patch kept for a merged fix |
 | M. Discovery-gated (PR-14) | Only with user evidence | Live site-broker bridge, configurable simulated manufacturer, duplicate-mission detection | A user need recorded in PROGRESS first |
 
 | N. Hosted service (D-61) | Phase 1 about 2–3 weeks, phase 2 2–3 weeks, phase 3 2–4 weeks / engineering; founder: accounts (Hetzner, DNS, OAuth apps) | Control plane at app.actunode.com, one lab per workspace, Traefik edge, SSO into labs, Hetzner infrastructure; then operations and security; then billing ([HOSTED_SERVICE.md](../HOSTED_SERVICE.md)) | Phase 1: a workspace end to end locally; phase 2: security review and restore drill before outside users |
@@ -73,7 +73,7 @@ redacted details.
 | PR-04/05, TR-03/05 | Simulator controls, hub and UI panels | Fault behavior, malformed traffic, reconnect/slow-client checks |
 | PR-06/07, TR-04 | Recorder/readers/replayer | Upload/retention/crash/replay-conflict and bounded-input checks |
 | PR-08/09, TR-06 | CLI, sample scenarios and outside clients | Docker scenarios, exit codes, recording ownership, cleanup, robot-scoped checks |
-| PR-11, TR-08 | Independent stack, conformance report, patches | Weekly ROS 2 workflow, unpatched and patched |
+| PR-11, TR-08 | Independent stack, conformance report | Weekly ROS 2 workflow on InOrbit's merged code |
 | PR-12, TR-09 | Onboarding instructions and UX fixes | Package J sessions; package I review |
 | PR-13 | External incident/scenario and feedback | Package K |
 | PR-16, TR-11 | `/api/metrics` | Unit tests; e2e scrape in both modes |
@@ -90,7 +90,7 @@ checkout.
 |---|---|
 | Added per-message work costs throughput | H measures it; counters can be batched if a threshold is missed |
 | Pilot recruitment takes longer than development | Ship previews; never describe internal tests as market validation |
-| Upstream does not merge the patches | Keep them optional and reproducible; the unpatched measurement stays the default |
+| Upstream does not merge the patches | Resolved 14 Nov: all five merged; the lab builds InOrbit's code without patches (D-63) |
 | UI fixes obscure evidence | Preserve raw message access, truncation markers and contract fixtures |
 | Scope grows into production orchestration | Keep planning/avoidance/safety and hosted multitenancy out |
 
