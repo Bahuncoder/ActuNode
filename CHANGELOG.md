@@ -4,6 +4,9 @@ What changed, per commit, newest first. Status and plans are in [docs/PROGRESS.m
 
 ## Unreleased
 
+- **Tests:** two replay tests named their sessions with a fixed date (9 Oct) and failed once it was older than
+  the 30-day retention, which deleted the files at startup; their fixture now turns retention off (the whole
+  suite also passes with `ACTUNODE_SESSIONS_KEEP_DAYS=1`, so no other test depends on the date).
 - **Upstream:** four of the five ROS 2 fixes are merged at InOrbit (ros_amr_interop #83, #85, #82 as #93;
   vda5050_adapter_examples #14); #84 answered its review. Status in ros2/patches/README.md.
 - **Frontend tests no longer flake on a busy machine:** Testing Library waits up to 5 s for an element (was 1 s;

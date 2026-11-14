@@ -1,5 +1,6 @@
 import json
 from collections import OrderedDict
+from dataclasses import replace
 from datetime import UTC, datetime
 
 import pytest
@@ -81,6 +82,9 @@ def payloads(monkeypatch, tmp_path):
     monkeypatch.setattr(mqtt_bridge, "connected", True)
     monkeypatch.setattr(mqtt_bridge, "publish", lambda topic, payload, qos=0: messages.append(payload))
     monkeypatch.setattr(sessions.recorder, "directory", tmp_path)
+    # The ids carry a fixed date: without this, retention deletes them at startup once that date is older
+    # than ACTUNODE_SESSIONS_KEEP_DAYS (30 by default)
+    monkeypatch.setattr(sessions, "settings", replace(sessions.settings, sessions_keep_days=0))
     monkeypatch.setattr(sessions.replayer, "ended_at", None)
     monkeypatch.setattr(sessions.replayer, "last_published", OrderedDict())
     return messages
