@@ -1,4 +1,4 @@
-FROM python:3.12-slim
+FROM python:3.15-slim
 # Debian's security fixes reach the python base image days later (D-64): install them at build time.
 RUN apt-get update && apt-get upgrade -y && rm -rf /var/lib/apt/lists/*
 
