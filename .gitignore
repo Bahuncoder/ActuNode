@@ -50,3 +50,6 @@ test-results/
 *.tfstate
 *.tfstate.*
 *.tfvars
+
+# VS Code Local History snapshots
+.history/
