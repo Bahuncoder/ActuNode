@@ -154,6 +154,22 @@ describe('keyboard: long regions (D-60)', () => {
     expect(document.activeElement?.getAttribute('data-action')).toBe('replay')
   })
 
+  it('the actions are one Tab stop from the moment the sessions appear', async () => {
+    // Not one render later: a Tab pressed while the rows are new must not land on any of the buttons.
+    vi.mocked(api.fetchSessions).mockResolvedValue([session('s1'), session('s2')] as never)
+    vi.mocked(api.fetchSessionStorage).mockResolvedValue({ keepDays: 0, maxTotalMb: 0, usedMb: 0, sessions: 2 })
+    const { container } = render(<RecorderPanel recording={null} recordingStopped={null as never} replay={null} readOnly={false} />)
+    const stopsWhenShown: number[] = []
+    const observer = new MutationObserver(() => {
+      if (stopsWhenShown.length || container.querySelectorAll('tr[data-session]').length < 2) return
+      stopsWhenShown.push(Array.from(container.querySelectorAll<HTMLElement>('[data-action]')).filter((el) => el.tabIndex === 0 && !(el as HTMLButtonElement).disabled).length)
+    })
+    observer.observe(container, { childList: true, subtree: true })
+    await waitFor(() => expect(stopsWhenShown).toHaveLength(1))
+    observer.disconnect()
+    expect(stopsWhenShown).toEqual([1])
+  })
+
   it('a viewer moves only through what it can use', async () => {
     const { stops } = await table(true)
     const [first] = stops()

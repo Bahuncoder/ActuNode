@@ -653,6 +653,9 @@ zlib CVEs in Docker Hub's `python:3.12-slim` (Debian's fix not in it yet); ActuN
 Debian's security updates at build time, and the bare image, used only for helper jobs, has an exception that
 expires 28 Nov (D-64). Verified locally with Trivy: all four images clean without exceptions. Gap found: CI scans
 neither the control plane's images nor `cloud/` Dockerfiles (the provisioner image runs as root); not changed yet.
+Then CI failed once on a frontend keyboard test: the session actions' single Tab stop (D-60) was set in a passive
+effect, after the rows were on screen; a new test observing that moment failed every time (8 stops, not 1). Now a
+layout effect; 177 frontend tests, lint and type check green.
 
 ### Fri 13 Nov 2026: InOrbit's reviews of the upstream pull requests
 InOrbit reviewed all five (D-55). Merged: ros_amr_interop #83 (unknown maps) and #85 (on_connect log) on 2 Nov,

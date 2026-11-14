@@ -1,4 +1,4 @@
-import { memo, useEffect, useRef, useState, type FocusEvent, type KeyboardEvent } from 'react'
+import { memo, useEffect, useLayoutEffect, useRef, useState, type FocusEvent, type KeyboardEvent } from 'react'
 import {
   deleteSession,
   fetchRecording,
@@ -284,10 +284,11 @@ function RecorderPanel({
   const elapsed = recording ? Math.max(0, (now - Date.parse(recording.startedAt)) / 1000) : 0
 
   // The session actions are one Tab stop (D-60): arrows move between them, left/right in a session, up/down between
-  // sessions; disabled ones are skipped. Kept on the DOM, so the buttons need no extra props.
+  // sessions; disabled ones are skipped. Kept on the DOM, so the buttons need no extra props. A layout effect: set
+  // before anything sees the new rows, so a Tab pressed then cannot land on every button.
   const actionsRef = useRef<HTMLTableSectionElement>(null)
   const lastAction = useRef<string | null>(null)
-  useEffect(() => {
+  useLayoutEffect(() => {
     const all = actionRows(actionsRef.current).flat()
     const current = all.find((el) => actionKey(el) === lastAction.current) ?? all[0]
     for (const el of all) el.tabIndex = el === current ? 0 : -1

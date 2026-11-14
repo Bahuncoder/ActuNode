@@ -4,6 +4,9 @@ What changed, per commit, newest first. Status and plans are in [docs/PROGRESS.m
 
 ## Unreleased
 
+- **Accessibility:** the session actions became one Tab stop only after the browser had shown new rows, so a Tab
+  pressed in that moment could land on any of the buttons (D-60). Now set before anything sees the rows; a test
+  checks the moment they appear (it failed with 8 Tab stops before; this was also an intermittent CI failure).
 - **Security:** the backend, simulator, runner and control-plane images install Debian's security updates when built.
   This fixes two HIGH zlib CVEs (CVE-2026-76844, CVE-2026-85091) that Docker Hub's `python:3.12-slim` still carries;
   the images released as 0.4.0 have them (D-64). **Upgrading:** rebuild (`docker compose up -d --build`) or use the
