@@ -531,7 +531,7 @@ Offline playground with no MQTT at all (one mission through the robot state mach
 
 ## Project status
 
-**v0.4.1 (14 November 2026)** is a security and fix release: images built with Debian's latest security updates
+**v0.4.1 (15 November 2026)** is a security and fix release: images built with Debian's latest security updates
 (two zlib CVEs), the ROS 2 robot built from InOrbit's code now that all five of ActuNode's conformance fixes are
 merged upstream, and a keyboard-focus fix in the session list.
 

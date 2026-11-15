@@ -4,7 +4,7 @@ What changed, per commit, newest first. Status and plans are in [docs/PROGRESS.m
 
 ## Unreleased
 
-## 0.4.1 — 2026-11-14
+## 0.4.1 — 2026-11-15
 
 A security and fix release. The images install Debian's security updates when built, which fixes two HIGH zlib CVEs
 that the 0.4.0 images carry (D-64); the ROS 2 robot is built from InOrbit's code, now that all five of ActuNode's
