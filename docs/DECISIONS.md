@@ -1181,4 +1181,6 @@ CI jobs passing (`lint`, `backend`, `simulator`, `cli`, `cloud`, `frontend`, `sc
 required (one maintainer). Administrators are not enforced, so the owner can still push directly.
 **Consequences.** Nobody can rewrite or delete main's history. Renaming a CI job or changing the matrix must update the
 protection (noted in ci.yml). Pushing directly stays possible for the owner, so the checks before each push (tests,
-CI watched after) remain the safeguard for that path. Secret scanning with push protection was already on.
+CI watched after) remain the safeguard for that path. Secret scanning with push protection was already on; the same
+day the dependency graph, Dependabot alerts and Dependabot security updates were turned on (0 open alerts), so a
+published vulnerability in a dependency now opens a pull request by itself, next to the weekly version updates.
