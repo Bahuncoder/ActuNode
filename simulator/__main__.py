@@ -80,7 +80,12 @@ def step(connections, tick: int, ticks_per_publish: int) -> None:
         if robot.factsheet_requested:
             robot.factsheet_requested = False
             connection.publish_factsheet()
-        if periodic or robot.state_requested or robot.event_signature() != before:
+        if robot.batched_every_s is not None:
+            # BATCHED_STATE: only the robot's own clock and explicit requests; no events, no lab-wide tick.
+            publish = robot.batch_due() or robot.state_requested
+        else:
+            publish = periodic or robot.state_requested or robot.event_signature() != before
+        if publish:
             robot.state_requested = False
             connection.publish_state()
         connection.publish_malformed()  # INVALID_PAYLOAD: one per tick, after the normal state

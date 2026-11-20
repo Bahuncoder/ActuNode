@@ -1,9 +1,13 @@
 import asyncio
+import json
 import logging
 import threading
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI, Request, WebSocket, WebSocketDisconnect
+from fastapi.encoders import jsonable_encoder
+from fastapi.exceptions import RequestValidationError
+from fastapi.responses import JSONResponse
 
 from app import audit, auth, docs, failures, metrics, missions, sessions, sso, vda5050
 from app.activity import activity
@@ -43,6 +47,23 @@ app = FastAPI(
     **docs.app_options(settings.require_login),
 )
 docs.add_docs(app, settings.require_login)
+
+
+@app.exception_handler(RequestValidationError)
+async def validation_error(_request: Request, exc: RequestValidationError) -> JSONResponse:
+    """422 as usual, but an error that echoes a NaN/Infinity from the body (JSON text the stdlib accepts) is made
+    JSON-safe instead of failing to encode (500)."""
+    errors = []
+    for error in jsonable_encoder(exc.errors()):
+        try:
+            json.dumps(error, allow_nan=False)
+        except ValueError:
+            error = {key: (value if key != "input" else repr(value)) for key, value in error.items()}
+            error["ctx"] = {key: repr(value) for key, value in (error.get("ctx") or {}).items()}
+        errors.append(error)
+    return JSONResponse(status_code=422, content={"detail": errors})
+
+
 # Starlette runs the middleware added last first: LocalWebGuard (D-24), then AuditTrail (D-56, records what
 # SessionGuard let through or refused a viewer), then SessionGuard (D-25, D-56).
 app.add_middleware(auth.SessionGuard)

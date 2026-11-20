@@ -12,7 +12,7 @@
         "injectedFailures": {
           "description": "Failures currently injected into the robot; absent on older robots.",
           "type": "array",
-          "items": { "enum": ["BLOCKED_PATH", "LOW_BATTERY", "DISCONNECT", "INVALID_PAYLOAD"] }
+          "items": { "enum": ["BLOCKED_PATH", "LOW_BATTERY", "DISCONNECT", "INVALID_PAYLOAD", "SPEED", "BATCHED_STATE"] }
         }
       }
     }

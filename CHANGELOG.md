@@ -13,6 +13,12 @@ What changed, per commit, newest first. Status and plans are in [docs/PROGRESS.m
 - Hosted service: real terms and privacy pages.
 - New: the front page for actunode.com (`site/`, published by GitHub Pages).
 
+- **Testing a fleet manager on fast, dense routes** (D-68, the rest of the integrator's list). Two new injections
+  for ActuNode's simulated robots: `SPEED` (drive at up to 5 m/s; the factsheet's `speedMax` follows) and
+  `BATCHED_STATE` (send state only every N s, so one message reports several nodes passed), in the API, scenarios
+  (`inject`/`clear`) and the UI. The example fleet manager gains `--spacing`, `--base`, `--extend early|late` and
+  `--progress any|strict`; two new scenarios, `base_extension.yaml` and `several_nodes_per_state.yaml`, tell a fleet
+  manager that extends the base in time and accepts several nodes per state from one that does not.
 - **Conformance: master-control habits that broke real vehicles** (from an AGV integrator, D-66). Four raw checks in
   `conformance/raw_checks.py`: a single-node order is finished; an empty order sent mid-mission is rejected with an
   error and the vehicle stays up; the vehicle stops at the end of the base and continues when it is extended; a

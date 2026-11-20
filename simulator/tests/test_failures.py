@@ -12,7 +12,7 @@ from simulator.__main__ import step
 from simulator.messages import malformed_payload
 from simulator.publisher import RobotConnection
 from simulator.robot import BLOCKED, FAILED, MAX_PENDING_MALFORMED, MOVING, Robot
-from simulator.tests.helpers import BOTH, driving_robot, make_order, official, run, types
+from simulator.tests.helpers import BOTH, FakeConnection, driving_robot, make_order, official, run, types
 
 ROOT = Path(__file__).resolve().parents[2]
 FIXTURE = ROOT / "contracts" / "failure_commands.json"
@@ -40,9 +40,18 @@ EXPECTED_RESULTS = {
     ("BLOCKED_PATH", "inject", ()): "path blocked",
     ("BLOCKED_PATH", "clear", ()): "path cleared",
     ("LOW_BATTERY", "clear", ()): "battery restored to {before:g}%",
+    ("SPEED", "inject", (("m_per_s", 3.5),)): "speed set to 3.5 m/s",
+    ("BATCHED_STATE", "inject", (("every_s", 7),)): "state message every 7 s",
+    ("SPEED", "clear", ()): "speed restored to 1 m/s",
+    ("BATCHED_STATE", "clear", ()): "state messages back to normal",
 }
 # What a clear needs first (the inject with default parameters).
-PRECONDITION = {"BLOCKED_PATH": "BLOCKED_PATH", "LOW_BATTERY": "LOW_BATTERY"}
+PRECONDITION = {
+    "BLOCKED_PATH": "BLOCKED_PATH",
+    "LOW_BATTERY": "LOW_BATTERY",
+    "SPEED": "SPEED",
+    "BATCHED_STATE": "BATCHED_STATE",
+}
 
 
 @BOTH
@@ -765,3 +774,142 @@ def test_state_lists_the_failures_that_can_be_cleared(major):
     signatures.append(robot.event_signature())
     assert listed() == []
     assert all(a != b for a, b in zip(signatures, signatures[1:], strict=False))
+
+
+# --- SPEED and BATCHED_STATE (D-68) -------------------------------------------------------------------------------
+
+
+def dense_robot(**injected):
+    """A robot on a line of nodes 0.3 m apart, past the ACCEPTED tick."""
+    robot = Robot("robot_01")
+    robot.accept_order(make_order(points=tuple((i * 0.3, 0) for i in range(60))))
+    robot.update(0.1)
+    for failure, params in injected.items():
+        robot.handle_command_payload(command(failure, **params))
+    return robot
+
+
+def test_speed_changes_the_distance_per_tick_the_velocity_and_the_factsheet():
+    robot = dense_robot()
+    robot.update(0.1)
+    assert robot.velocity == pytest.approx(1.0)
+    assert robot.handle_command_payload(command("SPEED", m_per_s=3)) == "speed set to 3 m/s"
+    x = robot.x
+    robot.update(0.1)
+    assert robot.x - x == pytest.approx(0.3) and robot.velocity == pytest.approx(3.0)
+    assert robot.factsheet_message()["physicalParameters"]["speedMax"] == 3.0
+    assert robot.injected_failures == ["SPEED"]
+    assert robot.handle_command_payload(command("SPEED")) == "speed set to 2 m/s"  # default
+    robot.handle_command_payload(command("SPEED", m_per_s=3))
+    assert robot.handle_command_payload(command("SPEED", m_per_s=4.5)) == "speed set to 4.5 m/s"  # updates
+
+
+def test_speed_clear_restores_the_default():
+    robot = dense_robot(SPEED={"m_per_s": 5})
+    assert robot.handle_command_payload(command("SPEED", "clear")) == "speed restored to 1 m/s"
+    robot.update(0.1)
+    assert robot.velocity == pytest.approx(1.0) and robot.injected_failures == []
+    assert robot.factsheet_message()["physicalParameters"]["speedMax"] == 1.0
+
+
+@pytest.mark.parametrize("params", [{"m_per_s": True}, {"m_per_s": 0.09}, {"m_per_s": 5.1}, {"m_per_s": "2"}, {"x": 1}])
+def test_speed_bad_params_are_ignored(params):
+    robot = Robot("robot_01")
+    assert robot.handle_command_payload(command("SPEED", **params)).startswith("ignored")
+    assert robot.speed == 1.0
+
+
+def test_one_tick_at_top_speed_passes_several_nodes():
+    robot = dense_robot(SPEED={"m_per_s": 5})
+    robot.update(0.1)  # 0.5 m, nodes 0.3 m apart: N0 was reached at once, so N1 is passed in this tick
+    assert robot.last_node_sequence_id >= 2
+    robot.update(0.1)
+    robot.update(0.1)
+    assert robot.last_node_sequence_id >= 8  # at least 4 nodes passed within 3 ticks
+
+
+def batched_run(every_s=5, seconds=0):
+    connection = FakeConnection(dense_robot(BATCHED_STATE={"every_s": every_s}))
+    connection.robot.handle_command_payload(command("SPEED", m_per_s=3))
+    connection.robot.factsheet_requested = False  # the fake connection has no factsheet to publish
+    connection.robot.state_requested = False  # the injection's own immediate state is not what these count
+    for tick in range(seconds * 10):
+        step([connection], tick + 1, 1)  # a lab-wide periodic tick every step: it must not matter
+    return connection
+
+
+def test_batched_state_publishes_only_on_its_own_clock_and_reports_a_jump():
+    connection = batched_run(5, 4)
+    assert connection.published == 0
+    assert connection.robot.last_node_sequence_id > 2  # nodes were passed, events happened, nothing sent
+    before = connection.robot.last_node_sequence_id
+    for tick in range(10):
+        step([connection], tick, 1)
+    assert connection.published == 1
+    assert connection.robot.last_node_sequence_id - before > 2
+
+
+def test_batched_state_still_answers_explicit_requests_at_once():
+    connection = batched_run(30, 1)
+    connection.robot.state_requested = True
+    step([connection], 99, 1)
+    assert connection.published == 1 and connection.robot.state_requested is False
+
+
+def test_batched_state_clear_sends_a_state_at_once_and_events_publish_again():
+    connection = batched_run(30, 1)
+    assert connection.robot.handle_command_payload(command("BATCHED_STATE", "clear")) == "state messages back to normal"
+    step([connection], 1, 1000)
+    assert connection.published == 1
+    step([connection], 2, 1000)  # moving: a node reached is an event again
+    step([connection], 3, 1000)
+    assert connection.published >= 2
+
+
+def test_batched_state_reinjection_updates_the_interval_and_bad_params_are_ignored():
+    robot = Robot("robot_01")
+    assert robot.handle_command_payload(command("BATCHED_STATE")) == "state message every 5 s"
+    assert robot.handle_command_payload(command("BATCHED_STATE", every_s=2)) == "state message every 2 s"
+    for params in ({"every_s": True}, {"every_s": 1}, {"every_s": 31}, {"every_s": 2.5}, {"every_s": "5"}):
+        assert robot.handle_command_payload(command("BATCHED_STATE", **params)).startswith("ignored")
+    assert robot.batched_every_s == 2
+    assert robot.handle_command_payload(command("BATCHED_STATE", "clear")) == "state messages back to normal"
+    assert robot.handle_command_payload(command("BATCHED_STATE", "clear")).startswith("ignored clear")
+
+
+def test_unresponsive_still_silences_a_batched_robot():
+    connection, client, clock = connection_with_fake()
+    robot = connection.robot
+    robot.accept_order(make_order(points=((0, 0), (30, 0))))
+    robot.handle_command_payload(command("BATCHED_STATE", every_s=2))
+    robot.handle_command_payload(command("UNRESPONSIVE", duration_s=60))
+    client.published.clear()
+    for tick in range(1, 60):
+        step([connection], tick, 1000)
+    assert client.published == []
+
+
+def test_injecting_batched_state_requests_a_state_at_once_also_when_injected_again():
+    robot = dense_robot()
+    robot.state_requested = False
+    robot.handle_command_payload(command("BATCHED_STATE", every_s=30))
+    assert robot.state_requested is True  # injectedFailures shows now, not at the next batch
+    robot.state_requested = False
+    robot.handle_command_payload(command("BATCHED_STATE", every_s=10))
+    assert robot.state_requested is True
+
+
+def test_speed_factsheet_request_waits_while_unresponsive_and_goes_out_after():
+    connection, client, clock = start_unresponsive(duration_s=5)
+    robot = connection.robot
+    robot.handle_command_payload(command("SPEED", m_per_s=3))
+    client.published.clear()
+    step([connection], 2, 1000)
+    assert robot.factsheet_requested  # not published (unresponsive): the request stays
+    assert connection.factsheet_topic not in [t for t, _, _ in client.published]
+    clock.now += 6
+    robot.update(0.1)
+    step([connection], 3, 1000)
+    assert connection.factsheet_topic in [t for t, _, _ in client.published]
+    assert not robot.factsheet_requested
+    assert robot.factsheet_message()["physicalParameters"]["speedMax"] == 3.0

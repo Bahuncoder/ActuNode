@@ -527,6 +527,8 @@ export const FAILURE_LABELS: Record<string, string> = {
   DISCONNECT: 'Disconnect',
   INVALID_PAYLOAD: 'Invalid payload',
   UNRESPONSIVE: 'Unresponsive',
+  SPEED: 'Speed',
+  BATCHED_STATE: 'Batched state',
 }
 
 export function failureLabel(code: unknown): string {

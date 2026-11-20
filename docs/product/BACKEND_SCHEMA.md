@@ -69,6 +69,8 @@ Response: `{ "order_id": "…", "topic": "…", "warning": "optional identity wa
 | DISCONNECT | integer `duration_s` 1–300 / 10; `mode:broken|offline` / broken | no |
 | INVALID_PAYLOAD | `kind:not-json|schema|wrong-serial|wrong-version` / schema; integer `count` 1–10 / 1 | no |
 | UNRESPONSIVE | integer `duration_s` 1–300 / 10 | no |
+| SPEED | number `m_per_s` 0.1–5.0 / 2.0 | yes |
+| BATCHED_STATE | integer `every_s` 2–30 / 5 | yes |
 
 Clear takes no parameters. MQTT command: `{injectionId,timestamp,robotId,failure,action,params}` on `actunode/v1/sim/<serial>/inject`. See [failures.py](../../backend/app/failures.py).
 

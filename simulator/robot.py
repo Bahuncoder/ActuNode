@@ -89,6 +89,8 @@ LOW_BATTERY = "LOW_BATTERY"
 DISCONNECT = "DISCONNECT"
 INVALID_PAYLOAD = "INVALID_PAYLOAD"
 UNRESPONSIVE = "UNRESPONSIVE"
+SPEED = "SPEED"
+BATCHED_STATE = "BATCHED_STATE"
 # Below this (and above 0) the state carries a batteryLow error (D-42); the robot keeps driving.
 LOW_BATTERY_THRESHOLD = 20
 DEFAULT_LOW_BATTERY_LEVEL = 15
@@ -97,6 +99,10 @@ DISCONNECT_MODES = ("broken", "offline")
 DEFAULT_DISCONNECT_S = 10
 MAX_DISCONNECT_S = 300
 MAX_MALFORMED = 10
+DEFAULT_SPEED_M_PER_S = 2.0
+MIN_SPEED_M_PER_S, MAX_SPEED_M_PER_S = 0.1, 5.0
+DEFAULT_BATCH_S = 5
+MIN_BATCH_S, MAX_BATCH_S = 2, 30
 # The params each failure's inject takes; a clear takes none. Anything else is rejected, not silently defaulted.
 FAILURE_PARAMS = {
     BLOCKED_PATH: (),
@@ -104,6 +110,8 @@ FAILURE_PARAMS = {
     DISCONNECT: ("duration_s", "mode"),
     INVALID_PAYLOAD: ("kind", "count"),
     UNRESPONSIVE: ("duration_s",),
+    SPEED: ("m_per_s",),
+    BATCHED_STATE: ("every_s",),
 }
 MAX_PENDING_MALFORMED = 10  # per robot; further requests are dropped (S-1)
 
@@ -146,6 +154,11 @@ class Robot(OrderBook, InstantActions):
         # UNRESPONSIVE: duration_s requested here; the publisher starts it from step() and sets `unresponsive`.
         self.unresponsive_requested: int | None = None
         self.unresponsive = False
+        # SPEED: the driving speed (cleared: SPEED_M_PER_S). BATCHED_STATE: seconds between state messages, or None;
+        # batch_timer is this robot's own clock since its last state.
+        self.speed = SPEED_M_PER_S
+        self.batched_every_s: int | None = None
+        self.batch_timer = 0.0
         self.malformed_requests: list[str] = []  # kinds, one malformed state published per tick
         # Set by the publisher while the link is down (or coming back): a DISCONNECT then makes no sense.
         self.link_down = False
@@ -335,6 +348,10 @@ class Robot(OrderBook, InstantActions):
             return self._low_battery(action, params)
         if failure in (DISCONNECT, INVALID_PAYLOAD, UNRESPONSIVE) and action == "clear":
             return f"ignored clear: {failure} cannot be cleared"
+        if failure == SPEED:
+            return self._speed(action, params)
+        if failure == BATCHED_STATE:
+            return self._batched_state(action, params)
         if failure == DISCONNECT:
             return self._request_disconnect(params)
         if failure == INVALID_PAYLOAD:
@@ -368,6 +385,47 @@ class Robot(OrderBook, InstantActions):
         self._drop_empty_if_charged()
         self._sync_battery_low()
         return f"battery set to {level}%"
+
+    def _speed(self, action: str, params: dict) -> str:
+        if action == "clear":
+            if self.speed == SPEED_M_PER_S:
+                return "ignored clear: not injected"
+            self.speed = SPEED_M_PER_S
+            self.factsheet_requested = True
+            return f"speed restored to {self.speed:g} m/s"
+        value = params.get("m_per_s", DEFAULT_SPEED_M_PER_S)
+        if (
+            isinstance(value, bool)
+            or not isinstance(value, int | float)
+            or not MIN_SPEED_M_PER_S <= value <= MAX_SPEED_M_PER_S
+        ):
+            return f"ignored SPEED: m_per_s must be a number from {MIN_SPEED_M_PER_S} to {MAX_SPEED_M_PER_S}"
+        self.speed = float(value)
+        self.factsheet_requested = True
+        return f"speed set to {self.speed:g} m/s"
+
+    def _batched_state(self, action: str, params: dict) -> str:
+        if action == "clear":
+            if self.batched_every_s is None:
+                return "ignored clear: not injected"
+            self.batched_every_s = None
+            self.state_requested = True
+            return "state messages back to normal"
+        every = self._int_param(params, "every_s", DEFAULT_BATCH_S, MIN_BATCH_S, MAX_BATCH_S)
+        if every is None:
+            return f"ignored BATCHED_STATE: every_s must be an integer from {MIN_BATCH_S} to {MAX_BATCH_S}"
+        if self.batched_every_s is None:
+            self.batch_timer = 0.0
+        self.batched_every_s = every
+        self.state_requested = True  # injectedFailures shows at once, not at the next batch
+        return f"state message every {every} s"
+
+    def batch_due(self) -> bool:
+        """BATCHED_STATE: is it time for this robot's next state message? Restarts the clock when it is."""
+        if self.batched_every_s is None or self.batch_timer < self.batched_every_s - 1e-9:
+            return False
+        self.batch_timer = 0.0
+        return True
 
     def _drop_empty_if_charged(self) -> None:
         """No FATAL batteryEmpty next to a battery above 0 (as in _charge). The mission stays FAILED:
@@ -440,6 +498,8 @@ class Robot(OrderBook, InstantActions):
             for name, active in (
                 (BLOCKED_PATH, self.mission_status == BLOCKED),
                 (LOW_BATTERY, self._battery_before_injection is not None),
+                (SPEED, self.speed != SPEED_M_PER_S),
+                (BATCHED_STATE, self.batched_every_s is not None),
             )
             if active
         ]
@@ -475,6 +535,7 @@ class Robot(OrderBook, InstantActions):
 
     def update(self, dt: float) -> None:
         """Advance the simulation by `dt` seconds."""
+        self.batch_timer += dt
         self._advance(dt)
         self._sync_battery_low()
         self._sync_battery_empty()
@@ -495,7 +556,7 @@ class Robot(OrderBook, InstantActions):
 
         self.charging = False
         # Never drive further than the remaining battery allows.
-        self._drive(min(SPEED_M_PER_S * dt, self.battery / BATTERY_PER_METER))
+        self._drive(min(self.speed * dt, self.battery / BATTERY_PER_METER))
         self.velocity = self._moved / dt
         if not self.node_states:
             self.mission_status = COMPLETED

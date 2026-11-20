@@ -134,7 +134,7 @@ jobs:
         run: |
           pip install "paho-mqtt>=2.1,<3"
           nohup python examples/fleet_manager/fleet_manager.py --user master@ci --password-file "$RUNNER_TEMP/fleet-manager.pw" \
-            --vda "$ACTUNODE_VDA_VERSION" --policy cancel --max-seconds 900 > test-results/fleet-manager.log 2>&1 &
+            --vda "$ACTUNODE_VDA_VERSION" --policy cancel --spacing 2 --base 4 --max-seconds 900 > test-results/fleet-manager.log 2>&1 &
       - name: Fleet manager scenarios
         env:
           ACTUNODE_SCENARIOS: ./examples/fleet_manager

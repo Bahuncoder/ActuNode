@@ -1,0 +1,27 @@
+# A fast robot on a dense map: does your fleet manager extend the base before the robot reaches its end?
+#
+#   1. your fleet manager drives robot_03 (its own master control login: README, "Connecting your fleet manager")
+#   2. actunode test examples/fleet_manager/base_extension.yaml
+#
+# With the example fleet manager in this folder: --spacing 2 --base 4 --extend early passes; --extend late fails.
+#
+# The match also names ActuNode's own status (actunode.missionStatus WAITING = stopped at the end of the base):
+# on a dense map the first base can end within 1 m of the start, and a state with driving false and
+# newBaseRequest true is then also the ACCEPTED state and the first MOVING tick of every order. This makes it
+# a check for ActuNode's simulated robots, which the SPEED injection needs anyway.
+name: The fleet manager extends the base before a fast robot reaches its end
+description: >
+  robot_03 is on an order from the fleet manager under test, whose base (the released part) is short and dense
+  with nodes. ActuNode makes the robot fast (2 m/s). A fleet manager that extends the base only once the robot
+  has stopped at its end leaves a fast robot standing there, asking for a new base (newBaseRequest) for 30 s.
+
+steps:
+  - inject: {robot: robot_03, failure: SPEED, params: {m_per_s: 2}}
+  - expect: {robot: robot_03, status: MOVING, within: 60}
+
+  # A message check, not a status poll: a quick late extension leaves WAITING for only ~100 ms.
+  - never:
+      message: {topic: uagv/+/+/robot_03/state, match: {driving: false, newBaseRequest: true, actunode: {missionStatus: WAITING}}}
+      for: 30
+
+  - clear: {robot: robot_03, failure: SPEED}

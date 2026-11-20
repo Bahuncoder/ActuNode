@@ -27,11 +27,12 @@ def login(stack, tmp_path_factory):
     return password_file
 
 
-def fleet_manager(stack, password_file, policy: str) -> subprocess.Popen:
+def fleet_manager(stack, password_file, policy: str = "cancel", *options: str) -> subprocess.Popen:
     command = [
         sys.executable, str(EXAMPLE / "fleet_manager.py"), "--host", HOST, "--port", str(stack.mqtt_port),
         "--user", "master@e2e_example", "--password-file", str(password_file), "--vda", VDA, "--policy", policy,
         "--max-seconds", "300",
+        *options,
     ]  # fmt: skip
     if SHARED:
         command += ["--ca-file", str(stack.ca_file)]
@@ -65,3 +66,28 @@ def test_the_blocked_path_scenario_tells_a_good_fleet_manager_from_a_bad_one(sta
         assert "none of:" in result.stdout  # it says which reactions it waited for
     # Either way the robot is left free: the block is cleared or already over.
     wait_for(lambda: stack.status("robot_03") != "BLOCKED", 10, "robot_03 not left blocked")
+
+
+@pytest.mark.parametrize(
+    ("scenario", "options", "exit_code"),
+    [
+        ("base_extension.yaml", ["--extend", "early"], 0),
+        ("base_extension.yaml", ["--extend", "late"], 1),
+        ("several_nodes_per_state.yaml", ["--progress", "any"], 0),
+        ("several_nodes_per_state.yaml", ["--progress", "strict"], 1),
+    ],
+)
+def test_the_dense_map_scenarios_tell_a_good_fleet_manager_from_a_bad_one(
+    stack, login, tmp_path, scenario, options, exit_code
+):
+    if stack.status("robot_03") in ("ACCEPTED", "MOVING", "BLOCKED", "WAITING"):
+        stack.post("/missions/robot_03/cancel", {"vda_version": VDA}, expect=202)
+    wait_idle(stack, "robot_03")
+    process = fleet_manager(stack, login, "cancel", "--spacing", "2", "--base", "4", *options)
+    try:
+        result = actunode_test(stack, tmp_path, EXAMPLE / scenario)
+    finally:
+        log = stop(process)
+    assert result.returncode == exit_code, result.stdout
+    if options == ["--progress", "strict"]:
+        assert "reported several nodes at once" in log

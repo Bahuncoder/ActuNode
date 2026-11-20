@@ -143,6 +143,11 @@ def test_malformed_state_is_refused_not_a_server_error(client, published, state)
         ("DISCONNECT", {"duration_s": 300, "mode": "offline"}, {"duration_s": 300, "mode": "offline"}),
         ("UNRESPONSIVE", None, {"duration_s": 10}),
         ("UNRESPONSIVE", {"duration_s": 300}, {"duration_s": 300}),
+        ("SPEED", None, {"m_per_s": 2.0}),
+        ("SPEED", {"m_per_s": 5}, {"m_per_s": 5}),
+        ("SPEED", {"m_per_s": 0.1}, {"m_per_s": 0.1}),
+        ("BATCHED_STATE", None, {"every_s": 5}),
+        ("BATCHED_STATE", {"every_s": 30}, {"every_s": 30}),
         ("INVALID_PAYLOAD", None, {"kind": "schema", "count": 1}),
         ("INVALID_PAYLOAD", {"kind": "not-json", "count": 10}, {"kind": "not-json", "count": 10}),
     ],
@@ -157,6 +162,36 @@ def test_new_failures_apply_defaults_work_on_any_status_and_log_params(client, p
     assert published[0][1]["params"] == expected
     assert response.json()["params"] == expected
     assert client.get("/api/failures").json()[-1]["params"] == expected
+
+
+@pytest.mark.parametrize("failure", ["SPEED", "BATCHED_STATE"])
+def test_speed_and_batched_state_can_be_cleared(client, published, failure):
+    report("fail_14", "IDLE")
+    response = client.post("/api/failures", json={"robot_id": "fail_14", "failure": failure, "action": "clear"})
+    assert response.status_code == 202
+    assert published[0][1]["action"] == "clear" and published[0][1]["params"] == {}
+    bad = client.post(
+        "/api/failures", json={"robot_id": "fail_14", "failure": failure, "action": "clear", "params": {"x": 1}}
+    )
+    assert bad.status_code == 422
+
+
+def test_inject_schema_params_match_the_pydantic_params():
+    from pathlib import Path
+
+    from app.failures import PARAMS
+
+    schema = json.loads((Path(__file__).resolve().parents[1] / "app/schemas/actunode-inject.schema.json").read_text())
+    assert schema["properties"]["failure"]["enum"] == list(PARAMS)
+    branches = {
+        b["if"]["properties"]["failure"]["const"]: b["then"]["properties"]["params"].get("properties", {})
+        for b in schema["allOf"][1:]
+    }
+    assert set(branches) == set(PARAMS)
+    for name, model in PARAMS.items():
+        assert set(branches[name]) == set(model.model_fields), name
+    assert branches["SPEED"]["m_per_s"] == {"type": "number", "minimum": 0.1, "maximum": 5.0}
+    assert branches["BATCHED_STATE"]["every_s"] == {"type": "integer", "minimum": 2, "maximum": 30}
 
 
 def test_blocked_path_command_carries_empty_params(client, published):
@@ -182,6 +217,16 @@ def test_blocked_path_command_carries_empty_params(client, published):
         ("UNRESPONSIVE", {"duration_s": "5"}),
         ("UNRESPONSIVE", {"duration_s": True}),
         ("UNRESPONSIVE", {"mode": "broken"}),
+        ("SPEED", {"m_per_s": 0.09}),
+        ("SPEED", {"m_per_s": 5.1}),
+        ("SPEED", {"m_per_s": True}),
+        ("SPEED", {"m_per_s": "2"}),
+        ("SPEED", {"every_s": 5}),
+        ("BATCHED_STATE", {"every_s": 1}),
+        ("BATCHED_STATE", {"every_s": 31}),
+        ("BATCHED_STATE", {"every_s": True}),
+        ("BATCHED_STATE", {"every_s": 5.0}),
+        ("BATCHED_STATE", {"m_per_s": 2}),
         ("INVALID_PAYLOAD", {"kind": "bogus"}),
         ("INVALID_PAYLOAD", {"count": 11}),
         ("INVALID_PAYLOAD", {"count": 0}),
@@ -278,6 +323,10 @@ def test_commands_match_the_shared_contract_fixture_and_the_schema(client, publi
         {"failure": "BLOCKED_PATH", "action": "clear"},
         {"failure": "DISCONNECT", "params": {"duration_s": 4, "mode": "offline"}},
         {"failure": "UNRESPONSIVE", "params": {"duration_s": 5}},
+        {"failure": "SPEED", "params": {"m_per_s": 3.5}},
+        {"failure": "BATCHED_STATE", "params": {"every_s": 7}},
+        {"failure": "SPEED", "action": "clear"},
+        {"failure": "BATCHED_STATE", "action": "clear"},
     ]
     for request in requests:
         if request == {"failure": "BLOCKED_PATH", "action": "clear"}:
@@ -293,3 +342,13 @@ def test_commands_match_the_shared_contract_fixture_and_the_schema(client, publi
     if os.environ.get("ACTUNODE_UPDATE_CONTRACTS"):
         fixture.write_text(json.dumps(commands, indent=2, sort_keys=True) + "\n")
     assert json.loads(fixture.read_text()) == commands
+
+
+@pytest.mark.parametrize("value", ["NaN", "Infinity", "-Infinity"])
+def test_non_finite_json_numbers_are_422_not_500(client, published, value):
+    report("fail_18", "MOVING")
+    body = '{"robot_id": "fail_18", "failure": "SPEED", "params": {"m_per_s": ' + value + "}}"
+    response = client.post("/api/failures", content=body, headers={"content-type": "application/json"})
+    assert response.status_code == 422
+    assert response.json()["detail"]
+    assert published == []

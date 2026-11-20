@@ -26,6 +26,8 @@ Need: the lab and a fleet manager driving robot_03 with its own login (the examp
 | File | What it proves | Takes |
 |---|---|---|
 | [blocked_path_reaction.yaml](../examples/fleet_manager/blocked_path_reaction.yaml) | The plan's question: when an aisle is blocked, does the fleet manager cancel, reroute (a new order) or escalate (startPause) within 10 s? The example passes with `cancel`, `reroute`, `escalate` and fails with `ignore` | ~15 s |
+| [base_extension.yaml](../examples/fleet_manager/base_extension.yaml) | On a dense route, a robot driving 2 m/s (`SPEED`) never stops at the end of its released base: no state with `driving: false`, `newBaseRequest: true` and status WAITING for 30 s, so the fleet manager extends the base in time. The example (`--spacing 2 --base 4`) passes with `--extend early` and fails with `--extend late` | ~30 s |
+| [several_nodes_per_state.yaml](../examples/fleet_manager/several_nodes_per_state.yaml) | A robot that sends its state only every 3 s (`BATCHED_STATE`) reports several nodes passed in one message; the fleet manager keeps going instead of cancelling (no `cancelOrder` for 30 s). The example (`--spacing 2`) passes with `--progress any` and fails with `--progress strict` | ~30 s |
 
 ## VDA 5050 2.x conformance for any robot (`conformance/vda5050-2/`)
 

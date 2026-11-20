@@ -40,7 +40,7 @@ ORDER_TOPIC = f"uagv/v{VDA}/ActuNode/{{}}/order"
 UI_PORT = 18080  # plain HTTP, 127.0.0.1 only
 UI_TLS_PORT = 18443  # HTTPS, bind address
 MQTT_PORT = 11883  # plain MQTT, 127.0.0.1 only
-MQTTS_PORT = 18883  # MQTT over TLS, bind address
+MQTTS_PORT = 18884  # MQTT over TLS, bind address (not 18883: the local hosted stack uses it, cloud/deploy/local-up.sh)
 ROBOTS = ("robot_01", "robot_02", "robot_03")
 STATE_TOPIC = f"uagv/v{os.environ.get('ACTUNODE_VDA_VERSION', '2')}/ActuNode/{{}}/state"
 

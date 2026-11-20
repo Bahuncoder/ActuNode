@@ -1234,3 +1234,46 @@ true today found four problems:
 server; the service is run by Sudip Paudel as an individual; contact hello@actunode.com; GitHub sign-in only for the
 beta (Google later, once the privacy page is live); terms under Texas law with 30 days' notice before the beta ends.
 The terms and privacy pages (`cloud/app/legal.py`) state only what the code does, and change with it.
+
+## D-68 · The fleet-manager side of the integrator's list: faster robots, state every N seconds, two scenarios
+20 Nov 2026 · Accepted (the founder's go-ahead the same day)
+
+**Context.** D-66 built the vehicle side of an AGV integrator's list of master-control habits and left two for the
+fleet-manager side: master controls that reject a state message reporting several nodes reached at once, and, on a
+dense topology, a base extended too late, so the vehicle stops at the end of what it may drive. Testing a fleet
+manager for either needs robots it drives that do these things on demand; ActuNode's simulated robots drove at a fixed
+1 m/s and sent a state at every node. D-66 planned this for after a call with the integrator; the founder chose to
+build it now, and the call can still change the defaults.
+
+**Decision.**
+1. Two new injections through the existing failure channel (API, audit trail, scenario `inject` and `clear` steps,
+   UI panel, inject topic); both end with `clear`, and the scenario runner clears them at the end of a run:
+   - `SPEED` (`m_per_s`, 0.1 to 5, default 2): the robot drives at that speed. Its factsheet's `speedMax` follows,
+     so a fleet manager that plans from the factsheet sees the change.
+   - `BATCHED_STATE` (`every_s`, 2 to 30, default 5): the robot sends its state only on its own N-second clock, not on
+     events, so one message reports several nodes passed (`lastNodeSequenceId` jumps by more than 2). Orders, order
+     updates and state requests are still answered at once, as VDA 5050 expects; `UNRESPONSIVE` and disconnects still
+     silence it.
+   They are conditions rather than failures, but one channel for "make this robot behave like that" keeps one
+   permission, one audit trail and one place in the UI.
+2. The example fleet manager gets a dense route (`--spacing`), a released base with the rest as horizon (`--base`),
+   and each habit as an option with a good and a bad setting: `--extend early|late`, `--progress any|strict`. It
+   extends from what the robot reports, not from what it sent, and sends an extension again if the robot still shows
+   the old base 3 s later, so a lost or rejected update does not strand the robot.
+3. Two scenarios in `examples/fleet_manager/`. `base_extension.yaml`: a robot at 2 m/s must not send a state with
+   `driving: false`, `newBaseRequest: true` and ActuNode's own status WAITING (stopped at the end of its base) for
+   30 s. Without the status, the first state of every order matched whenever the first base ended within 1 m of the
+   start, so a fleet manager that extends in time failed on a very dense map (found in review). `several_nodes_per_state.yaml`:
+   a robot sending state every 3 s must not get a `cancelOrder` for 30 s. Both are message checks, not status polls:
+   a late extension leaves the robot waiting for only about 100 ms. CI runs all three fleet-manager scenarios with
+   `--spacing 2 --base 4`; the e2e suite runs the good and the bad setting of each.
+
+**Limits.** The simulator does not apply an edge's `maxSpeed`, so a fleet manager that slows robots on dense sections
+cannot be tested yet. `SPEED` at exactly 1 m/s is the normal speed and is not listed as injected.
+`several_nodes_per_state.yaml` judges only `cancelOrder`; a fleet manager that quietly drops the job instead shows only
+as a missing next order.
+
+**Consequences.** A fleet manager can be checked against both habits before it meets a fast vehicle on a dense site.
+A test drives the example fleet manager against the simulator's own order handling in simulated time (2.1 and 3.0,
+under 2 s), so the two are checked together on every push, not only in e2e. The review also made non-finite numbers
+(NaN, Infinity) a clear error everywhere: refused when a scenario is read, and a 422 instead of a 500 from the API.

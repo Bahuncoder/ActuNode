@@ -266,6 +266,8 @@ class RobotConnection:
         # topic except connection (2.1 §6.15 and §6.4, 3.0 §6.10).
         if self.can_publish():
             self._publish(self.factsheet_topic, self.robot.factsheet_message(), qos=0, retain=True)
+        else:
+            self.robot.factsheet_requested = True  # keep the request (step cleared it) until it can go out
 
     def _publish(self, topic_name: str, message: dict, qos: int = 0, retain: bool = False):
         return self._client.publish(topic_name, json.dumps(message), qos=qos, retain=retain)

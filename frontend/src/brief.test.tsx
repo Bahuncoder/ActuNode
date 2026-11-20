@@ -71,6 +71,8 @@ describe('failure injection', () => {
       DISCONNECT: /Ends by itself after the duration/,
       UNRESPONSIVE: /Ends by itself after the duration/,
       INVALID_PAYLOAD: /once; normal traffic goes on/,
+      SPEED: /normally 1 m\/s\) until cleared/,
+      BATCHED_STATE: /one message can report several nodes/,
     }
     for (const [failure, text] of Object.entries(ends)) {
       fireEvent.change(type, { target: { value: failure } })

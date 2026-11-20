@@ -43,6 +43,15 @@ class UnresponsiveParams(_Params):
     duration_s: int = Field(10, ge=1, le=300)
 
 
+class SpeedParams(_Params):
+    # strict float takes an int, not a bool
+    m_per_s: float = Field(2.0, ge=0.1, le=5.0)
+
+
+class BatchedStateParams(_Params):
+    every_s: int = Field(5, ge=2, le=30)
+
+
 class InvalidPayloadParams(_Params):
     kind: Literal["not-json", "schema", "wrong-serial", "wrong-version"] = "schema"
     count: int = Field(1, ge=1, le=10)
@@ -54,6 +63,8 @@ PARAMS = {
     "DISCONNECT": DisconnectParams,
     "INVALID_PAYLOAD": InvalidPayloadParams,
     "UNRESPONSIVE": UnresponsiveParams,
+    "SPEED": SpeedParams,
+    "BATCHED_STATE": BatchedStateParams,
 }
 # Failures that end by themselves cannot be cleared: why.
 NO_CLEAR = {
@@ -65,7 +76,9 @@ NO_CLEAR = {
 
 class FailureRequest(BaseModel):
     robot_id: str = Field(pattern=vda5050.ROBOT_ID_FIELD, examples=["robot_01"])
-    failure: Literal["BLOCKED_PATH", "LOW_BATTERY", "DISCONNECT", "INVALID_PAYLOAD", "UNRESPONSIVE"] = "BLOCKED_PATH"
+    failure: Literal[
+        "BLOCKED_PATH", "LOW_BATTERY", "DISCONNECT", "INVALID_PAYLOAD", "UNRESPONSIVE", "SPEED", "BATCHED_STATE"
+    ] = "BLOCKED_PATH"
     action: Literal["inject", "clear"] = "inject"
     params: dict = Field(default_factory=dict)
 

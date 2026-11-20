@@ -279,3 +279,14 @@ def test_odd_robot_state_is_reported_not_crashed_on(clock):
     stack = FakeStack(clock, [(0, [odd])])
     result, _ = run(stack, clock, scenario("  - expect: {robot: robot_01, status: IDLE, within: 1}"))
     assert result.outcome == FAILED and "status is None" in result.message
+
+
+def test_cleanup_clears_speed_and_batched_state_a_scenario_left_on(clock):
+    stack = FakeStack(clock, [(0, [robot()])])
+    steps = (
+        "  - inject: {robot: robot_01, failure: SPEED, params: {m_per_s: 3.5}}\n"
+        "  - inject: {robot: robot_01, failure: BATCHED_STATE}"
+    )
+    result, _ = run(stack, clock, scenario(steps))
+    assert result.cleanup == ["cleared BATCHED_STATE on robot_01", "cleared SPEED on robot_01"]
+    assert ("failure", "robot_01", "SPEED", "clear", None) in stack.calls

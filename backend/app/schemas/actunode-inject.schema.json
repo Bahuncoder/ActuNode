@@ -9,7 +9,7 @@
     "injectionId": { "type": "string", "minLength": 1 },
     "timestamp": { "type": "string", "minLength": 1 },
     "robotId": { "type": "string", "minLength": 1 },
-    "failure": { "enum": ["BLOCKED_PATH", "LOW_BATTERY", "DISCONNECT", "INVALID_PAYLOAD", "UNRESPONSIVE"] },
+    "failure": { "enum": ["BLOCKED_PATH", "LOW_BATTERY", "DISCONNECT", "INVALID_PAYLOAD", "UNRESPONSIVE", "SPEED", "BATCHED_STATE"] },
     "action": { "enum": ["inject", "clear"] },
     "params": { "type": "object" }
   },
@@ -59,6 +59,30 @@
             "type": "object",
             "additionalProperties": false,
             "properties": { "duration_s": { "type": "integer", "minimum": 1, "maximum": 300 } }
+          }
+        }
+      }
+    },
+    {
+      "if": { "properties": { "failure": { "const": "SPEED" } } },
+      "then": {
+        "properties": {
+          "params": {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": { "m_per_s": { "type": "number", "minimum": 0.1, "maximum": 5.0 } }
+          }
+        }
+      }
+    },
+    {
+      "if": { "properties": { "failure": { "const": "BATCHED_STATE" } } },
+      "then": {
+        "properties": {
+          "params": {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": { "every_s": { "type": "integer", "minimum": 2, "maximum": 30 } }
           }
         }
       }

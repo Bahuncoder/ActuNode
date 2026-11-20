@@ -46,8 +46,10 @@ MISSION_STATUSES = ("IDLE", "ACCEPTED", "MOVING", "BLOCKED", "WAITING", "COMPLET
 MissionStatus = Literal["IDLE", "ACCEPTED", "MOVING", "BLOCKED", "WAITING", "COMPLETED", "FAILED", "CANCELLED"]
 # 2.x spells it CONNECTIONBROKEN, 3.0 CONNECTION_BROKEN; either is accepted and matches both.
 Connection = Literal["ONLINE", "OFFLINE", "CONNECTIONBROKEN", "CONNECTION_BROKEN"]
-Failure = Literal["BLOCKED_PATH", "LOW_BATTERY", "DISCONNECT", "INVALID_PAYLOAD", "UNRESPONSIVE"]
-ClearableFailure = Literal["BLOCKED_PATH", "LOW_BATTERY"]
+Failure = Literal[
+    "BLOCKED_PATH", "LOW_BATTERY", "DISCONNECT", "INVALID_PAYLOAD", "UNRESPONSIVE", "SPEED", "BATCHED_STATE"
+]
+ClearableFailure = Literal["BLOCKED_PATH", "LOW_BATTERY", "SPEED", "BATCHED_STATE"]
 ErrorLevel = Literal["WARNING", "URGENT", "CRITICAL", "FATAL"]
 
 
@@ -81,7 +83,10 @@ class Inject(_Strict):
     robot: RobotId
     failure: Failure
     # Checked by the stack (POST /api/failures). Strict: YAML `true` must reach it as true and be refused, not as 1.
-    params: dict[str, StrictInt | StrictStr] = Field(default_factory=dict)
+    # allow_inf_nan=False: YAML `.nan`/`.inf` would make httpx raise while encoding the request.
+    params: dict[str, StrictInt | Annotated[StrictFloat, Field(allow_inf_nan=False)] | StrictStr] = Field(
+        default_factory=dict
+    )
     manufacturer: Name | None = None  # only ActuNode's simulated robots take injections; checked in parse()
 
     def describe(self) -> str:

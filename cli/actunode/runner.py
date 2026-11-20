@@ -27,7 +27,7 @@ POLL_S = 0.25
 ROBOTS_READY_S = 15
 # Orders in these states are still running; cleanup cancels the ones the scenario sent.
 RUNNING = ("ACCEPTED", "MOVING", "BLOCKED", "WAITING")
-CLEARABLE = ("BLOCKED_PATH", "LOW_BATTERY")
+CLEARABLE = ("BLOCKED_PATH", "LOW_BATTERY", "SPEED", "BATCHED_STATE")
 TIMED = ("DISCONNECT", "UNRESPONSIVE")  # end by themselves after params.duration_s (up to 300 s)
 DEFAULT_DURATION_S = 10  # the stack's default for duration_s
 # Cleanup waits this long for a timed failure to end before it reports the failure as still active.

@@ -11,6 +11,8 @@ const FAILURE_ENDS: Record<string, string> = {
   DISCONNECT: 'Ends by itself after the duration set here.',
   UNRESPONSIVE: 'Ends by itself after the duration set here.',
   INVALID_PAYLOAD: 'Sends the bad message(s) once; normal traffic goes on.',
+  SPEED: 'Drives at the speed set here (normally 1 m/s) until cleared.',
+  BATCHED_STATE: 'Sends its state only every N s, not at each node, so one message can report several nodes passed. Until cleared.',
 }
 
 const TYPES = [
@@ -19,6 +21,8 @@ const TYPES = [
   { value: 'DISCONNECT', label: FAILURE_LABELS.DISCONNECT, clearable: false },
   { value: 'INVALID_PAYLOAD', label: FAILURE_LABELS.INVALID_PAYLOAD, clearable: false },
   { value: 'UNRESPONSIVE', label: FAILURE_LABELS.UNRESPONSIVE, clearable: false },
+  { value: 'SPEED', label: FAILURE_LABELS.SPEED, clearable: true },
+  { value: 'BATCHED_STATE', label: FAILURE_LABELS.BATCHED_STATE, clearable: true },
 ]
 const KINDS = ['not-json', 'schema', 'wrong-serial', 'wrong-version']
 
@@ -40,6 +44,8 @@ function FailurePanel({ robots: allRobots, failures, readOnly = false }: { robot
   const [mode, setMode] = useState('broken')
   const [kind, setKind] = useState('schema')
   const [count, setCount] = useState('1')
+  const [speed, setSpeed] = useState('2')
+  const [every, setEvery] = useState('5')
   const [busy, setBusy] = useState(false)
   const [result, setResult] = useState<Result | null>(null)
 
@@ -69,19 +75,24 @@ function FailurePanel({ robots: allRobots, failures, readOnly = false }: { robot
     DISCONNECT: [duration, 1, 300] as [string, number, number],
     INVALID_PAYLOAD: [count, 1, 10] as [string, number, number],
     UNRESPONSIVE: [duration, 1, 300] as [string, number, number],
+    SPEED: [speed, 0.1, 5] as [string, number, number],
+    BATCHED_STATE: [every, 2, 30] as [string, number, number],
   }[
-    failure as 'LOW_BATTERY' | 'DISCONNECT' | 'INVALID_PAYLOAD' | 'UNRESPONSIVE'
+    failure as 'LOW_BATTERY' | 'DISCONNECT' | 'INVALID_PAYLOAD' | 'UNRESPONSIVE' | 'SPEED' | 'BATCHED_STATE'
   ]
-  // The backend takes whole numbers only.
-  const invalid = range !== undefined && !(/^\d+$/.test(range[0].trim()) && Number(range[0]) >= range[1] && Number(range[0]) <= range[2])
+  // The backend takes whole numbers only, except the speed (decimals).
+  const numberPattern = failure === 'SPEED' ? /^\d+(\.\d+)?$/ : /^\d+$/
+  const invalid = range !== undefined && !(numberPattern.test(range[0].trim()) && Number(range[0]) >= range[1] && Number(range[0]) <= range[2])
   const clearBlocked = needsRoute
     ? status !== 'BLOCKED'
-    : failure === 'LOW_BATTERY' && injected !== undefined && !injected.includes('LOW_BATTERY')
+    : ['LOW_BATTERY', 'SPEED', 'BATCHED_STATE'].includes(failure) && injected !== undefined && !injected.includes(failure)
 
   function currentParams(): Record<string, unknown> {
     if (failure === 'LOW_BATTERY') return { level: Number(level) }
     if (failure === 'DISCONNECT') return { duration_s: Number(duration), mode }
     if (failure === 'UNRESPONSIVE') return { duration_s: Number(duration) }
+    if (failure === 'SPEED') return { m_per_s: Number(speed) }
+    if (failure === 'BATCHED_STATE') return { every_s: Number(every) }
     if (failure === 'INVALID_PAYLOAD') return { kind, count: Number(count) }
     return {}
   }
@@ -147,6 +158,18 @@ function FailurePanel({ robots: allRobots, failures, readOnly = false }: { robot
           <label>
             Duration (s)
             <input type="number" min={1} max={300} value={duration} onChange={(e) => setDuration(e.target.value)} />
+          </label>
+        )}
+        {failure === 'SPEED' && (
+          <label>
+            Speed (m/s)
+            <input type="number" min={0.1} max={5} step={0.1} value={speed} onChange={(e) => setSpeed(e.target.value)} />
+          </label>
+        )}
+        {failure === 'BATCHED_STATE' && (
+          <label>
+            Report every (s)
+            <input type="number" min={2} max={30} value={every} onChange={(e) => setEvery(e.target.value)} />
           </label>
         )}
         {failure === 'INVALID_PAYLOAD' && (

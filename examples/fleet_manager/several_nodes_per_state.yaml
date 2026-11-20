@@ -1,0 +1,23 @@
+# A robot that reports state only now and then passes several nodes between two states: does your fleet manager cope?
+#
+#   1. your fleet manager drives robot_03 (its own master control login: README, "Connecting your fleet manager")
+#   2. actunode test examples/fleet_manager/several_nodes_per_state.yaml
+#
+# With the example fleet manager in this folder: --spacing 2 --progress any passes; --progress strict fails.
+name: The fleet manager accepts a state that reports several nodes passed at once
+description: >
+  robot_03 is on an order from the fleet manager under test, on a map with a node every few metres. ActuNode
+  makes it fast (2 m/s) and its state arrive only every 3 s, so each state reports several nodes passed at once
+  (a real robot does this too). A fleet manager that takes that for a lost position and cancels the order fails.
+
+steps:
+  - inject: {robot: robot_03, failure: SPEED, params: {m_per_s: 2}}
+  - inject: {robot: robot_03, failure: BATCHED_STATE, params: {every_s: 3}}
+  - expect: {robot: robot_03, status: MOVING, within: 60}
+
+  - never:
+      message: {topic: uagv/+/+/robot_03/instantActions, match: {actions: [{actionType: cancelOrder}]}}
+      for: 30
+
+  - clear: {robot: robot_03, failure: SPEED}
+  - clear: {robot: robot_03, failure: BATCHED_STATE}

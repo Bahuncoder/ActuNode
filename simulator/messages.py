@@ -12,7 +12,6 @@ from simulator.protocol import (
     MAX_INSTANT_ACTIONS_PER_MESSAGE,
     MAX_NODES_PER_ORDER,
     MAX_STATE_BYTES,
-    SPEED_M_PER_S,
     SUPPORTED_ACTIONS,
     utc_timestamp,
 )
@@ -129,7 +128,7 @@ def factsheet_message(robot) -> dict:
         },
         "physicalParameters": {
             n["speed_min"]: 0.0,
-            n["speed_max"]: SPEED_M_PER_S,
+            n["speed_max"]: robot.speed,
             n["acceleration"]: NOMINAL_ACCELERATION_M_S2,
             n["deceleration"]: NOMINAL_ACCELERATION_M_S2,
             n["height_min"]: NOMINAL_HEIGHT_M,

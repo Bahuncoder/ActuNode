@@ -44,7 +44,7 @@ describe('FailurePanel', () => {
   it('offers the failure types', () => {
     render(<FailurePanel robots={[robot('IDLE')]} failures={[]} />)
     const labels = [...(screen.getByLabelText('Failure type') as HTMLSelectElement).options].map((o) => o.text)
-    expect(labels).toEqual(['Blocked path', 'Low battery', 'Disconnect', 'Invalid payload', 'Unresponsive'])
+    expect(labels).toEqual(['Blocked path', 'Low battery', 'Disconnect', 'Invalid payload', 'Unresponsive', 'Speed', 'Batched state'])
   })
 
   it('sends BLOCKED_PATH with no params', async () => {
@@ -119,6 +119,28 @@ describe('FailurePanel', () => {
     setValue('Battery level', '50')
     inject()
     expect(await screen.findByText('level must be 1-99')).toBeTruthy()
+  })
+
+  it.each([
+    ['SPEED', 'Speed (m/s)', '2.5', '9', { m_per_s: 2 }, { m_per_s: 2.5 }, 'Enter a number between 0.1 and 5'],
+    ['BATCHED_STATE', 'Report every (s)', '10', '31', { every_s: 5 }, { every_s: 10 }, 'Enter a number between 2 and 30'],
+  ])('sends %s with its param, refuses out-of-range, and clears', async (type, label, good, bad, dflt, edited, msg) => {
+    const fetchMock = stubFetch()
+    render(<FailurePanel robots={[robot('IDLE')]} failures={[]} />)
+    choose(type as string)
+    inject()
+    await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(1))
+    expect(sent(fetchMock)).toEqual({ robot_id: 'robot_01', failure: type, action: 'inject', params: dflt })
+    setValue(label as string, bad as string)
+    expect((screen.getByRole('button', { name: 'Inject' }) as HTMLButtonElement).disabled).toBe(true)
+    expect(screen.getByText(msg as string)).toBeTruthy()
+    setValue(label as string, good as string)
+    inject()
+    await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(2))
+    expect(JSON.parse(fetchMock.mock.calls[1][1].body).params).toEqual(edited)
+    fireEvent.click(screen.getByRole('button', { name: 'Clear' }))
+    await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(3))
+    expect(JSON.parse(fetchMock.mock.calls[2][1].body).action).toBe('clear')
   })
 
   const clearButton = () => screen.getByRole('button', { name: 'Clear' }) as HTMLButtonElement

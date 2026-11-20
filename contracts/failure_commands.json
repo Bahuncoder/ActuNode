@@ -75,5 +75,41 @@
     },
     "robotId": "fail_20",
     "timestamp": "2026-01-01T00:00:00.000Z"
+  },
+  {
+    "action": "inject",
+    "failure": "SPEED",
+    "injectionId": "inj-00000000",
+    "params": {
+      "m_per_s": 3.5
+    },
+    "robotId": "fail_20",
+    "timestamp": "2026-01-01T00:00:00.000Z"
+  },
+  {
+    "action": "inject",
+    "failure": "BATCHED_STATE",
+    "injectionId": "inj-00000000",
+    "params": {
+      "every_s": 7
+    },
+    "robotId": "fail_20",
+    "timestamp": "2026-01-01T00:00:00.000Z"
+  },
+  {
+    "action": "clear",
+    "failure": "SPEED",
+    "injectionId": "inj-00000000",
+    "params": {},
+    "robotId": "fail_20",
+    "timestamp": "2026-01-01T00:00:00.000Z"
+  },
+  {
+    "action": "clear",
+    "failure": "BATCHED_STATE",
+    "injectionId": "inj-00000000",
+    "params": {},
+    "robotId": "fail_20",
+    "timestamp": "2026-01-01T00:00:00.000Z"
   }
 ]

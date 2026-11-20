@@ -54,7 +54,7 @@ so you can replay them** against the system under test, with no physical fleet.
 
 ### Failure injection
 
-Five failures, from the Failure injection panel or `POST /api/failures`, on simulated robots
+Seven failures, from the Failure injection panel or `POST /api/failures`, on simulated robots
 ([D-42](docs/DECISIONS.md), [D-48](docs/DECISIONS.md)):
 
 | Failure | What the robot does | Parameters (default) | Clear |
@@ -64,6 +64,8 @@ Five failures, from the Failure injection panel or `POST /api/failures`, on simu
 | `DISCONNECT` | `broken`: drops the connection so the broker publishes the last will `CONNECTIONBROKEN` (3.0: `CONNECTION_BROKEN`); `offline`: clean `OFFLINE`. Reconnects after `duration_s` | `duration_s` 1–300 (10), `mode` (broken) | no, ends by itself |
 | `INVALID_PAYLOAD` | Publishes malformed messages on its state topic | `kind` `not-json` / `schema` / `wrong-serial` / `wrong-version` (schema), `count` 1–10 (1) | no |
 | `UNRESPONSIVE` | Stays connected (`ONLINE`, no last will) but sends no state and ignores `order` and `instantActions` for `duration_s`, while it keeps driving its current order; then answers again (`headerId`s continue). A fleet manager must notice stale state (the plan's "timeouts" failure) | `duration_s` 1–300 (10) | no, ends by itself |
+| `SPEED` | Drives at `m_per_s` until cleared (normally 1 m/s); its factsheet `speedMax` follows. For fast robots: does the fleet manager extend the base in time on dense routes? | `m_per_s` 0.1–5.0 (2.0) | yes, normal speed restored |
+| `BATCHED_STATE` | Sends its state only every `every_s` s, not at each node or other event, so one state can report several nodes passed; explicit state requests are still answered. A fleet manager must accept several nodes reported at once | `every_s` 2–30 (5) | yes, normal state sending restored |
 
 ![Failure injection panel with the disconnect parameters](docs/images/failures.png)
 

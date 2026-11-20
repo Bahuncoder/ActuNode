@@ -166,3 +166,26 @@ def test_a_scenario_may_declare_the_format_version():
     assert parse("version: 1\nname: x\nsteps: [{wait: 1}]", P).name == "x"
     assert "scenario format version 2 is not supported" in errors("version: 2\nname: x\nsteps: [{wait: 1}]")
     assert "version" in errors("version: true\nname: x\nsteps: [{wait: 1}]")
+
+
+def test_speed_and_batched_state_scenarios_take_float_and_int_params_and_clear():
+    text = (
+        "name: x\nsteps:\n"
+        "  - inject: {robot: r, failure: SPEED, params: {m_per_s: 3.5}}\n"
+        "  - inject: {robot: r, failure: BATCHED_STATE, params: {every_s: 5}}\n"
+        "  - clear: {robot: r, failure: SPEED}\n"
+        "  - clear: {robot: r, failure: BATCHED_STATE}"
+    )
+    steps = parse(text, P).steps
+    assert steps[0].params == {"m_per_s": 3.5} and type(steps[0].params["m_per_s"]) is float
+    assert steps[1].params == {"every_s": 5} and type(steps[1].params["every_s"]) is int
+    assert [s.failure for s in steps[2:]] == ["SPEED", "BATCHED_STATE"]
+    bad = "name: x\nsteps:\n  - inject: {robot: r, failure: SPEED, params: {m_per_s: true}}"
+    assert "params.m_per_s" in errors(bad)
+    assert "steps[1].inject.failure" in errors("name: x\nsteps:\n  - inject: {robot: r, failure: SPEEDY}")
+
+
+@pytest.mark.parametrize("value", [".nan", ".inf", "-.inf"])
+def test_non_finite_float_params_are_refused_at_parse_time(value):
+    text = f"name: x\nsteps:\n  - inject: {{robot: r, failure: SPEED, params: {{m_per_s: {value}}}}}"
+    assert "params" in errors(text)

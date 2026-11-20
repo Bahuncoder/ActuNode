@@ -56,8 +56,8 @@ broke" (1) from "the test environment broke" (3).
    (`<property name="actunode.session">`). Scenarios with message expectations also open the lab's live
    feed. Then it waits up to 15 s for every robot the scenario names to be ONLINE.
 2. Steps run in order. The first step that fails ends the scenario; the rest are reported as skipped.
-3. Afterwards the runner **cleans up** what the scenario left: it clears injected `BLOCKED_PATH` and
-   `LOW_BATTERY` failures it did not clear itself, and cancels orders it sent that are still running. The
+3. Afterwards the runner **cleans up** what the scenario left: it clears injected `BLOCKED_PATH`,
+   `LOW_BATTERY`, `SPEED` and `BATCHED_STATE` failures it did not clear itself, and cancels orders it sent that are still running. The
    robots are left as the scenario found them, for the next scenario and for anyone using the lab. This
    also happens on Ctrl-C, and the JUnit report is still written for the scenarios that finished; the runner
    says whether the cleanup completed. `DISCONNECT` and `UNRESPONSIVE` end by themselves (up to 300 s): cleanup
@@ -96,8 +96,8 @@ ActuNode's simulated robots: a scenario that asks for them on another manufactur
 | Step | Fields | Does |
 |---|---|---|
 | `send_mission` | `robot`, `destination`; optional `source`, `load`, `as` | Sends a mission (`POST /api/missions`). With `source` the robot picks up there and drops at `destination`. `as` names the order for later `expect … order:` checks. |
-| `inject` | `robot`, `failure`; optional `params` (numbers and text, passed as written) | Injects `BLOCKED_PATH`, `LOW_BATTERY` (`level`), `DISCONNECT` (`duration_s`, `mode`), `INVALID_PAYLOAD` (`kind`, `count`) or `UNRESPONSIVE` (`duration_s`: online but silent, commands ignored), as in the main README (Failure injection). |
-| `clear` | `robot`, `failure` | Clears `BLOCKED_PATH` or `LOW_BATTERY` (the others end by themselves). |
+| `inject` | `robot`, `failure`; optional `params` (numbers and text, passed as written) | Injects `BLOCKED_PATH`, `LOW_BATTERY` (`level`), `DISCONNECT` (`duration_s`, `mode`), `INVALID_PAYLOAD` (`kind`, `count`) `UNRESPONSIVE` (`duration_s`: online but silent, commands ignored), `SPEED` (`m_per_s`: drives at that speed until cleared) or `BATCHED_STATE` (`every_s`: state only every N s until cleared), as in the main README (Failure injection). |
+| `clear` | `robot`, `failure` | Clears `BLOCKED_PATH`, `LOW_BATTERY`, `SPEED` or `BATCHED_STATE` (the others end by themselves). |
 | `cancel_mission` | `robot` | Sends the VDA 5050 `cancelOrder` instant action. |
 | `wait` | seconds | `- wait: 2`. Up to 3600. |
 | `expect` | see below | Waits until all its conditions hold at the same moment (and, with `for`, keep holding). |

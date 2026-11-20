@@ -24,6 +24,20 @@ cli/.venv/bin/actunode test examples/fleet_manager/blocked_path_reaction.yaml
 | `escalate` | `startPause` and an operator alert (in its log); `stopPause` once the aisle is clear | passes |
 | `ignore` | nothing: the robot stays blocked | **fails**: `none of: ...` |
 
+Two habits of real fleet managers, each a good and a bad option of the example, on a dense map
+(`--spacing M`: a node every M metres, at least 0.5) with a short released base (`--base N`: N nodes at a time,
+at least 2; the rest is horizon). `--extend late` has no effect without `--base`.
+
+| Option | What the example does | Scenario |
+|---|---|---|
+| `--spacing 2 --base 4 --extend early` | order update while 2 or fewer released nodes are ahead of the robot | `base_extension.yaml` passes |
+| `--spacing 2 --base 4 --extend late` | extends only once the robot has stopped at the end of its base | **fails**: `driving: false, newBaseRequest: true` seen |
+| `--spacing 2 --progress any` | accepts a state that reports several nodes passed | `several_nodes_per_state.yaml` passes |
+| `--spacing 2 --progress strict` | more than one node passed between two states: logs an error, `cancelOrder` | **fails**: `cancelOrder` seen |
+
+Both scenarios make the robot fast (`SPEED`, 2 m/s); the second also batches its state (`BATCHED_STATE`, one
+state every 3 s). Order-update rejections the robot reports are logged.
+
 The example sends one robot (`--robot`, default robot_03) between two locations (`--route`) on VDA 5050 2.1
 (`--vda 3` for 3.0). Over the network: `--host <lab> --port 8883 --ca-file actunode-ca.crt`.
 
@@ -33,7 +47,8 @@ The example sends one robot (`--robot`, default robot_03) between two locations 
    robots; add manufacturers to command others too), then recreate `mqtt-init` and `mosquitto`.
 2. Point it at the broker: interface `uagv`, manufacturer `ActuNode`, serials `robot_01` … `robot_NN`, the
    lab's VDA 5050 version. Its orders are validated like everything else: the inspector shows any rule it breaks.
-3. Have it drive robot_03, run `blocked_path_reaction.yaml`, and adapt the scenario to what your fleet
+3. Have it drive robot_03, run `blocked_path_reaction.yaml`, `base_extension.yaml` (does it extend the base in time on a dense map?) and
+   `several_nodes_per_state.yaml` (does it accept several nodes passed in one state?), and adapt the scenario to what your fleet
    manager should do (a different robot, a tighter `within`, only a reroute counts, ...).
 4. Other failures to try: `LOW_BATTERY` (does it send the robot to charge?), `DISCONNECT` (does it notice,
    and resume?), `UNRESPONSIVE` (the robot stays online but stops answering: does it notice stale state?).

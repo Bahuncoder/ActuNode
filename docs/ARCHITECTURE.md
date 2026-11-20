@@ -77,7 +77,7 @@ and produce a `warning` in the mission response when they do not match.
 | `uagv/v2/ActuNode/<robot>/state` | robot | backend | 0 | no | VDA 5050 state + `actunode.missionStatus` and `actunode.injectedFailures` (failures currently injected; absent on older robots); every 1 s and on every status change |
 | `uagv/v2/ActuNode/<robot>/connection` | robot (and broker, as last will) | backend | 1 | yes | `ONLINE` / `OFFLINE` / `CONNECTIONBROKEN` |
 | `uagv/v2/ActuNode/<robot>/factsheet` | robot, on every connect | backend (validated) | 0 | yes | What the simulated robot is and can do (D-34) |
-| `actunode/v1/sim/<robot>/inject` | backend | that robot | 1 | no | Failure-injection command `{injectionId, timestamp, robotId, failure, action, params}` (ActuNode, not VDA 5050; failures `BLOCKED_PATH`, `LOW_BATTERY`, `DISCONNECT`, `INVALID_PAYLOAD`, `UNRESPONSIVE`) |
+| `actunode/v1/sim/<robot>/inject` | backend | that robot | 1 | no | Failure-injection command `{injectionId, timestamp, robotId, failure, action, params}` (ActuNode, not VDA 5050; failures `BLOCKED_PATH`, `LOW_BATTERY`, `DISCONNECT`, `INVALID_PAYLOAD`, `UNRESPONSIVE`, `SPEED`, `BATCHED_STATE`) |
 
 QoS follows VDA 5050 section 6.2: QoS 0 for `order`, `instantActions`, `state`, `factsheet`,
 `visualization`; QoS 1 for `connection`. The backend subscribes with QoS 1 (a ceiling, needed to receive
@@ -158,7 +158,7 @@ WebSocket client's queue → `send_json`.
 | GET | `/api/robots` | Latest connection + state per robot |
 | GET | `/api/proximity` | Pairs of live robots (by key, e.g. `v2/ActuNode/robot_01`) currently closer than `ACTUNODE_PROXIMITY_M` (D-22, D-27) |
 | GET | `/api/messages` | Recent MQTT messages with validation issues |
-| GET / POST | `/api/failures` | Failure log / inject a failure (`BLOCKED_PATH`, `LOW_BATTERY`, `DISCONNECT`, `INVALID_PAYLOAD`, `UNRESPONSIVE`) with per-failure `params`; clear only `BLOCKED_PATH` and `LOW_BATTERY` (D-42); `UNRESPONSIVE` (`duration_s` 1–300, default 10) keeps the robot connected but silent and deaf to `order` and `instantActions`, ends by itself (D-48) |
+| GET / POST | `/api/failures` | Failure log / inject a failure (`BLOCKED_PATH`, `LOW_BATTERY`, `DISCONNECT`, `INVALID_PAYLOAD`, `UNRESPONSIVE`, `SPEED`, `BATCHED_STATE`) with per-failure `params`; clear only `BLOCKED_PATH`, `LOW_BATTERY`, `SPEED` and `BATCHED_STATE` (D-42); `UNRESPONSIVE` (`duration_s` 1–300, default 10) keeps the robot connected but silent and deaf to `order` and `instantActions`, ends by itself (D-48); `SPEED` (`m_per_s` 0.1–5.0, default 2.0) drives at that speed and `BATCHED_STATE` (`every_s` 2–30, default 5) sends state only every N s, both until cleared |
 | GET | `/api/validation` | Validation counters per rule |
 | POST | `/api/validation/reset` | Reset counters |
 | GET | `/api/recording` | Current recording |
