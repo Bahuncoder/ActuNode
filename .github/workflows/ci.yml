@@ -1,6 +1,6 @@
 name: CI
 
-# The job names below (lint, backend, ..., e2e (2, 1)) are required status checks on main's branch protection
+# The job names below (lint, backend, simulator, cli, cloud, frontend, scenarios (2), scenarios (3), e2e (2, 0), e2e (3, 0), e2e (2, 1)) are required status checks on main's branch protection
 # (D-65): renaming or adding a matrix job means updating the protection, or pull requests cannot be merged.
 on:
   push:

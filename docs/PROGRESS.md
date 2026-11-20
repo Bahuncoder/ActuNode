@@ -12,12 +12,36 @@ the status line, the schedule table, the session log, and the open issues.
 
 | | |
 |---|---|
-| **Calendar** | Week 1 of 8 by date (Fri 9 Oct – Thu 15 Oct 2026); dates no longer gate the work (D-30) |
+| **Calendar** | Week 7 of 8 by the original calendar (Fri 20 – Thu 26 Nov 2026). The build ran ahead of it: weeks 1–16 were done by 16 Oct, and dates no longer gate the work (D-30) |
 | **Last updated** | Fri 20 Nov 2026 |
 | **Status** | **Phase 1 (weeks 1–8) complete; v0.1.0 released 13 Oct 2026** (D-43). Phase 2 (weeks 9–16, D-44) under way: **Weeks 9 and 10 done** (D-45, D-46: `actunode test`, timing and message expectations, every run recorded, five sample scenarios). **Decision point** (D-44): the founder's first user conversations decide the order of weeks 11–16; without new input, Week 11 is next. **Product audit 14 Oct (D-47):** outside fleet managers can now connect; security headers added. **Week 11 done (D-48):** the plan's demo question runs as a scenario against a fleet manager; `UNRESPONSIVE`; replay with current time. **Week 12 done (D-49).** **Full audit of weeks 0–12 done (D-50, docs/AUDIT_2026-10-14.md):** six reviews, ~95 findings (13 High), all fixed with tests; gate green. **Week 13 done (D-51):** a real ROS 2 stack (Nav2 + InOrbit's VDA 5050 connector) in the lab; eight deviations found. **Week 14 done (D-52):** conformance suite, the connector's report (4/9), five upstream drafts (not filed: founder's call), robot guide. **Week 15 done (D-53):** failure catalogue, scenario gallery, message flows from real recordings; two blog drafts (private, for the founder). **Week 16 done (D-54):** getting started guide, compatibility promise, triage routine; 0.2.0 built and verified (fresh clone, CI green); v0.2.0 released (tag on 6c234f2). **Phase 2 complete.** **After Phase 2 (17 Oct):** the ROS 2 robot's conformance failures fixed (D-55; all five merged upstream by 14 Nov, and the robot now builds InOrbit's code without patches, D-63), per-person logins and an audit trail (D-56), metrics (D-57), published images (D-58), robot-scoped scenario checks (D-59); the full audit has no open items. **v0.3.0 released 17 Oct** (tag on 238509e); images public on ghcr.io for amd64 and arm64, provenance verified. **Hosted service (D-61):** phase 1 built 19 Oct; **phase 2 built 20–21 Oct (D-62)**: idle labs, account deletion, abuse limits, upgrades, backups with a passing restore drill, alerts; **v0.4.0 released 24 Oct** (tag on f36e5a2; images public on ghcr.io); **v0.4.1 released 15 Nov** (tag on e51d722; security and
 fix release: zlib CVEs in the images, D-64; the ROS 2 robot on InOrbit's merged code, D-63; images public, 0
 HIGH/CRITICAL in Trivy); waiting on the founder's accounts (Hetzner, DNS, OAuth, backup storage, alert webhook). **Fleet-manager side of the integrator's list built 20 Nov (D-68):** robots that drive faster (`SPEED`) and send state only every N s (`BATCHED_STATE`); two fleet-manager scenarios. No open issues. |
 | **Working rule** | A week is done when its work is fully done (D-30): features, then a quality gate (independent bug and security review, scans, a test for every fix, all suites and e2e green, docs). Then the next week starts, whatever the date. |
+
+## Against the company vision (checked 20 Nov 2026)
+
+The private vision document (docs/company/, 16 pages), item by item. Plan references are to its pages;
+[PLAN.md](PLAN.md) has the public summary.
+
+| | Vision item | Target | Where we are |
+|---|---|---|---|
+| ✅ | Open-source simulator, inspector, mission sender, validator, failure injector, record/replay (pp. 4, 7) | 0–8 weeks | v0.1.0, 13 Oct; seven failure injections today (D-68) |
+| ✅ | Definition of done: clone, one command, 3 robots, 1 mission, 1 failure, replay (p. 15) | Day 7 | [GETTING_STARTED.md](GETTING_STARTED.md); fresh-clone check before each release |
+| ✅ | Integration lab (p. 7) | 3 months | By 17 Oct: scenario tests, testing an outside fleet manager, CI runner, conformance suite |
+| ✅ | Milestone 2, a real robot stack (p. 8) | 6 months | ROS 2 (Nav2) with InOrbit's VDA 5050 connector; five fixes merged upstream (D-55, D-63) |
+| ✅ | Milestone 3, automated tests (p. 8) | 6 months | `actunode test`, JUnit output, Docker runner, GitHub Actions example |
+| 🔄 | Milestone 1, developer credibility (p. 8) | 6 months | Docs, scenarios, failure catalogue, message flows done. Waiting on the founder: two blog posts (drafted, private), the 3-minute video (recorder ready, voice-over to record) |
+| 🔄 | Pro developer stage: hosted labs, team workspaces, CI (p. 9) | after the free stage | ActuNode Cloud built (D-61, D-62, D-67); not live: waiting on the founder's accounts |
+| ❌ | **Milestone 4, first external users; 30 conversations in 60 days (pp. 8, 10)** | by 8 Dec | **Behind:** 0 calls; 2 written replies; 5 of 12 contacts reached (see Customer discovery) |
+| ⬜ | Pilot with an integrator (p. 7) | 6 months | Needs conversations first |
+| ⬜ | Adapter SDK; edge gateway; operations platform (pp. 7, 14) | 12 / 24 months | Not started, by design: each stage must be earned by user demand (p. 14) |
+| ⬜ | Market signals: people trying it, starring, criticising, asking (p. 12) | ongoing | 20 Nov: 0 stars, 0 forks, no issues from outside; 4 unique visitors in 14 days |
+| 🔄 | Check the latest VDA 5050 and Open-RMF versions before any sales use (p. 16) | before sales | VDA 5050: latest release still 3.0.0 (checked 20 Nov; the 3.0.0 schema fix is on main, unreleased). Open-RMF: not checked |
+
+**Reading.** The product is months ahead of the vision's timeline, and the vision's own named risk, "no real users"
+(p. 13), is now the gap. Building further before users ask runs against the vision (p. 14). The work that moves the
+project is the founder's: conversations, going live with the hosted beta, and publishing the blog posts and video.
 
 ## Schedule
 
@@ -577,13 +601,19 @@ anonymised learnings go here.
 
 | Week | Messages sent | Replies | Conversations | Total conversations |
 |---|---|---|---|---|
-| 1 (9–15 Oct) | 0 | 0 | 0 | 0 / 30 |
+| 1–5 (9 Oct – 12 Nov) | 0 | 0 | 0 | 0 / 30 |
+| 6 (13–19 Nov) | 3 (e-mail) | 1: a detailed written answer from an AGV integrator; a call requested | 0 | 0 / 30 |
+| 7 (20–26 Nov, so far) | 2 (LinkedIn) | 1: an AMR company's engineer; four questions sent, a call offered | 0 | 0 / 30 |
 
-**Pipeline:** 10 contacts drafted (3 AMR companies, 3 VDA 5050 fleet managers, 2 open-source
-maintainers, 2 developers who asked publicly for a VDA 5050 simulator or sample messages).
+**Pipeline (20 Nov):** 12 contacts in the tracker (AMR companies, integrators, open-source and research groups);
+5 reached, 7 not yet, 2 of those waiting on a ROS Discourse sign-in. Follow-ups due 25–27 Nov. The target (30 by
+8 Dec) will be missed at this pace; the vision asks for five a week (p. 12).
 
-**Learnings so far:** none yet. After every 5 conversations, add a summary of repeated pain points
-to the session log.
+**Learnings so far** (anonymised): master controls and vehicles read VDA 5050 differently, and the failures are edge
+cases in how messages may be structured (empty order as cancel, several nodes in one state, base extended late,
+single-node orders): built into raw checks and fleet-manager scenarios (D-66, D-68). VDA 5050 3.0 adopters meet
+schema problems in the official 3.0.0 release (fixed upstream on main, not released). After every 5 conversations,
+add a summary of repeated pain points to the session log.
 
 ## Verification status
 
@@ -592,19 +622,21 @@ exercised by hand with a real browser and MQTT traffic.
 
 | Area | How it was verified | Gaps |
 |---|---|---|
-| Backend API | 438 unit/API tests (pytest), run in CI, including a shutdown test under a real uvicorn server | |
-| Simulator | 391 tests (pytest, incl. conformance against the official 2.1.0 and 3.0.0 schemas), run in CI | |
-| Python style | `ruff check` + `ruff format --check` in CI (backend, simulator) | |
-| Frontend | Type check, lint, 96 unit/component tests (incl. the shared backend contract fixtures) (`npm test`, incl. malformed robot data, both VDA versions, login, nothing opened before the session check) and production build, in CI; real-browser tests in the e2e suite (below) | |
+| Backend API | 694 unit/API tests (pytest), run in CI, including a shutdown test under a real uvicorn server | |
+| Simulator | 490 tests (pytest, incl. conformance against the official 2.1.0 and 3.0.0 schemas, and the example fleet manager driving a simulated robot, D-68), run in CI | |
+| Scenario runner (CLI) | 250 tests (pytest), run in CI; the sample and fleet-manager scenarios also run against the stack in CI for 2.1 and 3.0 (`scenarios` job) | |
+| Hosted service (`cloud/`) | 106 tests (pytest), run in CI; the local hosted stack checked end to end with `cloud/deploy/local-check.sh` (25 checks, 20 Nov); restore drill (D-62) | Not yet run on a real server |
+| Python style | `ruff check` + `ruff format --check` in CI (the whole repository) | |
+| Frontend | Type check, lint, 179 unit/component tests (incl. the shared backend contract fixtures) (`npm test`, incl. malformed robot data, both VDA versions, login, nothing opened before the session check) and production build, in CI; real-browser tests in the e2e suite (below) | |
 | MQTT flow | Automated against Mosquitto in Docker (`tests/e2e`) | |
 | Shutdown | Automated in `tests/e2e` (broker first, then backend; recording gets its end line) and `backend/tests/test_shutdown.py` | |
-| Docker stack, end to end | **Automated** (`tests/e2e`, 37 tests incl. 3 in Chromium via Playwright, 5 for Week 3 orders, 4 for session validation and upload and 7 for failure injection, in CI for VDA 2.1, 3.0 and 2.1 with login): health, state every second, mission state machine, BLOCKED_PATH, near-collision warning, validation clean, record/replay, last will on kill, broker restart recovery, shutdown with open recording; in the browser: live robots, map and stream over a real WebSocket, a mission sent from the form completes, login screen refuses a wrong token, no console errors | Browser tests use the local plain-HTTP UI, not HTTPS (D-29) |
+| Docker stack, end to end | **Automated** (`tests/e2e`, 58 tests: 48 in the default configuration, the rest for login, TLS and the ROS 2 robot; incl. 3 in Chromium via Playwright, 5 for Week 3 orders, 4 for session validation and upload and 7 for failure injection, in CI for VDA 2.1, 3.0 and 2.1 with login): health, state every second, mission state machine, BLOCKED_PATH, near-collision warning, validation clean, record/replay, last will on kill, broker restart recovery, shutdown with open recording; in the browser: live robots, map and stream over a real WebSocket, a mission sent from the form completes, login screen refuses a wrong token, no console errors | Browser tests use the local plain-HTTP UI, not HTTPS (D-29) |
 | P-1042 scenario (mission → block → clear → complete) | E2E, several times | |
 | Record → replay | E2E; replay timing matched the recording within ~25 ms at 5×. Size limit stops a recording by itself (unit test); replay streams the file (unit test: 25 MB file, peak memory under 5 MB). Retention and upload (D-41): unit tests incl. round trips of recordings made from real traffic; e2e: download → upload → validate, replay of an uploaded file refused while robots are live (D-36), bad uploads refused, 1.7 MB upload through nginx | |
 | Validator | Official VDA 5050 2.1.0 schemas (D-20); real and generated messages in every mission state pass them; planted bad messages flagged; e2e: all live traffic clean. 3.0.0 schemas on `v3` topics (D-15), tested with valid 3.0 messages and 2.1 messages on a `v3` topic. Offline validation (D-40): unit tests show message-by-message parity with the live hub; e2e: a recorded session validates with no errors | Near-collision warnings and pre-recording header history are not part of offline validation (by design) |
 | 10/25/50 robots with missions | Load test (`tests/load`, D-38): all 18 thresholds met at every size; at 50 robots cadence p99 1.03 s, robot→browser p99 75 ms, backend CPU 10 %, UI 59 fps (p95 frame 16.8 ms), nothing dropped | Weekly in CI (`load.yml`, D-39); 50 robots is the simulator maximum |
 | State every second (Week 2) | Measured on the real stack, 75 s windows with missions: 1, 10 and 50 robots; worst interval 1.068 s, p99 ≤ 1.064 s, no headerId gaps, drift 0, at most one message per 0.1 s tick; one retained factsheet per robot | Not automated (scratch script); 50 robots is the simulator maximum |
-| Dependencies and images | `pip-audit` (backend, simulator, e2e), `npm audit`, `trivy` images and Dockerfiles: 0 known HIGH/CRITICAL; automated weekly and on dependency changes (`security.yml`, D-39) | `bandit` still by hand |
+| Dependencies and images | `pip-audit` (backend, simulator, CLI, cloud, e2e), `npm audit`, `trivy` on the six images (four lab, two hosted) and the Dockerfiles: 0 known HIGH/CRITICAL beyond dated exceptions in `.trivyignore` (zlib until 28 Nov, x/net in Compose until 20 Dec); weekly and on dependency changes (`security.yml`, D-39, D-67); Dependabot for every package and image | `bandit` still by hand; the optional ROS 2 image is not scanned |
 | Security (D-18, D-23–D-28, D-31, D-32) | E2E: MQTT logins and ACL (spoofing refused, incl. own serial under another manufacturer; old serial-only login refused), Host/Origin checks, nothing works without a session in login mode, plain ports unreachable from the LAN, TLS refuses clients that do not trust the CA | |
 | Near-collisions (D-22) | 8 unit tests (incl. 3.0 positions, offline robots, two robots sharing a serial); e2e: two robots at the same spot raise one warning | |
 
@@ -640,6 +672,16 @@ Numbered so they can be referenced from commits. Remove an item only when it is 
 ## Session log
 
 Newest first. One entry per work session: what was done, what was learned, what is next.
+
+### Fri 20 Nov 2026 (evening): the vision checked against where we are; docs and workflows brought up to date
+The founder asked for the vision to be read against the plan and everything brought up to date. The vision, item by
+item, is now a table at the top of this file: the build is months ahead of the vision's timeline; first external users
+(30 conversations by 8 Dec) are behind. PLAN.md gained the vision's later steps (pilot, adapter SDK, edge gateway, the
+business stages), each to be earned by user demand. An audit of all docs found stale statements in 17 files (counts, release
+status, the hosted service described as live, open items that are done); all fixed. Workflows: Dependabot now watches
+the hosted service's packages and images, `security.yml` audits its Python packages (clean), the ROS 2 workflow runs
+when the conformance suite changes, and the required-checks comment matches branch protection. Upstream VDA 5050
+re-checked: still no 3.0.1 release.
 
 ### Fri 20 Nov 2026 (later): the fleet-manager side of the integrator's list (D-68)
 The founder asked to build what was next. The two fleet-manager habits from the integrator's list are now testable:

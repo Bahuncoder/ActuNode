@@ -2,6 +2,8 @@
 
 Working specification · updated 17 October 2026 (v0.3.0) · [PRD](PRD.md) · [Backend contracts](BACKEND_SCHEMA.md)
 
+> Checked 20 Nov 2026: still accurate for the lab. Since 17 Oct: releases v0.4.0 and v0.4.1; the hosted service (ActuNode Cloud, D-61, D-62, D-67) is described in [HOSTED_SERVICE.md](../HOSTED_SERVICE.md), not in this specification; vehicle raw checks (D-66); SPEED and BATCHED_STATE injections (D-68).
+
 ## Architecture and deployment
 
 Current stack: React 19 / TypeScript with Vite, nginx serving static assets and proxying `/api`, FastAPI/Python backend, paho MQTT clients, Mosquitto broker, Python simulator and separately packaged Python CLI. Development uses Python 3.12 and Node 24 as documented in the repository. Docker Compose is the supported integrated deployment.

@@ -22,7 +22,7 @@ and ran in the lab with `ACTUNODE_ROS2_PATCHES=1` until all five were merged (re
 
 | Draft | Repository | Severity for a fleet manager | Status |
 |---|---|---|---|
-| [01-navigation-failure-reported-as-reached.md](01-navigation-failure-reported-as-reached.md) | vda5050_adapter_examples | High | Fixed by PR 1; file only if the PR is not wanted |
+| [01-navigation-failure-reported-as-reached.md](01-navigation-failure-reported-as-reached.md) | vda5050_adapter_examples | High | Fixed by PR 1 (merged 12 Nov); no issue needed |
 | [02-order-without-theta-silently-ignored.md](02-order-without-theta-silently-ignored.md) | ros_amr_interop | High | Fixed by PRs 2 and 4 |
 | [03-driving-always-false.md](03-driving-always-false.md) | vda5050_adapter_examples | Medium | Fixed by PR 1 |
 | [04-operating-mode-and-position-initialized.md](04-operating-mode-and-position-initialized.md) | vda5050_adapter_examples | Medium | Fixed by PR 1 |

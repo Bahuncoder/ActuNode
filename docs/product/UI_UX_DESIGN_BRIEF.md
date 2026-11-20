@@ -2,6 +2,8 @@
 
 Working specification · updated 17 October 2026 (v0.3.0) · [App flow](APP_FLOW.md)
 
+> Checked 20 Nov 2026: still accurate for the lab. Since 17 Oct: releases v0.4.0 and v0.4.1; the hosted service (ActuNode Cloud, D-61, D-62, D-67) is described in [HOSTED_SERVICE.md](../HOSTED_SERVICE.md), not in this specification; vehicle raw checks (D-66); SPEED and BATCHED_STATE injections (D-68).
+
 ## Intent and audience
 
 Design a calm technical workspace where an integration engineer can answer: which robot is affected, what happened, what evidence supports it, and what can I do next? The central artifact is a reproducible incident. Favor precise status, readable traffic and recoverable controls over visual simulation realism.

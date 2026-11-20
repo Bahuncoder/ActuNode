@@ -25,7 +25,9 @@ ROS 1; NVIDIA's Isaac Mission Client is a different architecture (cloud dispatch
 Humble because that is the connector's; Nav2's lightweight loopback simulator exists only from Jazzy, so the robot
 is `turtlebot3_fake_node`.
 
-## Observed deviations (to verify and report in Week 14)
+## Observed deviations (reported upstream and fixed)
+
+Status: reported upstream and fixed; the five pull requests were merged 2–14 Nov 2026 (see [upstream/README.md](upstream/README.md) and [../CONFORMANCE_ROS2_CONNECTOR.md](../CONFORMANCE_ROS2_CONNECTOR.md)).
 
 | # | Observation | Evidence | VDA 5050 2.x | Effect |
 |---|---|---|---|---|

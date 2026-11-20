@@ -8,6 +8,9 @@ on:
   push:
     paths:
       - "ros2/**"
+      - "conformance/**"
+      - "tests/e2e/conftest.py"
+      - "tests/e2e/requirements.txt"
       - "tests/e2e/test_13_ros2_robot.py"
       - ".github/workflows/ros2.yml"
 

@@ -411,7 +411,7 @@ MQTT topics, WebSocket events and the session file format are in
 
 Describe an incident as a YAML scenario (send a mission, inject a failure, expect what the robot reports)
 and run it against the lab; it reports pass or fail, and JUnit XML for CI, and records each run as a session
-you can replay. Five sample scenarios are in [scenarios/](scenarios/); the full format is in
+you can replay. Six sample scenarios are in [scenarios/](scenarios/); the full format is in
 [cli/README.md](cli/README.md).
 
 ```bash
@@ -526,6 +526,7 @@ Offline playground with no MQTT at all (one mission through the robot state mach
 | `conformance/` | VDA 5050 2.x conformance suite for any robot, and raw checks |
 | `ros2/` | The optional ROS 2 robot: Dockerfile, launch, Nav2 parameters, generated warehouse map |
 | `examples/` | An example fleet manager and the scenario that tests it |
+| `site/` | The public front page, published by GitHub Pages ([pages.yml](.github/workflows/pages.yml)) |
 | `cli/`, `scenarios/` | `actunode test`, the scenario runner; scenario files |
 | `contracts/` | Shared fixtures that tie backend and frontend (and simulator) message shapes |
 | `tests/e2e`, `tests/load`, `tests/demo` | End-to-end tests, load test, demo recorder |
@@ -541,7 +542,7 @@ merged upstream, and a keyboard-focus fix in the session list.
 control plane with GitHub and Google sign-in, one isolated lab per workspace behind a TLS edge (MQTT routed by
 SNI), idle labs that sleep and wake, backups with a tested restore, alerts and abuse limits
 ([docs/HOSTED_SERVICE.md](docs/HOSTED_SERVICE.md)); the lab's screens follow the design brief and the
-accessibility review.
+accessibility review. It is an invite-only beta, built and tested but not live yet.
 
 **v0.3.0 (17 October 2026)** closes the full audit: one web login per person with viewer and operator roles and
 an audit trail of who changed what; Prometheus metrics, including the broker's own load; published multi-architecture
@@ -569,7 +570,7 @@ is stable between 0.x releases: [docs/COMPATIBILITY.md](docs/COMPATIBILITY.md). 
 | [docs/CONNECT_YOUR_ROBOT.md](docs/CONNECT_YOUR_ROBOT.md) | Bring your robot into the lab; the conformance suite |
 | [docs/COMPATIBILITY.md](docs/COMPATIBILITY.md) | What stays stable between 0.x releases |
 | [docs/TRIAGE.md](docs/TRIAGE.md) | Reporting a problem; how issues are handled |
-| [docs/DECISIONS.md](docs/DECISIONS.md) | Why things are built the way they are (D-1 to D-61) |
+| [docs/DECISIONS.md](docs/DECISIONS.md) | Why things are built the way they are (D-1 to D-68) |
 | [docs/VDA5050_NOTES.md](docs/VDA5050_NOTES.md) | Protocol notes and validator rules |
 | [docs/research/VDA5050_3_0.md](docs/research/VDA5050_3_0.md) | VDA 5050 3.0 compared with 2.1 |
 | [docs/DEMO.md](docs/DEMO.md) | 3-minute demo script and the automated recorder |

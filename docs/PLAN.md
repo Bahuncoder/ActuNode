@@ -62,6 +62,25 @@ say can reorder weeks 11–16.
 Each week ends with its quality gate (independent review, tests for every fix, e2e in all CI configurations,
 docs), as in Weeks 1–8.
 
+## After Phase 2: the vision's longer road (plan pp. 7, 9, 10, 14; added 20 Nov 2026)
+
+Phases 1 and 2 cover the vision's first two time steps. The rest, as the vision states it, for reference. The vision
+says each later stage must be **earned by user demand, not imagined early** (p. 14), so the order after Phase 2 comes
+from what users ask for (D-44), not from this list.
+
+| Time (p. 7) | Step | Expansion stage (p. 14) | Business stage (p. 9) |
+|---|---|---|---|
+| 0–8 weeks | Open-source simulator | 1. Debugging lab: simulator, inspector, failure injection, replay | Free: open source, community adoption |
+| 3 months | Integration lab | 2. Test infrastructure: scenario tests, CI for robot workflows | Pro developer: hosted scenarios, team workspaces, CI integration (monthly SaaS) |
+| 6 months | Pilot with an integrator | (services) | Services: paid pilots that feed the roadmap |
+| 12 months | Adapter SDK | 3. One API across VDA 5050, ROS 2 and vendor REST APIs | Integration team: private adapters, test suites, support (annual) |
+| 24 months | Edge gateway | 4. An industrial computer between robots, PLCs, WMS and cloud | Enterprise: gateway, SSO, audit logs, custom connectors |
+| later | Operations platform | 5. Traffic, analytics, exception handling, remote operations | |
+
+**Customer discovery (p. 10):** 30 conversations in 60 days (by 8 Dec 2026), research and not a pitch, across five
+segments: system integrators, AMR startups, warehouse engineers, university labs, open-source maintainers. Five
+interviews a week (p. 12). No revenue target in the first phase: the goal is feedback (p. 8).
+
 ## Demo scenario (plan p. 5)
 
 WMS job: move pallet **P-1042** from **Receiving Door 2** to **Storage A17**.

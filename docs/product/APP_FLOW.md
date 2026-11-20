@@ -2,6 +2,8 @@
 
 Working specification · updated 17 October 2026 (v0.3.0) · [PRD](PRD.md) · [Design brief](UI_UX_DESIGN_BRIEF.md)
 
+> Checked 20 Nov 2026: still accurate for the lab. Since 17 Oct: releases v0.4.0 and v0.4.1; the hosted service (ActuNode Cloud, D-61, D-62, D-67) is described in [HOSTED_SERVICE.md](../HOSTED_SERVICE.md), not in this specification; vehicle raw checks (D-66); SPEED and BATCHED_STATE injections (D-68).
+
 ## Entry and navigation
 
 Current UI is one lab dashboard, with conditional login. Scenario execution and credential administration are CLI workflows; they are not existing UI screens.

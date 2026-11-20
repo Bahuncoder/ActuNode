@@ -2,6 +2,8 @@
 
 Working specification · updated 17 October 2026 (v0.3.0) · [Document index](README.md)
 
+> Checked 20 Nov 2026: still accurate for the lab. Since 17 Oct: releases v0.4.0 and v0.4.1; the hosted service (ActuNode Cloud, D-61, D-62, D-67) is described in [HOSTED_SERVICE.md](../HOSTED_SERVICE.md), not in this specification; vehicle raw checks (D-66); SPEED and BATCHED_STATE injections (D-68).
+
 ## Product and problem
 
 ActuNode Lab is a local, open-source workspace for reproducing and regression-testing AMR integration failures over VDA 5050 / MQTT without requiring a physical fleet. Integration faults are expensive to reproduce on a warehouse floor, message evidence disappears, and teams struggle to establish whether a robot or fleet manager violated the expected protocol.
@@ -21,7 +23,7 @@ Primary initial segment: integrators testing fleet-manager behavior. This is a p
 
 ## Scope and release boundary
 
-Current baseline (v0.3.0): VDA 5050 2.1.0 and 3.0.0, 1–50 simulated robots, a fixed warehouse map, mission send/cancel/extend, five failure types, validation, proximity warnings, JSONL sessions, capture import, YAML scenario runner, Docker deployment and example CI integration; an optional independent ROS 2 / Nav2 robot with a VDA 5050 2.x conformance suite and published report; per-person web logins with viewer/operator roles and an audit trail; Prometheus metrics; published amd64/arm64 images with provenance.
+Current baseline (v0.4.1): VDA 5050 2.1.0 and 3.0.0, 1–50 simulated robots, a fixed warehouse map, mission send/cancel/extend, seven failure types, validation, proximity warnings, JSONL sessions, capture import, YAML scenario runner, Docker deployment and example CI integration; an optional independent ROS 2 / Nav2 robot with a VDA 5050 2.x conformance suite and published report; per-person web logins with viewer/operator roles and an audit trail; Prometheus metrics; vehicle raw checks; published amd64/arm64 images with provenance.
 
 v0.4.0 (24 October) delivered the hosted service (D-61, D-62) and the re-measured release gates (load, accessibility); observed onboarding and validated external pilot workflows (PR-12, PR-13) remain open for the next release. Delivered since the 15 October baseline: PR-11 (v0.2.0) and the full audit (v0.3.0). v0.4.1 (15 November) is a security and fix release (D-63, D-64). No evidence currently establishes real-hardware compatibility or product-market fit.
 

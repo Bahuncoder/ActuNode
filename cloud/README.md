@@ -1,5 +1,7 @@
 # ActuNode Cloud control plane (D-61)
 
+Status: built and verified locally, not live yet ([docs/HOSTED_DEPLOY.md](../docs/HOSTED_DEPLOY.md) is the go-live guide).
+
 The service behind **app.actunode.com**: GitHub and Google sign-in, the invite-only beta, workspaces, members and
 roles, and the way into each workspace's lab (single sign-on, bound to the browser). Design:
 [docs/HOSTED_SERVICE.md](../docs/HOSTED_SERVICE.md). Each workspace's lab is the ordinary ActuNode lab, started by

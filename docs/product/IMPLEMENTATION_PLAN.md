@@ -2,11 +2,13 @@
 
 Working specification · updated 17 October 2026 (v0.3.0) · [PRD](PRD.md) · [TRD](TRD.md)
 
+> Checked 20 Nov 2026: still accurate for the lab. Since 17 Oct: releases v0.4.0 and v0.4.1; the hosted service (ActuNode Cloud, D-61, D-62, D-67) is described in [HOSTED_SERVICE.md](../HOSTED_SERVICE.md), not in this specification; vehicle raw checks (D-66); SPEED and BATCHED_STATE injections (D-68).
+
 ## Planning basis
 
 Roadmap weeks 1–16 ([PLAN.md](../PLAN.md)) are complete and released: v0.1.0 (13 Oct), v0.2.0 (16 Oct), v0.3.0
 (17 Oct, the full audit closed). Weeks are work packages, not calendar weeks (D-30). This plan records the outcome
-of the packages written on 15 October (A–G) and sequences the work toward **v0.4.0** (H–M). Estimates are planning
+of the packages written on 15 October (A–G) and sequenced the work toward **v0.4.0** (H–M), now done: v0.4.0 released 24 Oct, v0.4.1 15 Nov. Estimates are planning
 ranges, not promised dates; user evidence can reorder them.
 
 Product prioritization belongs to the founder; engineering supplies runnable deliverables and test evidence.
@@ -19,7 +21,7 @@ Product prioritization belongs to the founder; engineering supplies runnable del
 | B. Connector feasibility | Done | InOrbit `ros_amr_interop` + `vda5050_adapter_examples`, pinned commits, licence and maintenance checked (D-51) |
 | C. Independent stack integration | Done | Compose profile `ros2`, scoped TLS login, map alias, mission and cancel (D-51) |
 | D. Conformance and regression | Done | Nine scenarios plus raw checks, report with spec citations (D-52); with the fixes 9/9 and 4/4 (D-55), 8/8 raw checks with four master-control habits added 19 Nov (D-66); all five fixes merged upstream by 14 Nov and built from InOrbit's code, weekly in CI (D-63) |
-| E. Onboarding and UX | Partly done | GETTING_STARTED, CONNECT_YOUR_ROBOT, failure catalogue, scenario gallery, message flows (D-53/D-54); UI for real robots (D-52); viewer mode and Activity panel (D-56). Open: observed new-user sessions; keyboard/zoom/screen-reader review |
+| E. Onboarding and UX | Partly done | GETTING_STARTED, CONNECT_YOUR_ROBOT, failure catalogue, scenario gallery, message flows (D-53/D-54); UI for real robots (D-52); viewer mode and Activity panel (D-56). Open: observed new-user sessions; screen-reader pass (keyboard, zoom and the rest done 19 Oct, package I) |
 | F. External pilot | Not started | Needs a participant |
 | G. Release candidate | Done | v0.2.0, v0.3.0, v0.4.0 and v0.4.1 (security patch), each gated on its tagged commit; PR-12/13 open, so released as a preview |
 
@@ -27,7 +29,7 @@ Also delivered beyond A–G, from the full audit (D-50): per-person logins and a
 published images (D-58), scenario format version and compatibility promise (D-54), robot-scoped scenario checks
 (D-59).
 
-## Work toward v0.4.0
+## Work toward v0.4.0 (done: released 24 Oct; v0.4.1 15 Nov)
 
 | Package | Effort / responsible role | Deliverables | Exit gate |
 |---|---|---|---|

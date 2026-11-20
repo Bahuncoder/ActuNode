@@ -3,6 +3,8 @@
 Working specification · updated 17 October 2026 · baseline: **v0.4.1** (roadmap weeks 1–16 complete; the full
 audit closed, D-50). First written 15 October 2026 against v0.1.0 plus milestones 9–12.
 
+> Checked 20 Nov 2026: still accurate for the lab. Since 17 Oct: releases v0.4.0 and v0.4.1; the hosted service (ActuNode Cloud, D-61, D-62, D-67) is described in [HOSTED_SERVICE.md](../HOSTED_SERVICE.md), not in this specification; vehicle raw checks (D-66); SPEED and BATCHED_STATE injections (D-68).
+
 These documents describe the existing product and the requirements for its next release. **Current** means supported by repository implementation or recorded verification. **Proposed** means work or validation still required; it is not a shipped capability. Targets are acceptance criteria, not measurements or customer commitments.
 
 | Document | Purpose |

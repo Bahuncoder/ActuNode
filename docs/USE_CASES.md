@@ -40,7 +40,7 @@ its login could not read other robots' traffic, publish as another robot, or inj
 | Give the fleet manager a login | `docker compose run --rm mqtt-init add-master wms_fleet` (default: commands ActuNode's simulated robots), then recreate `mqtt-init` and `mosquitto` | ✅ new (D-47) |
 | Point it at the simulated robots | Broker `localhost:1883` (or TLS 8883), interface `uagv`, manufacturer `ActuNode`, serials `robot_01` … | ✅ works |
 | It sends orders and instant actions | Robots accept, drive, report; the inspector validates every order it sends | ✅ works |
-| Make the robots misbehave | Failure panel or `POST /api/failures`: blocked path, low battery, disconnect, invalid payload, unresponsive (online but silent) | ✅ works (unresponsive: D-48) |
+| Make the robots misbehave | Failure panel or `POST /api/failures`: blocked path, low battery, disconnect, invalid payload, unresponsive (online but silent), faster robot, state only every few seconds | ✅ works (unresponsive: D-48) |
 | Check what the fleet manager did | Scenario `message` expectations on its `order` / `instantActions` topics, `within` / `never` timing; any-of lists | ✅ works; ready scenario and example fleet manager in [examples/fleet_manager/](../examples/fleet_manager/README.md) (D-48) |
 | Reproduce an incident against it | Replay a recorded session: by default only the robots' recorded messages are published again (`include_commands: false`), so the connected fleet manager reacts to them; tick **Current time** if it drops stale state; stop the simulator first | ✅ checked 14 Oct; open-loop: replayed robots cannot react to its commands |
 
@@ -67,7 +67,7 @@ by the robot and flagged by the validator at once: the kind of fleet-manager bug
 | Run a warehouse of simulated AMRs | `docker compose up --build`, open `http://localhost:8080` | ✅ works |
 | Send missions, inject failures, watch the messages | UI | ✅ works |
 | Try 2.1 and 3.0 | `ACTUNODE_VDA_VERSION=3 docker compose up --build` | ✅ works |
-| Learn from examples | `scenarios/` (five stories), `docs/VDA5050_NOTES.md` | ✅ works |
+| Learn from examples | `scenarios/` (six stories), `docs/VDA5050_NOTES.md` | ✅ works |
 
 ## What a WMS team does with ActuNode
 

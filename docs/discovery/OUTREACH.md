@@ -10,7 +10,7 @@ Rules for every message:
 - One clear ask: 15 minutes, their choice of time. Make it easy to say no.
 - Personalise the first line (their post, product, talk, repo). A generic message gets ignored.
 - Never overstate what ActuNode does. Today it is an open-source lab: simulated robots speaking
-  VDA 5050 2.1 or 3.0, validation against the official schemas, one failure type (blocked path),
+  VDA 5050 2.1 or 3.0, validation against the official schemas, seven failure types,
   near-collision warnings, record and replay. No real robots tested yet.
 
 Replace `[...]` before sending. Log every message in the private tracker

@@ -5,15 +5,15 @@ workspace, and get their own lab at **&lt;workspace&gt;.actunode.com**, with rob
 **&lt;workspace&gt;.actunode.com:8883** (MQTT over TLS). Self-hosting stays fully supported; the hosted service runs the
 same lab images.
 
-Status (19 Oct): **phase 1 built and verified locally**: lab SSO, control plane, provisioner, edge, Hetzner infrastructure as code; `cloud/deploy/local-check.sh` passes all 16 steps (sign-in, two workspaces, SSO, a robot over TLS by SNI, isolation). Deployment: [HOSTED_DEPLOY.md](HOSTED_DEPLOY.md), waiting on the founder's accounts (it deploys v0.4.1, released 15 Nov). Billing after the beta.
+Status (20 Nov): **phases 1 and 2 built and verified locally** (D-61, D-62); checked against today's providers (D-67); **not live yet**, waiting on the founder's accounts (docs/HOSTED_DEPLOY.md). Phase 1: lab SSO, control plane, provisioner, edge, Hetzner infrastructure as code; `cloud/deploy/local-check.sh` passes all 16 steps (sign-in, two workspaces, SSO, a robot over TLS by SNI, isolation). Deployment: [HOSTED_DEPLOY.md](HOSTED_DEPLOY.md), waiting on the founder's accounts (it deploys v0.4.1, released 15 Nov). Billing after the beta.
 
 ## Architecture: one isolated lab per workspace
 
 ```mermaid
 flowchart LR
   User[Browser] -->|HTTPS app.actunode.com| Edge
-  User -->|HTTPS ws.actunode.com| Edge
-  Robot[Robot / fleet manager] -->|MQTT TLS ws.actunode.com:8883| Edge
+  User -->|HTTPS <workspace>.actunode.com| Edge
+  Robot[Robot / fleet manager] -->|MQTT TLS <workspace>.actunode.com:8883| Edge
   Edge[Traefik edge: TLS, routing by host name / SNI, rate limits] --> CP[Control plane: accounts, workspaces, members]
   Edge --> L1[Workspace lab A: backend, frontend, broker, simulator]
   Edge --> L2[Workspace lab B]

@@ -21,6 +21,10 @@ updates:
     directory: /tests/e2e
     schedule:
       interval: weekly
+  - package-ecosystem: pip
+    directory: /cloud
+    schedule:
+      interval: weekly
   - package-ecosystem: npm
     directory: /frontend
     schedule:
@@ -43,5 +47,13 @@ updates:
       interval: weekly
   - package-ecosystem: docker
     directory: /ros2
+    schedule:
+      interval: weekly
+  - package-ecosystem: docker
+    directory: /cloud
+    schedule:
+      interval: weekly
+  - package-ecosystem: docker
+    directory: /cloud/provisioner
     schedule:
       interval: weekly
