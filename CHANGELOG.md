@@ -4,11 +4,13 @@ What changed, per commit, newest first. Status and plans are in [docs/PROGRESS.m
 
 ## Unreleased
 
+- **Frontend build tools:** TypeScript 7.0, @types/node 26, and Node 26 for building the frontend image. Build-time
+  only: the served page is unchanged (tests, lint, type check, build, image and Trivy all pass).
 - **Dependencies:** 21 Dependabot updates (patch and minor) taken together: react and react-dom 19.3.1 (Dependabot
   bumped react alone, which fails every frontend test: the two must match), vitest 5.0.5, oxlint 1.88, nginx 1.31,
   uvicorn 0.54, httpx/httpx2/pydantic/jsonschema/paho-mqtt/playwright floors, pytest 9, ruff 0.17.5 everywhere,
   actions/setup-python 7.1.0 and docker/login-action 4.8.0 (pins checked against the release tags). The majors
-  (Python 3.15 images, Node 26, TypeScript 7, @types/node 26, websockets 17) pass on their own and are not taken yet.
+  each passed on their own; Python 3.15 images and websockets 17 are not taken yet.
 ## 0.4.1 — 2026-11-15
 
 A security and fix release. The images install Debian's security updates when built, which fixes two HIGH zlib CVEs
