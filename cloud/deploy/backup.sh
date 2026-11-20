@@ -2,7 +2,8 @@
 # Back up everything ActuNode Cloud needs to run again (D-61): the control database, every lab's secrets volume,
 # the workspace folders (recordings), the server's secrets and settings. Needs only docker. See docs/HOSTED_DEPLOY.md.
 # Usage: backup.sh [root]   (default /srv/actunode if it exists, else ~/.actunode-cloud)
-# ACTUNODE_BACKUP_KEEP=14 archives kept. ACTUNODE_BACKUP_AGE_RECIPIENT=<age public key> encrypts each archive to that
+# ACTUNODE_BACKUP_KEEP=14 archives kept; ACTUNODE_BACKUP_REMOTE_KEEP_DAYS=14 days kept off-site.
+# ACTUNODE_BACKUP_AGE_RECIPIENT=<age public key> encrypts each archive to that
 # key (the private key stays off the server: the server can encrypt, never decrypt). ACTUNODE_BACKUP_REMOTE=<rclone
 # remote:path> copies the archive off-site: only an encrypted one, since it holds sign-on keys, broker passwords,
 # OAuth secrets and customer recordings (ACTUNODE_BACKUP_REMOTE_PLAINTEXT=yes overrides, for a crypt remote).
@@ -63,5 +64,9 @@ if [ -n "${ACTUNODE_BACKUP_REMOTE:-}" ]; then
   if command -v rclone >/dev/null; then
     rclone copy "$archive" "$ACTUNODE_BACKUP_REMOTE" || { echo "off-site copy to $ACTUNODE_BACKUP_REMOTE FAILED" >&2; exit 1; }
     echo "copied to $ACTUNODE_BACKUP_REMOTE"
+    rkeep="${ACTUNODE_BACKUP_REMOTE_KEEP_DAYS:-14}"
+    case "$rkeep" in ''|*[!0-9]*|0) echo "ACTUNODE_BACKUP_REMOTE_KEEP_DAYS must be a positive integer, got '$rkeep'" >&2; exit 1 ;; esac
+    rclone delete --min-age "${rkeep}d" --include 'actunode-*.tar.gz*' "$ACTUNODE_BACKUP_REMOTE" \
+      || { echo "pruning old off-site archives in $ACTUNODE_BACKUP_REMOTE FAILED" >&2; exit 1; }
   else echo "ACTUNODE_BACKUP_REMOTE is set but rclone is not installed" >&2; exit 1; fi
 fi

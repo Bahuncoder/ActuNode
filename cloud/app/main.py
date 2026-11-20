@@ -15,7 +15,7 @@ from fastapi.responses import FileResponse, HTMLResponse, RedirectResponse, Resp
 from starlette.exceptions import HTTPException as StarletteHTTPException
 from starlette.types import ASGIApp, Receive, Scope, Send
 
-from app import labs, oauth
+from app import labs, legal, oauth
 from app.config import Settings, settings
 from app.db import RESERVED, ROLES, SLUG, Store, User, Workspace
 
@@ -286,15 +286,9 @@ def create_app(config: Settings = settings, store: Store | None = None, http: ht
 
     @app.get("/terms", response_class=HTMLResponse)
     @app.get("/privacy", response_class=HTMLResponse)
-    def legal(request: Request):
-        title = "Terms" if request.url.path == "/terms" else "Privacy"
-        return page(title, f"<section><h1>{title}</h1><p>The {title.lower()} for ActuNode Cloud will be published here "
-                           "before the beta opens to outside users. Until then the service is used only by the team "
-                           "and invited testers, with test data.</p><p>Your workspace's data stays in the EU "
-                           "(Hetzner, Germany or Finland) and is deleted with the workspace.</p>"
-                           "<p>You can delete your account, and the workspaces only you own, at any time on the "
-                           "Account page.</p></section>",
-                    user=current(request))  # fmt: skip
+    def legal_page(request: Request):
+        title, text = ("Terms", legal.TERMS) if request.url.path == "/terms" else ("Privacy", legal.PRIVACY)
+        return page(title, f"<section>{text}</section>", user=current(request))
 
     # --- sign-in ----------------------------------------------------------------------------------------------
 

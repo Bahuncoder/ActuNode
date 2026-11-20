@@ -13,7 +13,7 @@ the status line, the schedule table, the session log, and the open issues.
 | | |
 |---|---|
 | **Calendar** | Week 1 of 8 by date (Fri 9 Oct – Thu 15 Oct 2026); dates no longer gate the work (D-30) |
-| **Last updated** | Sat 14 Nov 2026 |
+| **Last updated** | Fri 20 Nov 2026 |
 | **Status** | **Phase 1 (weeks 1–8) complete; v0.1.0 released 13 Oct 2026** (D-43). Phase 2 (weeks 9–16, D-44) under way: **Weeks 9 and 10 done** (D-45, D-46: `actunode test`, timing and message expectations, every run recorded, five sample scenarios). **Decision point** (D-44): the founder's first user conversations decide the order of weeks 11–16; without new input, Week 11 is next. **Product audit 14 Oct (D-47):** outside fleet managers can now connect; security headers added. **Week 11 done (D-48):** the plan's demo question runs as a scenario against a fleet manager; `UNRESPONSIVE`; replay with current time. **Week 12 done (D-49).** **Full audit of weeks 0–12 done (D-50, docs/AUDIT_2026-10-14.md):** six reviews, ~95 findings (13 High), all fixed with tests; gate green. **Week 13 done (D-51):** a real ROS 2 stack (Nav2 + InOrbit's VDA 5050 connector) in the lab; eight deviations found. **Week 14 done (D-52):** conformance suite, the connector's report (4/9), five upstream drafts (not filed: founder's call), robot guide. **Week 15 done (D-53):** failure catalogue, scenario gallery, message flows from real recordings; two blog drafts (private, for the founder). **Week 16 done (D-54):** getting started guide, compatibility promise, triage routine; 0.2.0 built and verified (fresh clone, CI green); v0.2.0 released (tag on 6c234f2). **Phase 2 complete.** **After Phase 2 (17 Oct):** the ROS 2 robot's conformance failures fixed (D-55; all five merged upstream by 14 Nov, and the robot now builds InOrbit's code without patches, D-63), per-person logins and an audit trail (D-56), metrics (D-57), published images (D-58), robot-scoped scenario checks (D-59); the full audit has no open items. **v0.3.0 released 17 Oct** (tag on 238509e); images public on ghcr.io for amd64 and arm64, provenance verified. **Hosted service (D-61):** phase 1 built 19 Oct; **phase 2 built 20–21 Oct (D-62)**: idle labs, account deletion, abuse limits, upgrades, backups with a passing restore drill, alerts; **v0.4.0 released 24 Oct** (tag on f36e5a2; images public on ghcr.io); **v0.4.1 released 15 Nov** (tag on e51d722; security and
 fix release: zlib CVEs in the images, D-64; the ROS 2 robot on InOrbit's merged code, D-63; images public, 0
 HIGH/CRITICAL in Trivy); waiting on the founder's accounts (Hetzner, DNS, OAuth, backup storage, alert webhook). No open issues. |
@@ -640,6 +640,16 @@ Numbered so they can be referenced from commits. Remove an item only when it is 
 ## Session log
 
 Newest first. One entry per work session: what was done, what was learned, what is next.
+
+### Fri 20 Nov 2026: getting ready for actunode.com (D-67)
+Checked the hosted service against today before the founder sets up accounts. Fixed: the edge's Hetzner token variable
+(the old DNS API was shut down in May 2026; the certificate would not have been issued), off-site backup pruning (14
+days, tested with rclone), the provisioner image (docker 29.10 CLI, Compose v5; 0 HIGH/CRITICAL left but one expiring
+ignore), and an untrue "encrypted at rest" line. The control plane and provisioner are now in the security scans. Real
+terms and privacy pages (founder-approved), a test for them, and a static front page in `site/` published by GitHub
+Pages. Cloud 106 tests, ruff clean, all Trivy config and image scans pass, `local-check.sh` all ok on the rebuilt local
+stack. Waiting on the founder: Hetzner (server and DNS projects), Namecheap name servers, the GitHub OAuth app,
+off-site backup storage, email forwarding for hello@actunode.com, an alert webhook and an uptime monitor.
 
 ### Thu 19 Nov 2026: dependency updates; outreach round 2
 29 Dependabot pull requests had piled up. Classified and tested (a builder agent, reviewed): the 21 patch/minor

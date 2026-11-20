@@ -9,6 +9,7 @@ on:
       - "backend/requirements*.txt"
       - "simulator/requirements*.txt"
       - "cli/requirements*.txt"
+      - "cloud/requirements*.txt"
       - "tests/e2e/requirements.txt"
       - "frontend/package*.json"
       - "**/Dockerfile"
@@ -19,6 +20,7 @@ on:
       - "backend/requirements*.txt"
       - "simulator/requirements*.txt"
       - "cli/requirements*.txt"
+      - "cloud/requirements*.txt"
       - "tests/e2e/requirements.txt"
       - "frontend/package*.json"
       - "**/Dockerfile"
@@ -84,13 +86,18 @@ jobs:
           docker build -t actunode-simulator:ci -f simulator/Dockerfile .
           docker build -t actunode-frontend:ci frontend
           docker build -t actunode-runner:ci cli
+          docker build -t actunode-cloud:ci cloud
+          docker build -t actunode-provisioner:ci -f cloud/provisioner/Dockerfile cloud
       - name: Scan Dockerfiles (Trivy has no Docker Compose checks; the compose file is hardened by hand, see docker-compose.yml)
         run: |
           for dir in backend simulator frontend cli; do
             trivy config --severity HIGH,CRITICAL --exit-code 1 "$dir"
           done
+          # The provisioner runs as root on purpose (see cloud/provisioner/.trivyignore): the one exception is its own.
+          trivy config --severity HIGH,CRITICAL --exit-code 1 --skip-dirs cloud/provisioner cloud
+          trivy config --severity HIGH,CRITICAL --exit-code 1 --ignorefile cloud/provisioner/.trivyignore cloud/provisioner
       - name: Scan images
         run: |
-          for image in actunode-backend:ci actunode-simulator:ci actunode-frontend:ci actunode-runner:ci eclipse-mosquitto:2 python:3.12-slim; do
+          for image in actunode-backend:ci actunode-simulator:ci actunode-frontend:ci actunode-runner:ci actunode-cloud:ci actunode-provisioner:ci eclipse-mosquitto:2 python:3.12-slim; do
             trivy image --severity HIGH,CRITICAL --ignore-unfixed --exit-code 1 "$image"
           done

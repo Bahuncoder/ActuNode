@@ -1,0 +1,5 @@
+# Trivy AVD-DS-0002 (no USER) for cloud/provisioner/Dockerfile only; security.yml scans this directory with this file.
+# The provisioner runs as root on purpose: it chowns each workspace's files to the lab's user. Compose drops all
+# capabilities except CHOWN, FOWNER and DAC_OVERRIDE, sets no-new-privileges, and the container has no Docker socket,
+# only a restricted API proxy.
+AVD-DS-0002

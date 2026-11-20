@@ -28,7 +28,7 @@ flowchart LR
   limits. Nothing is shared between workspaces except the edge. The backend keeps one lab per process (TRD); this
   design keeps that property instead of rewriting it.
 - **Edge (Traefik)**: terminates TLS with a wildcard certificate for `*.actunode.com` (Let's Encrypt, DNS-01 through
-  the Hetzner DNS API); HTTPS routed by host name; MQTT on 8883 routed by TLS SNI to the workspace's broker, plain
+  the Hetzner Console API); HTTPS routed by host name; MQTT on 8883 routed by TLS SNI to the workspace's broker, plain
   inside the workspace network. Robots therefore need TLS with SNI (any current MQTT client). Rate limits per IP.
 - **Control plane** (new service, `cloud/`): sign-in, workspaces, memberships and roles, invitations, the beta allow
   list, provisioning requests. FastAPI like the backend; SQLite on a volume for the beta (backed up continuously),
@@ -90,7 +90,9 @@ flowchart LR
   browsers' preload list), so no subdomain is ever reached over plain HTTP.
 - Workspace networks isolated from each other and from the control plane; no Docker socket in any lab.
 - Secrets per workspace generated at creation (broker logins, SSO key) and stored only in that workspace's volume
-  and the control database (encrypted at rest).
+  and the control database. They are stored unencrypted on the server's data volume (Hetzner volumes are not
+  encrypted at rest), with file modes set by the deploy scripts (server secrets readable only by root and the control
+  plane's group), and off-site backups are encrypted with age.
 - Site captures and recordings are customer data: per-workspace storage, deleted with the workspace; terms and a
   privacy policy before the beta opens; EU region by default. Hetzner server backups do not cover the attached
   data volume: `backup.sh` archives (daily, copied off the server) are the backup (docs/HOSTED_DEPLOY.md).
@@ -106,7 +108,7 @@ flowchart LR
 
 ## What the founder sets up (accounts and payments are the founder's)
 
-1. Hetzner Cloud project and an API token (read/write), and Hetzner DNS for actunode.com (or another DNS provider
-   with an API) plus a DNS API token.
+1. Hetzner Cloud project and an API token (read/write), and Hetzner DNS for actunode.com in a separate DNS project
+   (or another DNS provider with an API) plus an API token for that project.
 2. A GitHub OAuth app and a Google OAuth client, with the callback URLs given in the deployment guide.
 3. An SSH key for the server, and the email address for Let's Encrypt and alerts.

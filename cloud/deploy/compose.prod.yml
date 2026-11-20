@@ -3,7 +3,7 @@
 services:
   edge:
     environment:
-      HETZNER_API_KEY_FILE: /run/cloud/hetzner-dns-token
+      HETZNER_API_TOKEN_FILE: /run/cloud/hetzner-dns-token
     command: ["--configFile=/etc/traefik/traefik.yml"]
     volumes:
       - ${ACTUNODE_TRAEFIK_CONFIG:?rendered by prod-up.sh}:/etc/traefik/traefik.yml:ro

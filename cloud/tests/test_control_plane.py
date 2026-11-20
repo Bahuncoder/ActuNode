@@ -307,6 +307,14 @@ def test_pages_carry_security_headers(cloud):
     assert response.headers["x-content-type-options"] == "nosniff"
 
 
+def test_terms_and_privacy_are_real_pages(cloud):
+    _, _, browser = cloud
+    terms, privacy = browser().get("/terms").text, browser().get("/privacy").text
+    assert "State of Texas" in terms and "at least 30" in terms and "days' notice" in terms
+    assert "hello@actunode.com" in privacy and "14 days" in privacy
+    assert "will be published here" not in terms + privacy
+
+
 def test_a_link_cannot_put_its_own_words_on_our_pages(cloud):
     """Content injection: ?error= shows only our own messages."""
     _, _, browser = cloud

@@ -11,9 +11,12 @@ be done. Until then, keep the allow list to yourself and people you trust with t
 
 1. **Hetzner Cloud**: create a project (console.hetzner.com) → Security → API tokens → a **Read & Write** token.
    Keep it for step 4.
-2. **DNS on Hetzner** (needed for the wildcard certificate): add the zone `actunode.com` in Hetzner's DNS, then at
-   the registrar where you bought the domain, set its name servers to the three Hetzner ones shown for the zone.
-   Create a **DNS API token** (Hetzner DNS → API tokens). Name-server changes can take a few hours.
+2. **DNS in the Hetzner Console**: create a second project only for DNS (for example `actunode-dns`), open DNS in
+   that project, add the zone `actunode.com`, and set the three name servers it shows at your registrar (Namecheap:
+   Domain List → Manage → Nameservers → Custom DNS). In that project create an API token with **Read & Write**: the
+   edge uses it for the wildcard certificate's DNS challenge. Keeping the zone in its own project means this token
+   can change DNS records but cannot touch the server. (The old DNS Console at dns.hetzner.com and its API were shut
+   down in May 2026; tokens from it no longer work.) Name-server changes can take a few hours.
 3. **GitHub sign-in**: github.com → Settings → Developer settings → OAuth Apps → New OAuth App:
    - Homepage URL: `https://app.actunode.com`
    - Authorization callback URL: `https://app.actunode.com/auth/github/callback`
@@ -56,6 +59,25 @@ It creates the server (with Hetzner backups), a 50 GB data volume and the firewa
 Create the four records printed by `apply` (A and AAAA for `app.actunode.com` and `*.actunode.com`). Check with
 `dig +short app.actunode.com`.
 
+## Front page (actunode.com and www)
+
+The front page is the static site in `site/`, published by GitHub Pages (`.github/workflows/pages.yml`, D-67). It is
+separate from the server, so it stays up when the server is down. In the Hetzner DNS zone add:
+
+| Type | Name | Value |
+|---|---|---|
+| A | `@` | `185.199.108.153`, `185.199.109.153`, `185.199.110.153`, `185.199.111.153` |
+| AAAA | `@` | `2606:50c0:8000::153`, `2606:50c0:8001::153`, `2606:50c0:8002::153`, `2606:50c0:8003::153` |
+| CNAME | `www` | `bahuncoder.github.io.` |
+
+The explicit `www` record wins over the `*.actunode.com` wildcard that points at the server. First verify the domain
+for your GitHub account (your profile's Settings → Pages → Add a domain: one TXT record), so no other GitHub account
+can claim it. Then in the repository's Settings → Pages set the custom domain to `actunode.com`, and tick **Enforce
+HTTPS** once GitHub has issued the certificate.
+
+**Email for hello@actunode.com:** the forwarding service you choose gives MX records (and usually a TXT record for
+SPF); add them to the same zone.
+
 ## 5. Secrets and settings on the server
 
 ```bash
@@ -63,7 +85,7 @@ ssh root@<ipv4>
 cd /srv/actunode
 openssl rand -hex 32 > secrets/secret
 openssl rand -hex 32 > secrets/provisioner-token
-printf '%s' '<Hetzner DNS API token>'   > secrets/hetzner-dns-token
+printf '%s' '<Hetzner Console API token of the DNS project>'   > secrets/hetzner-dns-token
 printf '%s' '<GitHub client secret>'    > secrets/github-client-secret
 printf '%s' '<Google client secret>'    > secrets/google-client-secret   # or leave it out
 echo 'github:<your GitHub login>'       > secrets/allowlist            # who may sign in (one per line)
@@ -126,6 +148,8 @@ archives away, encrypted, since they hold sign-on keys, broker passwords, OAuth 
    copy makes the backup job fail, visible in `systemctl status actunode-backup`). `backup.sh` refuses to copy an
    unencrypted archive off the server (unless the remote is an rclone `crypt` remote and you set
    `ACTUNODE_BACKUP_REMOTE_PLAINTEXT=yes`).
+   `ACTUNODE_BACKUP_REMOTE_KEEP_DAYS` (default 14): off-site archives older than this many days are deleted after each
+   backup, so deleted data leaves the off-site copy within that time. Only files named `actunode-*.tar.gz*` are touched.
 
 To restore from an encrypted archive, put the key file on the restoring machine and set
 `ACTUNODE_BACKUP_AGE_IDENTITY=<path to actunode-backup.key>` for `restore.sh`.

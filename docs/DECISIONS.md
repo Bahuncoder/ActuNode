@@ -1205,3 +1205,32 @@ integrator; "not exactly as specified" is the validator's existing job.
 **Consequences.** Any vehicle connected to the lab can be checked against these habits before a site visit. The ROS 2
 robot (InOrbit's connector as merged) passes all eight raw checks. A spec-strict rule now reports an empty order, so a
 fleet manager under test that cancels this way shows an error in the lab.
+
+## D-67 · Before going live: a front page, real terms and privacy, and four fixes found by checking the deploy against today (20 Nov 2026)
+20 Nov 2026 · Accepted (founder)
+
+**Context.** The founder decided to put actunode.com live. Checking the hosted service (D-61, D-62) against what is
+true today found four problems:
+1. Hetzner shut down the old DNS Console (dns.hetzner.com) and its API in May 2026. The edge passed its token as
+   `HETZNER_API_KEY_FILE`, which lego's `hetzner` provider reads as the legacy API, so the wildcard certificate would
+   never have been issued. It is now `HETZNER_API_TOKEN_FILE` (Hetzner Console API), and the guide puts the zone in its
+   own Hetzner project, so the token the internet-facing edge holds can change DNS records but not the server.
+2. Off-site backups were never pruned, so data a customer deleted stayed off-site indefinitely. `backup.sh` now
+   deletes off-site archives older than `ACTUNODE_BACKUP_REMOTE_KEEP_DAYS` (default 14) after each successful copy,
+   matching only its own `actunode-*.tar.gz*` files (tested with rclone on a scratch folder).
+3. The hosted images were not in the security scans. The provisioner's `docker:28-cli` base had 41 Alpine and about
+   150 Go-binary HIGH/CRITICAL findings. It is now `docker:29.10.0-cli` with `apk upgrade`, without buildx (it never
+   builds) and without pip and setuptools after install. One finding has no upstream fix yet (golang.org/x/net
+   CVE-2026-78661 in the Compose plugin; Compose v5.8.0 still pins x/net v0.60.0): a `.trivyignore` entry that expires
+   20 Dec 2026. The provisioner runs as root by design (it chowns workspace files; all capabilities dropped but CHOWN,
+   FOWNER and DAC_OVERRIDE; no-new-privileges; Docker only through a restricted proxy), so Trivy's AVD-DS-0002 is
+   accepted for that Dockerfile only, through `cloud/provisioner/.trivyignore` (Trivy 0.71's inline ignore comment does
+   not work for Dockerfiles). `security.yml` now builds and scans the control plane and provisioner images and their
+   Dockerfiles. Compose v2 to v5 was checked end to end with the local stack (`local-check.sh`, all ok).
+4. HOSTED_SERVICE.md said secrets were encrypted at rest. They are not (Hetzner volumes are unencrypted); it now says
+   what is true.
+
+**Decision.** (Founder, 20 Nov 2026.) A static front page on GitHub Pages (`site/`, `pages.yml`), independent of the
+server; the service is run by Sudip Paudel as an individual; contact hello@actunode.com; GitHub sign-in only for the
+beta (Google later, once the privacy page is live); terms under Texas law with 30 days' notice before the beta ends.
+The terms and privacy pages (`cloud/app/legal.py`) state only what the code does, and change with it.

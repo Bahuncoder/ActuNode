@@ -5,3 +5,8 @@
 # images install it at build time. Remove once the base image ships it.
 CVE-2026-76844 exp:2026-11-28
 CVE-2026-85091 exp:2026-11-28
+
+# golang.org/x/net v0.60.0 in the docker-compose plugin of docker:29.10.0-cli (provisioner image). No Compose release
+# ships x/net 0.62.0 yet (v5.8.0, 17 Nov 2026, still pins v0.60.0). The provisioner's compose talks only to the
+# internal Docker API proxy, never to the internet. Remove once a docker:<version>-cli image ships the fix.
+CVE-2026-78661 exp:2026-12-20

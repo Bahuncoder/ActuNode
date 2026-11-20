@@ -1,5 +1,5 @@
-# The production edge (D-61): Let's Encrypt for actunode.com and *.actunode.com (DNS-01 through the Hetzner DNS API;
-# token in /run/secrets/hetzner-dns-token), HTTPS and MQTT over TLS routed by host name / SNI.
+# The production edge (D-61): Let's Encrypt for actunode.com and *.actunode.com (DNS-01 through the Hetzner Console API;
+# Hetzner Console API token for the DNS zone in /run/secrets/hetzner-dns-token), HTTPS and MQTT over TLS routed by host name / SNI.
 entryPoints:
   web:
     address: ":80"

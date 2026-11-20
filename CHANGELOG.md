@@ -4,6 +4,15 @@ What changed, per commit, newest first. Status and plans are in [docs/PROGRESS.m
 
 ## Unreleased
 
+- Hosted service: the edge reads the Hetzner token as `HETZNER_API_TOKEN_FILE` (the old Hetzner DNS API was shut down
+  in May 2026); put the DNS zone in its own Hetzner project (docs/HOSTED_DEPLOY.md).
+- Hosted service: off-site backups older than `ACTUNODE_BACKUP_REMOTE_KEEP_DAYS` (default 14) are deleted after each
+  backup.
+- Hosted service: the provisioner image moves to Docker CLI 29.10 and Compose v5; the control plane and provisioner
+  images are now scanned in CI.
+- Hosted service: real terms and privacy pages.
+- New: the front page for actunode.com (`site/`, published by GitHub Pages).
+
 - **Conformance: master-control habits that broke real vehicles** (from an AGV integrator, D-66). Four raw checks in
   `conformance/raw_checks.py`: a single-node order is finished; an empty order sent mid-mission is rejected with an
   error and the vehicle stays up; the vehicle stops at the end of the base and continues when it is extended; a
