@@ -7,7 +7,7 @@ RUN npm run build
 
 # Stable nginx line that keeps getting rebuilt; non-root build (uid 101). It binds 80/443 thanks to the
 # net.ipv4.ip_unprivileged_port_start sysctl in docker-compose.yml (container namespace only).
-FROM nginxinc/nginx-unprivileged:1.30-alpine
+FROM nginxinc/nginx-unprivileged:1.31-alpine
 # Pick up Alpine security fixes newer than the base image (e.g. libtiff).
 USER root
 RUN apk upgrade --no-cache

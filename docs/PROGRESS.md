@@ -641,6 +641,16 @@ Numbered so they can be referenced from commits. Remove an item only when it is 
 
 Newest first. One entry per work session: what was done, what was learned, what is next.
 
+### Thu 19 Nov 2026: dependency updates; outreach round 2
+29 Dependabot pull requests had piled up. Classified and tested (a builder agent, reviewed): the 21 patch/minor
+updates applied together, with react-dom moved alongside react (#24 on its own fails all 13 frontend test files).
+Checks: backend 671, simulator 465, CLI 232, cloud 105 tests; ruff; frontend tests, lint, type check, build and
+`npm audit`; the four images built and clean in Trivy; e2e 43 passed (ROS 2 not run). The majors each pass in
+isolation (Python 3.15 images with their tests inside, Node 26, TypeScript 7, @types/node 26, websockets 17, which
+warns that the CLI's legacy `connect()` call is deprecated); not taken yet. Docker Hub's `python:3.12-slim` still has
+the old zlib (built 5 Nov); the scan exception expires 28 Nov. Outreach: two more emails to research groups working on
+VDA 5050, with addresses from their own pages (3 sent so far, 0 replies seen; record in the private docs/company/).
+
 ### Sun 15 Nov 2026: v0.4.1 released
 The founder tagged v0.4.1 on e51d722 (the release commit, green in CI and the security scan) and published the
 release (a preview, like 0.4.0). On the tag: CI, images, security scans and the ROS 2 robot all green. Checked from
