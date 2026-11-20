@@ -1,0 +1,237 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>ActuNode: open-source test lab for VDA 5050 fleet integrations</title>
+<meta name="description" content="Simulate, test, debug and replay AMR fleet integrations. ActuNode is an open-source VDA 5050 2.1 and 3.0 lab: simulated robots, schema validation, failure injection, record and replay, and scenario tests in CI.">
+<meta property="og:title" content="ActuNode: open-source test lab for VDA 5050 fleet integrations">
+<meta property="og:description" content="Simulated robots, validation against the official VDA 5050 schemas, failure injection, record and replay, and scenario tests in CI.">
+<meta property="og:type" content="website">
+<meta property="og:url" content="https://actunode.com/">
+<meta name="color-scheme" content="dark">
+<link rel="icon" type="image/png" href="favicon.png">
+<style>
+  :root {
+    --navy: #0b1b2b;
+    --navy-2: #102a40;
+    --panel: #12283c;
+    --line: #1f3d57;
+    --blue: #00aeef;
+    --mint: #7cffcb;
+    --fog: #eaf2f7;
+    --gray: #9fb4c3;
+    --max: 1080px;
+  }
+  * { box-sizing: border-box; }
+  html { -webkit-text-size-adjust: 100%; }
+  body {
+    margin: 0;
+    background: var(--navy);
+    color: var(--fog);
+    font: 17px/1.6 system-ui, -apple-system, "Segoe UI", Ubuntu, Roboto, "Helvetica Neue", Arial, sans-serif;
+  }
+  a { color: var(--blue); }
+  a:hover { color: var(--mint); }
+  a:focus-visible, .button:focus-visible { outline: 2px solid var(--mint); outline-offset: 3px; }
+  code, pre { font-family: ui-monospace, "Ubuntu Mono", "SFMono-Regular", Menlo, Consolas, monospace; }
+  .wrap { max-width: var(--max); margin: 0 auto; padding: 0 20px; }
+  .skip { position: absolute; left: -9999px; }
+  .skip:focus { left: 16px; top: 16px; background: var(--fog); color: var(--navy); padding: 8px 12px; z-index: 10; }
+
+  header.top { border-bottom: 1px solid var(--line); }
+  header.top .wrap { display: flex; align-items: center; justify-content: space-between; gap: 16px; height: 64px; }
+  .brand { display: flex; align-items: center; gap: 10px; color: var(--fog); text-decoration: none; font-weight: 700; font-size: 19px; }
+  .brand img { width: 32px; height: 32px; }
+  nav.links { display: flex; gap: 20px; font-size: 15px; }
+  nav.links a { color: var(--gray); text-decoration: none; }
+  nav.links a:hover { color: var(--fog); }
+
+  .hero {
+    background:
+      linear-gradient(rgba(0, 174, 239, 0.05) 1px, transparent 1px) 0 0 / 32px 32px,
+      linear-gradient(90deg, rgba(0, 174, 239, 0.05) 1px, transparent 1px) 0 0 / 32px 32px,
+      linear-gradient(90deg, var(--navy), var(--navy-2));
+    padding: 72px 0 56px;
+  }
+  .eyebrow { color: var(--blue); font-weight: 600; font-size: 15px; letter-spacing: 0.02em; margin: 0 0 12px; }
+  h1 { font-size: clamp(32px, 5vw, 52px); line-height: 1.12; margin: 0 0 20px; max-width: 18ch; }
+  .lead { font-size: clamp(17px, 2vw, 20px); color: #c9d8e3; max-width: 62ch; margin: 0 0 32px; }
+  .actions { display: flex; flex-wrap: wrap; gap: 12px; }
+  .button {
+    display: inline-block; padding: 12px 20px; border-radius: 8px; font-weight: 600; text-decoration: none;
+    border: 1px solid var(--blue);
+  }
+  .button.primary { background: var(--blue); color: var(--navy); }
+  .button.primary:hover { background: var(--mint); border-color: var(--mint); color: var(--navy); }
+  .button.secondary { color: var(--fog); }
+  .button.secondary:hover { border-color: var(--mint); color: var(--mint); }
+  .shot { margin: 48px 0 0; }
+  .shot img { width: 100%; height: auto; display: block; border-radius: 10px; border: 1px solid var(--line); box-shadow: 0 20px 60px rgba(0, 0, 0, 0.45); }
+  .shot figcaption { color: var(--gray); font-size: 14px; margin-top: 10px; }
+
+  section { padding: 64px 0; border-top: 1px solid var(--line); }
+  h2 { font-size: clamp(24px, 3vw, 32px); line-height: 1.2; margin: 0 0 12px; }
+  .intro { color: #c9d8e3; max-width: 64ch; margin: 0 0 32px; }
+  .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 16px; }
+  .card { background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 20px 22px; }
+  .card h3 { margin: 0 0 8px; font-size: 18px; }
+  .card p { margin: 0; color: #c9d8e3; font-size: 16px; }
+  .card .dot { display: inline-block; width: 9px; height: 9px; border-radius: 50%; background: var(--blue); margin-right: 8px; vertical-align: 2px; }
+
+  .story { display: grid; grid-template-columns: 1fr 1fr; gap: 32px; align-items: start; }
+  .story ul { margin: 0; padding-left: 20px; color: #c9d8e3; }
+  .story li { margin-bottom: 8px; }
+  .stat { font-size: 44px; font-weight: 700; color: var(--mint); line-height: 1; margin: 0 0 8px; }
+
+  pre {
+    background: #07131f; border: 1px solid var(--line); border-radius: 10px; padding: 18px 20px; overflow-x: auto;
+    font-size: 15px; line-height: 1.55; margin: 0 0 16px; color: var(--fog);
+  }
+  .muted { color: var(--gray); }
+  .beta { background: var(--panel); border: 1px solid var(--line); border-left: 4px solid var(--mint); border-radius: 10px; padding: 24px; }
+  .beta p { margin: 0 0 12px; color: #c9d8e3; }
+  .beta p:last-child { margin: 0; }
+
+  footer { border-top: 1px solid var(--line); padding: 32px 0 48px; color: var(--gray); font-size: 14px; }
+  footer .wrap { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 16px; }
+  footer nav { display: flex; flex-wrap: wrap; gap: 18px; }
+
+  @media (max-width: 760px) {
+    nav.links { display: none; }
+    .hero { padding: 48px 0 40px; }
+    .story { grid-template-columns: 1fr; }
+    section { padding: 48px 0; }
+  }
+</style>
+</head>
+<body>
+<a class="skip" href="#main">Skip to content</a>
+<header class="top">
+  <div class="wrap">
+    <a class="brand" href="./"><img src="logo.png" alt="" width="32" height="32">ActuNode</a>
+    <nav class="links" aria-label="Main">
+      <a href="#features">Features</a>
+      <a href="#start">Get started</a>
+      <a href="#cloud">Hosted beta</a>
+      <a href="https://github.com/Bahuncoder/ActuNode">GitHub</a>
+    </nav>
+  </div>
+</header>
+
+<main id="main">
+  <div class="hero">
+    <div class="wrap">
+      <p class="eyebrow">Open source · VDA 5050 2.1 and 3.0 · MQTT</p>
+      <h1>Simulate, test, debug and replay AMR fleet integrations.</h1>
+      <p class="lead">Integration problems between a fleet manager, a WMS and mobile robots usually show up on a live
+        site, and the evidence is gone once the robots move on. ActuNode gives you a local copy of that world: simulated
+        robots, every message checked against the official VDA 5050 schemas, failures on command, and recordings you
+        can replay. No physical fleet needed.</p>
+      <div class="actions">
+        <a class="button primary" href="https://github.com/Bahuncoder/ActuNode">Get it on GitHub</a>
+        <a class="button secondary" href="https://github.com/Bahuncoder/ActuNode/blob/main/docs/GETTING_STARTED.md">10-minute getting started</a>
+      </div>
+      <figure class="shot">
+        <img src="lab-overview.png" width="1440" height="900"
+             alt="The ActuNode lab: six simulated robots on a warehouse map, a robot table and the live message stream">
+        <figcaption>The lab: simulated robots on the map, their state, and every VDA 5050 message as it arrives.</figcaption>
+      </figure>
+    </div>
+  </div>
+
+  <section id="features">
+    <div class="wrap">
+      <h2>What it does</h2>
+      <p class="intro">Everything runs on your machine with Docker Compose. Your fleet manager or robot connects over
+        MQTT, exactly as it would on site.</p>
+      <div class="grid">
+        <div class="card"><h3><span class="dot"></span>Simulated robots</h3>
+          <p>1 to 50 robots speaking VDA 5050 2.1 or 3.0: orders, base and horizon, order updates, instant actions,
+            factsheets, battery and charging.</p></div>
+        <div class="card"><h3><span class="dot"></span>Every message checked</h3>
+          <p>Validation against the official VDA 5050 JSON schemas, plus rules that need history: header ids, order
+            sequence, mission state.</p></div>
+        <div class="card"><h3><span class="dot"></span>Failures on command</h3>
+          <p>Blocked path, low battery, disconnect, an unresponsive robot, malformed messages. See how your fleet
+            manager copes before a customer does.</p></div>
+        <div class="card"><h3><span class="dot"></span>Record and replay</h3>
+          <p>Record an incident once, then replay it against the system under test as often as you need.</p></div>
+        <div class="card"><h3><span class="dot"></span>Scenario tests in CI</h3>
+          <p><code>actunode test</code> runs scenario files with timing and message expectations, with JUnit output
+            for your pipeline.</p></div>
+        <div class="card"><h3><span class="dot"></span>Real robots too</h3>
+          <p>Conformance checks for real robots, including ROS 2 robots through InOrbit's open-source VDA 5050
+            connector.</p></div>
+      </div>
+    </div>
+  </section>
+
+  <section id="field">
+    <div class="wrap story">
+      <div>
+        <p class="stat">5 of 5</p>
+        <h2>Gaps found, fixes merged upstream</h2>
+        <p class="intro">Running InOrbit's open-source ROS 2 connector in the lab turned up five conformance gaps. All
+          five fixes are now merged upstream, and the lab's ROS 2 robot runs that code unpatched.</p>
+      </div>
+      <div>
+        <h3>Checks that come from the field</h3>
+        <ul>
+          <li>An order with no nodes is rejected, and the vehicle stays up.</li>
+          <li>A single-node order is accepted and finished.</li>
+          <li>The vehicle stops at the end of the base and continues when the order is extended.</li>
+          <li>A rejected order's error does not block the next order.</li>
+        </ul>
+        <p class="muted">These came from an AGV integrator's master-control habits. Tell us yours.</p>
+      </div>
+    </div>
+  </section>
+
+  <section id="start">
+    <div class="wrap">
+      <h2>Get started</h2>
+      <p class="intro">You need Docker with Compose. Three robots appear in the charging area when everything is up.</p>
+<pre><code>git clone https://github.com/Bahuncoder/ActuNode.git &amp;&amp; cd ActuNode
+docker compose up --build
+# then open http://localhost:8080</code></pre>
+      <p class="muted">More robots: <code>ACTUNODE_SIM_ROBOTS=6</code>. VDA 5050 3.0 robots:
+        <code>ACTUNODE_VDA_VERSION=3</code>. Apache License 2.0.</p>
+    </div>
+  </section>
+
+  <section id="cloud">
+    <div class="wrap">
+      <div class="beta">
+        <h2>ActuNode Cloud: hosted labs, invite-only beta</h2>
+        <p>A lab for your team without running it yourself: sign in with GitHub, create a workspace, and connect your
+          robots or fleet manager over TLS. Hosted in the EU.</p>
+        <p>We are inviting a small number of teams. To join, write to
+          <a href="mailto:hello@actunode.com">hello@actunode.com</a>.</p>
+      </div>
+    </div>
+  </section>
+
+  <section id="talk">
+    <div class="wrap">
+      <h2>Building a fleet manager or a robot?</h2>
+      <p class="intro">ActuNode is early, and we want to build what integration engineers actually need. Which VDA 5050
+        problems are hardest for you to find before go-live? Write to
+        <a href="mailto:hello@actunode.com">hello@actunode.com</a> or open an issue on
+        <a href="https://github.com/Bahuncoder/ActuNode/issues">GitHub</a>.</p>
+    </div>
+  </section>
+</main>
+
+<footer>
+  <div class="wrap">
+    <span>© 2026 Sudip Paudel · ActuNode is open source under the Apache License 2.0. This site sets no cookies and uses no analytics.</span>
+    <nav aria-label="Footer">
+      <a href="https://github.com/Bahuncoder/ActuNode">GitHub</a>
+      <a href="https://www.linkedin.com/company/actunode/">LinkedIn</a>
+      <a href="mailto:hello@actunode.com">hello@actunode.com</a>
+    </nav>
+  </div>
+</footer>
+</body>
+</html>
