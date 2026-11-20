@@ -3,7 +3,8 @@
 The integration failures ActuNode can reproduce or detect, what each looks like on a site, and how to make it happen
 on purpose in the lab. For integrators, robot and fleet-manager developers. "Reproduce" means the lab can create
 it on demand; "detect" means the lab notices it in traffic you bring (a robot, a fleet manager, a site capture).
-Entries marked *seen in the wild* were found in real open-source software during this project.
+Entries marked *seen in the wild* were found in real open-source software during this project; *reported by an
+integrator* entries come from people who deploy vehicles (customer discovery, D-66).
 
 How to use an entry: run the scenario (`actunode test <file>`) or inject the failure (UI → Failure injection, or
 `POST /api/failures`), and watch the map, the message stream and the validator.
@@ -34,6 +35,10 @@ How to use an entry: run the scenario (`actunode test <file>`) or inject the fai
 | **Two master controls on one robot** | Conflicting orders; header ids restarting on the order topic | ActuNode's mission sender plus an outside fleet manager on the same robot | Validator `header-id` warning ("headerId 1 after 6") |
 | **Stale state accepted, or fresh state dropped** | Decisions on old positions; or a fleet manager that ignores replays | Replay a recording with and without **Current time** | `timestamp` rule (format), the fleet manager's own reaction |
 | **Out-of-order order updates** | Robot rejects updates; fleet manager thinks the route was extended | Extend with a stale `orderUpdateId` | `order-sequence` rule; robot `orderUpdateError` |
+| **Empty order used as a cancel** *(reported by an integrator)* | The fleet manager "cancels" with an order that has no nodes; a vehicle that crashes, or quietly drops its job, stops the line | `conformance/raw_checks.py`: an empty order sent to a vehicle mid-mission | Validator `order-sequence`: "for a valid order, there shall be at least one node" (2.1 §6.6.1); cancelling is the `cancelOrder` instant action (§6.6.3) |
+| **Single-node order** *(reported by an integrator)* | Valid VDA 5050 ("one node is enough for a valid order"), but a vehicle built for A-to-B orders chokes on it | `conformance/raw_checks.py`: a one-node order at the vehicle's position | The order finishes at that node with no error |
+| **Base extended too late** *(reported by an integrator)* | On a dense map the vehicle reaches the end of the released base before the fleet manager extends it, and stops mid-route | `conformance/raw_checks.py`: the vehicle must stop at the last released node and go on after the order update | `driving` false at the end of the base; continues after the update |
+| **No orders while errors are shown** *(reported by an integrator)* | Some fleet managers send nothing to a vehicle that reports any error, so a stale error from a rejected order blocks it for good | `conformance/raw_checks.py`: a rejected order, then a valid one | The rejection error must be gone once the next order is accepted |
 
 ## The site and the infrastructure
 

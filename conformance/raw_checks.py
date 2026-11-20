@@ -12,6 +12,12 @@ Checks (VDA 5050 2.1):
                accepting (2.0 robots: informational).
   invalid      a node whose nodePosition lacks x: the robot must reject the order with an error (section 6.1.1),
                not drop it silently.
+  single-node  one released node at the robot's position, no edges: "one node is enough for a valid order".
+  empty-order  an order without nodes (an MC habit: an empty order as a cancel; VDA 5050 cancels with the cancelOrder
+               instant action) is rejected with an error and the vehicle keeps reporting.
+  horizon      a robot stops at the last released node (the end of the base) and continues when an order update
+               extends the base (section 6.6.1).
+  error-clears an error from a rejected order must not outlive the next valid order, which the robot must accept.
 Needs paho-mqtt and a lab at localhost (plain MQTT on 1883; the login must be allowed there).
 """
 
@@ -39,7 +45,8 @@ class Robot:
         self.header = 0
         self.client = mqtt.Client(callback_api_version=mqtt.CallbackAPIVersion.VERSION2, client_id="conformance-checks")
         self.client.username_pw_set(f"master@{args.master}", args.password_file.read().strip())
-        self.client.on_message = lambda c, u, m: self.state.update(json.loads(m.payload or b"{}"))
+        self.received = 0  # state messages so far
+        self.client.on_message = self.on_message
         self.client.connect(args.host, args.port)
         self.client.loop_start()
         self.client.subscribe(f"{self.prefix}/state")
@@ -48,6 +55,27 @@ class Robot:
             time.sleep(0.2)
         if "agvPosition" not in self.state:
             sys.exit(f"no state from {self.prefix} in 40 s")
+
+    def on_message(self, client, userdata, message) -> None:
+        self.state.update(json.loads(message.payload or b"{}"))
+        self.received += 1
+
+    def send(self, order_id: str, update_id: int, nodes: list[dict], edges: list[dict]) -> None:
+        self.header += 1
+        message = {
+            "headerId": self.header, "timestamp": now(), "version": self.version,
+            "manufacturer": self.manufacturer, "serialNumber": self.serial,
+            "orderId": order_id, "orderUpdateId": update_id, "nodes": nodes, "edges": edges,
+        }  # fmt: skip
+        self.client.publish(f"{self.prefix}/order", json.dumps(message), qos=1)
+
+    def wait_until(self, condition, seconds: float) -> bool:
+        deadline = time.monotonic() + seconds
+        while time.monotonic() < deadline:
+            if condition():
+                return True
+            time.sleep(0.2)
+        return condition()
 
     def order(self, order_id: str, x: float, y: float, map_id: str, drop: str | None = None) -> None:
         here = self.state["agvPosition"]
@@ -94,6 +122,24 @@ class Robot:
     def watch(self, seconds: float) -> dict:
         time.sleep(seconds)
         return dict(self.state)
+
+
+def node(node_id: str, sequence: int, x: float, y: float, map_id: str, released: bool = True) -> dict:
+    return {"nodeId": node_id, "sequenceId": sequence, "released": released, "actions": [],
+            "nodePosition": {"x": x, "y": y, "theta": 0.0, "mapId": map_id}}  # fmt: skip
+
+
+def edge(start: str, end: str, sequence: int, released: bool = True) -> dict:
+    return {"edgeId": f"{start}-{end}", "sequenceId": sequence, "released": released, "startNodeId": start,
+            "endNodeId": end, "actions": []}  # fmt: skip
+
+
+def new_errors(state: dict, before: list[str]) -> list[dict]:
+    return [e for e in state.get("errors") or [] if json.dumps(e, sort_keys=True) not in before]
+
+
+def error_types(state: dict, before: list[str]) -> list:
+    return [e.get("errorType") for e in new_errors(state, before)]
 
 
 def report(name: str, ok: bool, detail: str) -> bool:
@@ -163,6 +209,119 @@ def main() -> int:
             "an invalid order is rejected with an error, not ignored",
             not taken and bool(errors),
             f"orderId={seen.get('orderId')!r}, errors={errors}",
+        )
+    )
+
+    # An order of one node: "one node is enough for a valid order" (the order schema, section 6.6.1).
+    run = int(time.time())
+    robot.cancel(args.wait)
+    before = [json.dumps(e, sort_keys=True) for e in robot.state.get("errors") or []]
+    here = robot.state["agvPosition"]
+    order_id = f"conformance-single-{run}"
+    robot.send(order_id, 0, [node("only", 0, here["x"], here["y"], here["mapId"])], [])
+
+    def single_done() -> bool:
+        s = robot.state
+        return (
+            s.get("orderId") == order_id
+            and s.get("lastNodeId") == "only"
+            and not s.get("nodeStates")
+            and not s.get("edgeStates")
+        )
+
+    done = robot.wait_until(single_done, args.wait)
+    refs = [e for e in new_errors(robot.state, before) if order_id in json.dumps(e)]
+    results.append(
+        report(
+            "a single-node order is accepted and finished",
+            done and not refs,
+            f"orderId={robot.state.get('orderId')!r}, lastNodeId={robot.state.get('lastNodeId')!r}, "
+            f"nodeStates={len(robot.state.get('nodeStates') or [])}, errors={error_types(robot.state, before)}",
+        )
+    )
+
+    # An empty order is not a cancel (VDA 5050 cancels with the cancelOrder instant action): reject it with an
+    # error and stay up. Whether the running order continued is informational.
+    robot.cancel(args.wait)
+    before = [json.dumps(e, sort_keys=True) for e in robot.state.get("errors") or []]
+    here = robot.state["agvPosition"]
+    step = 4.0 if here["x"] + 4.0 < 9.5 else -4.0  # the open floor beside the racks (x 10-20)
+    running = f"conformance-running-{run}"
+    robot.send(running, 0, [node("a", 0, here["x"], here["y"], here["mapId"]),
+                            node("b", 2, here["x"] + step, here["y"], here["mapId"])], [edge("a", "b", 1)])  # fmt: skip
+    robot.wait_until(lambda: robot.state.get("orderId") == running, 10)
+    robot.send(f"conformance-empty-{run}", 0, [], [])
+    errored = robot.wait_until(lambda: bool(new_errors(robot.state, before)), 10)
+    count = robot.received
+    time.sleep(5)
+    alive = robot.received > count
+    continued = robot.state.get("orderId") == running
+    results.append(
+        report(
+            "an empty order is rejected with an error, and the vehicle stays up",
+            errored and alive,
+            f"errors={error_types(robot.state, before)}, state messages in 5 s: {robot.received - count}, "
+            f"the running order {'continued' if continued else 'was dropped'}",
+        )
+    )
+
+    # The end of the base: the robot stops at the last released node, and goes on when the base is extended.
+    robot.cancel(args.wait)
+    here = robot.state["agvPosition"]
+    step = 3.0 if here["x"] + 6.0 < 9.5 else -3.0
+    m, order_id = here["mapId"], f"conformance-horizon-{run}"
+    p1, p2 = (here["x"] + step, here["y"]), (here["x"] + 2 * step, here["y"])
+    robot.send(order_id, 0, [node("n0", 0, here["x"], here["y"], m), node("n1", 2, *p1, m),
+                             node("n2", 4, *p2, m, released=False)],
+               [edge("n0", "n1", 1), edge("n1", "n2", 3, released=False)])  # fmt: skip
+
+    def at(point) -> bool:
+        s = robot.state["agvPosition"]
+        return math.dist((s["x"], s["y"]), point) < 1.0
+
+    reached = robot.wait_until(lambda: robot.state.get("lastNodeId") == "n1" and at(p1), args.wait)
+    passed = False
+    for _ in range(25):  # 5 s with the horizon unreleased
+        time.sleep(0.2)
+        passed = passed or robot.state.get("lastNodeId") == "n2" or not at(p1)
+    stopped = reached and not passed and not robot.state.get("driving")
+    robot.send(order_id, 1, [node("n1", 2, *p1, m), node("n2", 4, *p2, m)], [edge("n1", "n2", 3)])
+    finished = robot.wait_until(
+        lambda: robot.state.get("lastNodeId") == "n2" and at(p2) and not robot.state.get("nodeStates"), args.wait
+    )
+    results.append(
+        report(
+            "the vehicle stops at the end of the base and continues when it is extended",
+            stopped and finished,
+            f"reached n1={reached}, stayed at n1 for 5 s={stopped}, reached n2 after the update={finished}",
+        )
+    )
+
+    # An error from a rejected order must not block (or outlive) the next valid order.
+    robot.cancel(args.wait)
+    before = [json.dumps(e, sort_keys=True) for e in robot.state.get("errors") or []]
+    here = robot.state["agvPosition"]
+    robot.order(f"conformance-rejected-{run}", here["x"] + 1, here["y"], here["mapId"], drop="x")
+    errored = robot.wait_until(lambda: bool(new_errors(robot.state, before)), 10)
+    rejection = [json.dumps(e, sort_keys=True) for e in new_errors(robot.state, before)]
+    robot.cancel(args.wait)  # the next order may only start once the robot is idle
+    order_id = f"conformance-after-{run}"
+    robot.order(order_id, here["x"] + 1, here["y"], here["mapId"])
+    finished = robot.wait_until(
+        lambda: (
+            robot.state.get("orderId") == order_id
+            and robot.state.get("lastNodeId") == "target"
+            and not robot.state.get("nodeStates")
+        ),
+        args.wait,
+    )
+    left = [e for e in robot.state.get("errors") or [] if json.dumps(e, sort_keys=True) in rejection]
+    results.append(
+        report(
+            "a rejected order's error does not block the next order",
+            errored and finished and not left,
+            f"rejection reported={errored}, next order finished={finished}, "
+            f"rejection error still in state={bool(left)}",
         )
     )
     robot.cancel(args.wait)

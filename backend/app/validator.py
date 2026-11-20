@@ -214,6 +214,12 @@ class Validator:
         raw_nodes, raw_edges = payload.get("nodes"), payload.get("edges")
         nodes = [n for n in _list(raw_nodes) if isinstance(n, dict) and isinstance(n.get("sequenceId"), int)]
         edges = [e for e in _list(raw_edges) if isinstance(e, dict) and isinstance(e.get("sequenceId"), int)]
+        if raw_nodes == []:
+            message = (
+                "order has no nodes: for a valid order, there shall be at least one node (2.1 section 6.6.1, "
+                "3.0 section 6.1.1); an order is cancelled with the cancelOrder instant action (2.1 section 6.6.3)"
+            )
+            return [issue("error", "order-sequence", message, "/nodes")]
         if not nodes:
             return []
         nodes.sort(key=lambda node: node["sequenceId"])

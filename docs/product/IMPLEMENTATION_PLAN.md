@@ -18,7 +18,7 @@ Product prioritization belongs to the founder; engineering supplies runnable del
 | A. Baseline and discovery | Engineering part done; discovery open | Gates re-run per release (CI on each tagged commit); fresh-clone check of the quick start (D-54); pilot recruits and interviews not yet done |
 | B. Connector feasibility | Done | InOrbit `ros_amr_interop` + `vda5050_adapter_examples`, pinned commits, licence and maintenance checked (D-51) |
 | C. Independent stack integration | Done | Compose profile `ros2`, scoped TLS login, map alias, mission and cancel (D-51) |
-| D. Conformance and regression | Done | Nine scenarios plus raw checks, report with spec citations (D-52); with the fixes 9/9 and 4/4 (D-55); all five fixes merged upstream by 14 Nov and built from InOrbit's code, weekly in CI (D-63) |
+| D. Conformance and regression | Done | Nine scenarios plus raw checks, report with spec citations (D-52); with the fixes 9/9 and 4/4 (D-55), 8/8 raw checks with four master-control habits added 19 Nov (D-66); all five fixes merged upstream by 14 Nov and built from InOrbit's code, weekly in CI (D-63) |
 | E. Onboarding and UX | Partly done | GETTING_STARTED, CONNECT_YOUR_ROBOT, failure catalogue, scenario gallery, message flows (D-53/D-54); UI for real robots (D-52); viewer mode and Activity panel (D-56). Open: observed new-user sessions; keyboard/zoom/screen-reader review |
 | F. External pilot | Not started | Needs a participant |
 | G. Release candidate | Done | v0.2.0, v0.3.0, v0.4.0 and v0.4.1 (security patch), each gated on its tagged commit; PR-12/13 open, so released as a preview |

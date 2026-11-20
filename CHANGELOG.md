@@ -4,6 +4,15 @@ What changed, per commit, newest first. Status and plans are in [docs/PROGRESS.m
 
 ## Unreleased
 
+- **Conformance: master-control habits that broke real vehicles** (from an AGV integrator, D-66). Four raw checks in
+  `conformance/raw_checks.py`: a single-node order is finished; an empty order sent mid-mission is rejected with an
+  error and the vehicle stays up; the vehicle stops at the end of the base and continues when it is extended; a
+  rejected order's error does not block the next order. The ROS 2 robot passes all four (8/8); the raw checks now
+  also run against a simulated robot in every e2e run (`tests/e2e/test_16_raw_checks.py`). Four new failure
+  catalogue entries.
+- **Validator:** an order with no nodes is an `order-sequence` error ("for a valid order, there shall be at least one
+  node", 2.1 §6.6.1, 3.0 §6.1.1); the schemas alone accepted it. The message points to the `cancelOrder` instant
+  action, which is how an order is cancelled.
 - **Frontend build tools:** TypeScript 7.0, @types/node 26, and Node 26 for building the frontend image. Build-time
   only: the served page is unchanged (tests, lint, type check, build, image and Trivy all pass).
 - **Dependencies:** 21 Dependabot updates (patch and minor) taken together: react and react-dom 19.3.1 (Dependabot

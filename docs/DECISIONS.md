@@ -1184,3 +1184,24 @@ protection (noted in ci.yml). Pushing directly stays possible for the owner, so 
 CI watched after) remain the safeguard for that path. Secret scanning with push protection was already on; the same
 day the dependency graph, Dependabot alerts and Dependabot security updates were turned on (0 open alerts), so a
 published vulnerability in a dependency now opens a pull request by itself, next to the weekly version updates.
+
+## D-66 · Conformance checks from a customer-discovery conversation: master-control habits
+19 Nov 2026 · Accepted (the founder's go-ahead the same day)
+
+**Context.** The first discovery reply (an AGV integrator who connected vehicles to several master controls) listed
+what broke in practice: an empty order used to cancel, master controls that send no orders while the vehicle reports
+an error, one that rejects several nodes reached in one state message, single-node orders (valid) that broke a
+vehicle, a base extended too late on a dense topology, data structures not exactly as specified. "Most things were
+edge-cases in how messages are allowed to be structured." ActuNode's simulator already handles each vehicle-side case;
+what was missing was a way to test someone else's vehicle against them, and the validator accepted an order without
+nodes (the schemas set no minimum).
+**Decision.** Four raw checks in `conformance/raw_checks.py` for the vehicle side (single-node order, empty order
+mid-mission, end of base, error after a rejected order); the raw checks also run against a simulated robot in the
+normal e2e suite, which may fail only the obstacle check (the simulated warehouse has none). The validator flags an
+order with no nodes, quoting 2.1 §6.6.1 / 3.0 §6.1.1 and pointing to `cancelOrder`. Failure catalogue entries mark
+the source as "reported by an integrator", without names. The fleet-manager side (simulated robots that report several
+nodes in one state, faster robots on dense maps to stress base extension) comes next, after a call with the
+integrator; "not exactly as specified" is the validator's existing job.
+**Consequences.** Any vehicle connected to the lab can be checked against these habits before a site visit. The ROS 2
+robot (InOrbit's connector as merged) passes all eight raw checks. A spec-strict rule now reports an empty order, so a
+fleet manager under test that cancels this way shows an error in the lab.

@@ -46,7 +46,9 @@ ROS 2 robot (`ROS2` / `nav2_01`): replace both. Plain VDA 5050 checks only. Resu
 | [09_cancel_order.yaml](../conformance/vda5050-2/09_cancel_order.yaml) | `cancelOrder` stops the robot (on the spot or at the next node) and reports FINISHED |
 
 Plus [conformance/raw_checks.py](../conformance/raw_checks.py): orders the mission sender would never build (a node
-the robot cannot reach, a map it does not have), sent with a fleet manager login.
+the robot cannot reach, a map it does not have) and master-control habits that broke real vehicles (an empty
+order as a cancel, a single-node order, a base extended late, an error that blocks new orders), sent with a fleet
+manager login.
 
 ## Writing your own
 

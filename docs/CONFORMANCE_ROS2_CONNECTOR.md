@@ -5,7 +5,7 @@ measured in the ActuNode lab. Written for robot and connector developers, integr
 the connector's maintainers (upstream reports: [research/upstream/](research/upstream/)).
 
 **Status 14 Nov 2026 (D-63):** all five fixes below are merged upstream, and the lab now builds InOrbit's code as
-merged, with no patches: **every check passes (9/9 scenarios, 4/4 raw checks)**. The measurements in this report
+merged, with no patches: **every check passes (9/9 scenarios, 4/4 raw checks; 8/8 with the four added on 19 Nov)**. The measurements in this report
 describe the commits pinned on 15 Oct.
 
 **Most failures are in the example adapter, not the connector** (16 Oct, D-55): the connector passes the robot's
@@ -116,6 +116,18 @@ this.
 The raw checks script was corrected while testing the patches: it now cancels any open order before and after, and
 counts only errors raised during the run. Before, a robot that had refused the unknown-map order because the
 previous order was still open would have passed that check.
+
+## Master-control habits (19 Nov 2026, D-66)
+
+Four raw checks added from an AGV integrator's list of master-control habits that broke real vehicles: a single-node
+order, an empty order sent mid-mission (an improvised cancel; VDA 5050 2.1 §6.6.1 requires at least one node, and
+cancelling is the `cancelOrder` instant action, §6.6.3), a base extended only after the vehicle reached its end, and a
+rejected order followed by a valid one (some master controls send nothing while any error is shown). **The ROS 2
+robot passes all four (8/8 raw checks, 19 Nov).** Observed: it answers the empty order with `orderUpdateError`
+rather than `validationError` (an error either way; `validationError` would name the cause), sent one state message
+in the next 5 s, and kept driving its running order. It stops at the last released node and continues after the
+order update. ActuNode's simulated robots pass the same checks except "unreachable node is reported as an error"
+(the simulated warehouse has no obstacles); `tests/e2e/test_16_raw_checks.py` runs them on every CI run.
 
 ## Other observations
 

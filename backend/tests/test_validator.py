@@ -163,6 +163,18 @@ def test_order_edges_must_connect_neighbouring_nodes():
     assert "SOMEWHERE_ELSE" in issues[0]["message"]
 
 
+@pytest.mark.parametrize("name", ["order", "v3_order"])
+def test_an_order_without_nodes_is_an_error_but_one_node_is_enough(name):
+    topic, payload = fixture(name)
+    one = {**payload, "nodes": payload["nodes"][:1], "edges": []}
+    assert rules(Validator().check(topic, one, valid_json=True)) == []
+
+    issues = Validator().check(topic, {**payload, "nodes": [], "edges": []}, valid_json=True)
+
+    assert rules(issues) == ["order-sequence"]
+    assert "cancelOrder" in issues[0]["message"]
+
+
 def test_order_sequence_ids_must_alternate():
     topic, payload = fixture("order")
     payload["nodes"][1]["sequenceId"] = 3

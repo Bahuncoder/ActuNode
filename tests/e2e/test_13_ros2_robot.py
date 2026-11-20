@@ -111,6 +111,10 @@ RAW_CHECKS = {
     "unreachable node is reported as an error",
     "order on an unknown map is rejected",
     "an invalid order is rejected with an error, not ignored",
+    "a single-node order is accepted and finished",
+    "an empty order is rejected with an error, and the vehicle stays up",
+    "the vehicle stops at the end of the base and continues when it is extended",
+    "a rejected order's error does not block the next order",
 }
 KNOWN_RAW_FAILURES: set[str] = set()
 

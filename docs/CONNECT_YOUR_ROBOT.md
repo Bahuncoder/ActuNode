@@ -63,7 +63,9 @@ cli/.venv/bin/actunode test my-robot --vda-version 2 --junit my-robot.xml
 Each scenario is one check; a failure names the step and what the robot said instead. Locations used: PACK_SORT,
 LOADING_DOCK_2, RECEIVING_DOOR_1, LOADING_DOCK_1 (scenarios 06–09 drive there; adjust if your robot cannot).
 
-Orders the mission sender would never build (a node the robot cannot reach, a map it does not have) are in
+Orders the mission sender would never build (a node the robot cannot reach, a map it does not have) and
+master-control habits that broke real vehicles (an empty order used as a cancel, single-node orders, a base extended
+late, an error that keeps a master control from sending orders; [FAILURE_CATALOGUE.md](FAILURE_CATALOGUE.md)) are in
 `conformance/raw_checks.py`, sent with a fleet manager login:
 
 ```bash
