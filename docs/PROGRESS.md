@@ -649,7 +649,9 @@ Checks: backend 671, simulator 465, CLI 232, cloud 105 tests; ruff; frontend tes
 isolation (Python 3.15 images with their tests inside, Node 26, TypeScript 7, @types/node 26, websockets 17, which
 warns that the CLI's legacy `connect()` call is deprecated); not taken yet. Docker Hub's `python:3.12-slim` still has
 the old zlib (built 5 Nov); the scan exception expires 28 Nov. Outreach: two more emails to research groups working on
-VDA 5050, with addresses from their own pages (3 sent so far, 0 replies seen; record in the private docs/company/).
+VDA 5050, with addresses from their own pages; the first email (14 Nov) got a detailed reply from an AGV integrator
+on 18 Nov, answered with a request for a call (record in the private docs/company/). His list of master-control habits
+that broke vehicles is being turned into conformance checks. main is now protected (D-65).
 
 ### Sun 15 Nov 2026: v0.4.1 released
 The founder tagged v0.4.1 on e51d722 (the release commit, green in CI and the security scan) and published the

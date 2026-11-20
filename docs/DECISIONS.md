@@ -1168,3 +1168,17 @@ CVEs in `.trivyignore` with an expiry date (28 Nov). Every entry there needs a r
 **Consequences.** Builds taken on different days can differ in Debian packages: the price of not shipping a known,
 already-fixed vulnerability. If the base image is still unfixed on 28 Nov, the scan fails again and the exception is
 reviewed. Not covered yet: CI scans neither the control plane's images nor the `cloud/` Dockerfiles.
+
+## D-65 · Protect main: no force-push or deletion; pull requests need green CI; the owner may push
+19 Nov 2026 · Accepted (the founder's request: the repository is public)
+
+**Context.** main had no protection. The project is open source; outside contributions arrive as pull requests, and
+Dependabot opens its own. Work by the founder (and the agent working as the founder) is pushed to main directly after
+its checks pass, one commit per piece of work.
+**Decision.** Classic branch protection on main: no force-push, no deletion; a pull request is required, with all 11
+CI jobs passing (`lint`, `backend`, `simulator`, `cli`, `cloud`, `frontend`, `scenarios (2|3)`, `e2e (2, 0)`,
+`e2e (3, 0)`, `e2e (2, 1)`; not strict about being up to date) and review conversations resolved; no approvals
+required (one maintainer). Administrators are not enforced, so the owner can still push directly.
+**Consequences.** Nobody can rewrite or delete main's history. Renaming a CI job or changing the matrix must update the
+protection (noted in ci.yml). Pushing directly stays possible for the owner, so the checks before each push (tests,
+CI watched after) remain the safeguard for that path. Secret scanning with push protection was already on.

@@ -1,5 +1,7 @@
 name: CI
 
+# The job names below (lint, backend, ..., e2e (2, 1)) are required status checks on main's branch protection
+# (D-65): renaming or adding a matrix job means updating the protection, or pull requests cannot be merged.
 on:
   push:
   pull_request:
