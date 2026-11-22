@@ -673,6 +673,15 @@ Numbered so they can be referenced from commits. Remove an item only when it is 
 
 Newest first. One entry per work session: what was done, what was learned, what is next.
 
+### Sun 22 Nov 2026: Dependabot batch
+27 open Dependabot pull requests: 21 applied together (FastAPI 0.143 to 0.163 for backend and hosted service, websockets
+17 with the CLI's live connection opened the way 17 expects, pytest 9 for the hosted service, minor updates), 2 already
+on main, the 4 Python 3.15 base images held (founder's choice). Checks: backend 694, cloud 106, simulator 490, CLI 250
+tests (CLI also with deprecation warnings as errors); ruff; frontend 179 tests, lint, build, `npm audit`; `pip-audit` on
+all five requirement sets; six images built fresh and clean in Trivy; e2e 48 passed, 10 skipped. Docker Hub's
+`python:3.12-slim` is still the 5 Nov build: one of the two zlib CVEs is gone from it, CVE-2026-85091 remains; its
+`.trivyignore` entry expires 28 Nov, so that day needs a decision (a fixed base, or Python 3.15).
+
 ### Fri 20 Nov 2026 (evening): the vision checked against where we are; docs and workflows brought up to date
 The founder asked for the vision to be read against the plan and everything brought up to date. The vision, item by
 item, is now a table at the top of this file: the build is months ahead of the vision's timeline; first external users

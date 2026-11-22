@@ -202,9 +202,10 @@ class Feed:
         for attempt in range(1, FEED_ATTEMPTS + 1):
             self._ws = None
             try:
+                # __enter__ (not a bare connect()) opens it without the websockets 17 legacy-use DeprecationWarning.
                 self._ws = ws_connect(
                     url, additional_headers=headers, open_timeout=FEED_OPEN_S, max_size=FEED_MAX_FRAME, **options
-                )
+                ).__enter__()
                 first = json.loads(self._ws.recv(timeout=TIMEOUT_S))
                 break
             except (OSError, TimeoutError, InvalidHandshake, InvalidURI, ConnectionClosed, ValueError) as error:

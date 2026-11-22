@@ -108,7 +108,7 @@ def test_other_web_pages_cannot_use_the_api_through_nginx(stack):
     import asyncio
 
     import httpx
-    import websockets
+    from websockets.asyncio.client import connect
 
     base = f"{stack.http_base}/api"
     verify = stack.ssl_context or True
@@ -120,9 +120,7 @@ def test_other_web_pages_cannot_use_the_api_through_nginx(stack):
     async def open_feed(origin):
         url = f"{stack.ws_base}/api/ws"
         ssl_options = {"ssl": stack.ssl_context} if stack.ssl_context else {}
-        async with websockets.connect(
-            url, origin=origin, additional_headers=stack.session_cookie(), **ssl_options
-        ) as ws:
+        async with connect(url, origin=origin, additional_headers=stack.session_cookie(), **ssl_options) as ws:
             return (await asyncio.wait_for(ws.recv(), 5))[:20]
 
     assert asyncio.run(open_feed(stack.http_base)).startswith('{"type"')
@@ -139,7 +137,7 @@ def test_with_login_required_nothing_works_without_a_session(stack):
 
     import httpx
     import pytest
-    import websockets
+    from websockets.asyncio.client import connect
 
     if not LOGIN:
         pytest.skip("stack runs without login")
@@ -151,7 +149,7 @@ def test_with_login_required_nothing_works_without_a_session(stack):
 
     async def open_feed():
         ssl_options = {"ssl": stack.ssl_context} if stack.ssl_context else {}
-        async with websockets.connect(f"{stack.ws_base}/api/ws", **ssl_options) as ws:
+        async with connect(f"{stack.ws_base}/api/ws", **ssl_options) as ws:
             await ws.recv()
 
     with pytest.raises(InvalidStatus):

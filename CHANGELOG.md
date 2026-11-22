@@ -13,6 +13,10 @@ What changed, per commit, newest first. Status and plans are in [docs/PROGRESS.m
 - Hosted service: real terms and privacy pages.
 - New: the front page for actunode.com (`site/`, published by GitHub Pages).
 
+- **Dependencies** (22 Nov): FastAPI 0.163 (backend and hosted service), websockets 17 (the CLI now opens its live
+  connection as websockets 17 expects; no deprecation warnings), pytest 9 for the hosted service, and minor updates
+  (uvicorn, httpx, jsonschema, pydantic, python-multipart, playwright, vite, vitest, oxlint). The Python 3.15 base
+  images stay on hold.
 - **Testing a fleet manager on fast, dense routes** (D-68, the rest of the integrator's list). Two new injections
   for ActuNode's simulated robots: `SPEED` (drive at up to 5 m/s; the factsheet's `speedMax` follows) and
   `BATCHED_STATE` (send state only every N s, so one message reports several nodes passed), in the API, scenarios
