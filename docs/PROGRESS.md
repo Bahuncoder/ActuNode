@@ -33,7 +33,7 @@ The private vision document (docs/company/, 16 pages), item by item. Plan refere
 | ✅ | Milestone 3, automated tests (p. 8) | 6 months | `actunode test`, JUnit output, Docker runner, GitHub Actions example |
 | 🔄 | Milestone 1, developer credibility (p. 8) | 6 months | Docs, scenarios, failure catalogue, message flows done. Waiting on the founder: two blog posts (drafted, private), the 3-minute video (recorder ready, voice-over to record) |
 | 🔄 | Pro developer stage: hosted labs, team workspaces, CI (p. 9) | after the free stage | ActuNode Cloud built (D-61, D-62, D-67); not live: waiting on the founder's accounts |
-| ❌ | **Milestone 4, first external users; 30 conversations in 60 days (pp. 8, 10)** | by 8 Dec | **Behind:** 0 calls; 2 written replies; 5 of 12 contacts reached (see Customer discovery) |
+| ❌ | **Milestone 4, first external users; 30 conversations in 60 days (pp. 8, 10)** | by 8 Dec | **Behind:** 0 calls; 2 written replies, one a full written interview (24 Nov); 5 of 12 contacts reached (see Customer discovery) |
 | ⬜ | Pilot with an integrator (p. 7) | 6 months | Needs conversations first |
 | ⬜ | Adapter SDK; edge gateway; operations platform (pp. 7, 14) | 12 / 24 months | Not started, by design: each stage must be earned by user demand (p. 14) |
 | ⬜ | Market signals: people trying it, starring, criticising, asking (p. 12) | ongoing | 20 Nov: 0 stars, 0 forks, no issues from outside; 4 unique visitors in 14 days |
@@ -603,7 +603,7 @@ anonymised learnings go here.
 |---|---|---|---|---|
 | 1–5 (9 Oct – 12 Nov) | 0 | 0 | 0 | 0 / 30 |
 | 6 (13–19 Nov) | 3 (e-mail) | 1: a detailed written answer from an AGV integrator; a call requested | 0 | 0 / 30 |
-| 7 (20–26 Nov, so far) | 2 (LinkedIn) | 1: an AMR company's engineer; four questions sent, a call offered | 0 | 0 / 30 |
+| 7 (20–26 Nov, so far) | 2 (LinkedIn) | 1: an AMR company's master-control engineer answered four questions in full, in writing (24 Nov); two follow-ups sent | 0 | 0 / 30 |
 
 **Pipeline (20 Nov):** 12 contacts in the tracker (AMR companies, integrators, open-source and research groups);
 5 reached, 7 not yet, 2 of those waiting on a ROS Discourse sign-in. Follow-ups due 25–27 Nov. The target (30 by
@@ -612,7 +612,13 @@ anonymised learnings go here.
 **Learnings so far** (anonymised): master controls and vehicles read VDA 5050 differently, and the failures are edge
 cases in how messages may be structured (empty order as cancel, several nodes in one state, base extended late,
 single-node orders): built into raw checks and fleet-manager scenarios (D-66, D-68). VDA 5050 3.0 adopters meet
-schema problems in the official 3.0.0 release (fixed upstream on main, not released). After every 5 conversations,
+schema problems in the official 3.0.0 release (fixed upstream on main, not released). A master-control engineer at an AMR company (24 Nov; uses 3.0 only) tests with a simulated robot in CI plus raw
+state captures from the site, and still finishes on site because no simulator behaves like the real robot. What breaks is
+rarely the schema, almost always behaviour it leaves open: lastNodeId mid-edge and after cancel or reset, when an order
+with a failed action is finished, cancel and pause between nodes, which order is active after a short disconnect, factsheet
+vs reality, what to do per error level, map version mismatch. The tool they wish existed is a behavioural conformance
+suite with pass/fail on the state sequence, which is what ActuNode's scenarios are; the simulator's answers to the
+robot-side questions are now pinned by tests (D-69). After every 5 conversations,
 add a summary of repeated pain points to the session log.
 
 ## Verification status
@@ -623,7 +629,7 @@ exercised by hand with a real browser and MQTT traffic.
 | Area | How it was verified | Gaps |
 |---|---|---|
 | Backend API | 694 unit/API tests (pytest), run in CI, including a shutdown test under a real uvicorn server | |
-| Simulator | 490 tests (pytest, incl. conformance against the official 2.1.0 and 3.0.0 schemas, and the example fleet manager driving a simulated robot, D-68), run in CI | |
+| Simulator | 504 tests (pytest, incl. the behaviour master control depends on, D-69, conformance against the official 2.1.0 and 3.0.0 schemas, and the example fleet manager driving a simulated robot, D-68), run in CI | |
 | Scenario runner (CLI) | 250 tests (pytest), run in CI; the sample and fleet-manager scenarios also run against the stack in CI for 2.1 and 3.0 (`scenarios` job) | |
 | Hosted service (`cloud/`) | 106 tests (pytest), run in CI; the local hosted stack checked end to end with `cloud/deploy/local-check.sh` (25 checks, 20 Nov); restore drill (D-62) | Not yet run on a real server |
 | Python style | `ruff check` + `ruff format --check` in CI (the whole repository) | |
@@ -672,6 +678,15 @@ Numbered so they can be referenced from commits. Remove an item only when it is 
 ## Session log
 
 Newest first. One entry per work session: what was done, what was learned, what is next.
+
+### Tue 24 Nov 2026: first full written interview; behaviour master control depends on (D-69)
+An AMR company's master-control engineer answered all four discovery questions in writing (summary under Customer
+discovery; details in the private tracker); the founder sent two follow-ups (how they judge pass/fail; whether they would
+try a suite on a test setup). The list was mapped against the code: lastNodeId, cancel, pause, order updates and
+reconnect were handled but several were not asserted. 14 new simulator tests pin them (D-69); no simulator change was
+needed. Open from the list: master-control reaction to error levels, `mapVersion` (not modelled), orderUpdateId checked
+across a reconnect in a scenario, and pass/fail rules over a whole state sequence (waits for the answer). Next: the
+engineer's reply (from 1 Dec), the founder's follow-ups to the others (25–27 Nov), the zlib exception (28 Nov).
 
 ### Sun 22 Nov 2026: Dependabot batch
 27 open Dependabot pull requests: 21 applied together (FastAPI 0.143 to 0.163 for backend and hosted service, websockets

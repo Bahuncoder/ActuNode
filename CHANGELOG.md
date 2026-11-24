@@ -4,6 +4,10 @@ What changed, per commit, newest first. Status and plans are in [docs/PROGRESS.m
 
 ## Unreleased
 
+- Simulator: 14 tests pin the behaviour master control depends on and the schema leaves open: lastNodeId only
+  changes on arrival and is kept after `cancelOrder`, a cancelled or paused robot stands still, an order with a failed
+  action still finishes, the factsheet's instant actions are the ones the robot accepts, and an order on another map is
+  refused naming the map (D-69).
 - Hosted service: the edge reads the Hetzner token as `HETZNER_API_TOKEN_FILE` (the old Hetzner DNS API was shut down
   in May 2026); put the DNS zone in its own Hetzner project (docs/HOSTED_DEPLOY.md).
 - Hosted service: off-site backups older than `ACTUNODE_BACKUP_REMOTE_KEEP_DAYS` (default 14) are deleted after each

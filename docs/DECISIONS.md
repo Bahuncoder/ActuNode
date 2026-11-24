@@ -1277,3 +1277,31 @@ as a missing next order.
 A test drives the example fleet manager against the simulator's own order handling in simulated time (2.1 and 3.0,
 under 2 s), so the two are checked together on every push, not only in e2e. The review also made non-finite numbers
 (NaN, Infinity) a clear error everywhere: refused when a scenario is read, and a 422 instead of a 500 from the API.
+
+## D-69 · Pin the behaviour master control depends on, from a master-control engineer's list
+24 Nov 2026 · Accepted (the founder's go-ahead the same day)
+
+**Context.** A master-control engineer at an AMR company (customer discovery, 24 Nov) listed what breaks most often
+between fleet control and robots. Rarely the schema; almost always behaviour it leaves open: lastNodeId mid-edge, after
+a cancel and after a reset; when an order with a failed action is finished; cancel and pause between nodes; which order
+is active after a short disconnect; factsheet vs reality; what to do per error level; map version mismatch. The tool
+they wish existed is a behavioural conformance suite: scripted scenarios with pass/fail on the resulting state sequence.
+Checking the code: the simulator already behaved sensibly on each robot-side point, but several were not asserted, so a
+change could have altered them silently.
+
+**Decision.**
+1. `simulator/tests/test_master_control_behaviour.py`, run for VDA 5050 2 and 3, pins the simulator's answers:
+   lastNodeId and lastNodeSequenceId change only on arrival; after `cancelOrder` mid-edge they keep the last node
+   reached, node and edge states are empty, `driving` is false, the robot does not move and `orderId` stays the
+   cancelled order's; a restarted robot reports empty `lastNodeId` and `orderId`; a paused robot stands still with the
+   same lastNodeId and finishes after `stopPause`; an order whose drop fails is finished (no node or edge states, every
+   action FINISHED or FAILED, mission COMPLETED); every instant action the factsheet declares is accepted, an undeclared
+   one is FAILED as unsupported, and parameter keys are camelCase; an order on another `mapId` is refused naming it.
+2. No simulator change: none of the tests contradicted VDA 5050.
+3. Not built yet: pass/fail rules over a whole state sequence (for example "lastNodeId never goes back within an order")
+   waits for the engineer's answer on how they judge pass/fail today, so the design follows real use. Also open:
+   master-control reaction to error levels, `mapVersion` (not modelled), and orderUpdateId checked across a reconnect in a
+   scenario.
+
+**Consequences.** The robot-side answers master control relies on cannot change without a failing test. The bigger
+behaviour suite is earned by the engineer's next answer, as the vision asks (build what users ask for).
