@@ -21,7 +21,7 @@ stamp="$(date -u +%Y%m%dT%H%M%SZ)"
 archive="$root/backups/actunode-$stamp.tar.gz"
 
 # SQLite online backup: consistent even while the control plane writes (WAL mode).
-docker run --rm -e "OWNER=$me" -v actunode-cloud_cloud-data:/data:ro -v "$tmp":/out python:3.12-slim python -c '
+docker run --rm -e "OWNER=$me" -v actunode-cloud_cloud-data:/data:ro -v "$tmp":/out --user 0:0 actunode-cloud:local python -c '
 import os, sqlite3
 src = sqlite3.connect("file:/data/cloud.sqlite3?mode=ro", uri=True)
 dst = sqlite3.connect("/out/cloud.sqlite3")

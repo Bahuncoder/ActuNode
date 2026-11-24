@@ -103,6 +103,6 @@ jobs:
           trivy config --severity HIGH,CRITICAL --exit-code 1 --ignorefile cloud/provisioner/.trivyignore cloud/provisioner
       - name: Scan images
         run: |
-          for image in actunode-backend:ci actunode-simulator:ci actunode-frontend:ci actunode-runner:ci actunode-cloud:ci actunode-provisioner:ci eclipse-mosquitto:2 python:3.12-slim; do
+          for image in actunode-backend:ci actunode-simulator:ci actunode-frontend:ci actunode-runner:ci actunode-cloud:ci actunode-provisioner:ci eclipse-mosquitto:2; do
             trivy image --severity HIGH,CRITICAL --ignore-unfixed --exit-code 1 "$image"
           done

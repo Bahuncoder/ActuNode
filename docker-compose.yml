@@ -56,7 +56,11 @@ services:
   # names in ACTUNODE_ALLOWED_HOSTS. CA for browsers and robots: docker compose run --rm cert-init show ca
   cert-init:
     <<: *hardened
-    image: python:3.12-slim
+    # The backend's image (Debian with openssl and Debian's security updates, D-70), run as root for chown; built by the
+    # backend service, so never pulled on its own.
+    image: ${ACTUNODE_IMAGES:-actunode}-backend:${ACTUNODE_VERSION:-local}
+    pull_policy: never
+    user: "0:0"
     cap_add: [CHOWN, FOWNER, DAC_OVERRIDE]
     network_mode: none
     mem_limit: 128m

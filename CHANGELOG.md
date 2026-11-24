@@ -4,6 +4,9 @@ What changed, per commit, newest first. Status and plans are in [docs/PROGRESS.m
 
 ## Unreleased
 
+- Lab and hosted service: the TLS certificate job and the hosted backup run in ActuNode's own images (backend and
+  control plane) instead of Docker Hub's `python:3.12-slim`, so they get Debian's zlib fix (CVE-2026-85091) at build
+  time; the zlib exception is gone from `.trivyignore` (D-70).
 - Simulator: 14 tests pin the behaviour master control depends on and the schema leaves open: lastNodeId only
   changes on arrival and is kept after `cancelOrder`, a cancelled or paused robot stands still, an order with a failed
   action still finishes, the factsheet's instant actions are the ones the robot accepts, and an order on another map is

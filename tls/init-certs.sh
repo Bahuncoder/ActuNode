@@ -1,6 +1,6 @@
 #!/bin/sh
-# TLS certificates for sharing the lab (issue 12 part C2, D-26). Runs as root in python:3.12-slim
-# (which has openssl), writing into the secrets volume mounted at /secrets:
+# TLS certificates for sharing the lab (issue 12 part C2, D-26). Runs as root in the backend image
+# (Debian, which has openssl; D-70), writing into the secrets volume mounted at /secrets:
 #
 #   /secrets/ca/            ca.key, ca.crt     local certificate authority (key never leaves here)
 #   /secrets/broker/tls/    server.crt/.key    mosquitto, port 8883      -> owned by mosquitto (1883)

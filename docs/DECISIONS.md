@@ -1305,3 +1305,23 @@ change could have altered them silently.
 
 **Consequences.** The robot-side answers master control relies on cannot change without a failing test. The bigger
 behaviour suite is earned by the engineer's next answer, as the vision asks (build what users ask for).
+
+## D-70 · Helper jobs run in ActuNode's own images, not Docker Hub's Python image
+24 Nov 2026 · Accepted (the founder's go-ahead the same day)
+
+**Context.** Docker Hub's `python:3.12-slim` was still the 5 Nov build with a vulnerable zlib (CVE-2026-85091, heap
+buffer overflow). Debian had published the fix (`1:1.3.dfsg+really1.3.1-1+deb13u1`), and ActuNode's own images already
+install it at build time (`apt-get upgrade`). Three short helper jobs ran the Docker Hub image as it is: the lab's TLS
+certificate job, the same job in hosted workspaces, and the hosted SQLite backup. A dated `.trivyignore` exception
+covered them until 28 Nov. Moving everything to Python 3.15 would also have fixed it, but is a larger change to make
+just before the hosted service goes live.
+
+**Decision.**
+1. `cert-init` (lab and hosted workspace) runs in the backend image as root (it needs `chown`, and the image has
+   openssl). In the lab it has `pull_policy: never`: the backend service builds or pulls that image.
+2. The hosted backup runs its SQLite copy in the control plane image (`actunode-cloud:local`) as root.
+3. `python:3.12-slim` is no longer scanned as a separate image (nothing runs it as is), and the zlib exception is
+   removed.
+
+**Consequences.** Every image ActuNode runs gets Debian's security fixes when it is built, without waiting for Docker
+Hub. Python 3.15 stays a separate, planned step (Dependabot pull requests held).
