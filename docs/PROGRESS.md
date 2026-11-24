@@ -603,7 +603,7 @@ anonymised learnings go here.
 |---|---|---|---|---|
 | 1–5 (9 Oct – 12 Nov) | 0 | 0 | 0 | 0 / 30 |
 | 6 (13–19 Nov) | 3 (e-mail) | 1: a detailed written answer from an AGV integrator; a call requested | 0 | 0 / 30 |
-| 7 (20–26 Nov, so far) | 2 (LinkedIn) | 1: an AMR company's master-control engineer answered four questions in full, in writing (24 Nov); two follow-ups sent | 0 | 0 / 30 |
+| 7 (20–26 Nov, so far) | 2 (LinkedIn) + 2 follow-ups (LinkedIn, e-mail) | 1: an AMR company's master-control engineer answered four questions in full, in writing (24 Nov); two follow-ups sent | 0 | 0 / 30 |
 
 **Pipeline (20 Nov):** 12 contacts in the tracker (AMR companies, integrators, open-source and research groups);
 5 reached, 7 not yet, 2 of those waiting on a ROS Discourse sign-in. Follow-ups due 25–27 Nov. The target (30 by
