@@ -1061,7 +1061,7 @@ left for the founder.
 ### Sun 11 Oct 2026 (late): first outreach batch drafted
 
 - Found 10 contacts whose **public** work shows the pain ActuNode targets, each hook checked against
-  its source: the reporter of VDA5050#660 at Navifra (the same 3.0.0 schema bug we pinned around); two
+  its source: an engineer at an AMR company who reported a 3.0.0 schema bug upstream (the same 3.0.0 schema bug we pinned around); two
   ROS Discourse users who asked for a VDA 5050 fleet simulator and for sample messages (testing by hand
   with MQTT Explorer); Seegrid (full VDA 5050 compliance target 2026); OTTO (certified with three
   master controls in May 2026) and those three (idealworks, SYNAOS, NAiSE); InOrbit (ROS 2 connector);
